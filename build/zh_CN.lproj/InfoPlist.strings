@@ -1,0 +1,2 @@
+"NSCameraUsageDescription" = "仅当你向本地画布添加实时媒体时，Bingo 才会使用摄像头。";
+"NSMicrophoneUsageDescription" = "仅当你向本地画布添加实时音频时，Bingo 才会使用麦克风。";

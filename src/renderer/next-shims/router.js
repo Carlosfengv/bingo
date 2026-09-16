@@ -1,0 +1,1 @@
+import{useMemo as a}from"react";var e=()=>{};function r(){return a(()=>({push:e,replace:e,reload:e,back:e,forward:e,prefetch:e,beforePopState:e,events:{on:e,off:e,emit:e},route:"/",pathname:"/",query:{},asPath:"/",isReady:!0,isFallback:!1,isPreview:!1,isLocaleDomain:!1}),[])}export{r as default,r as useRouter};

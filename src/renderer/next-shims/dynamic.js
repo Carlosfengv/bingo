@@ -1,0 +1,1 @@
+import{createElement as o,lazy as r,Suspense as i}from"react";function u(t,a){let p=r(async()=>{let n=await t();return typeof n=="function"||n&&typeof n=="object"&&"default"in n?{default:typeof n=="function"?n:n.default}:{default:n}}),c=a?.loading?.()??null;return function(e){return o(i,{fallback:c},o(p,e))}}export{u as default};

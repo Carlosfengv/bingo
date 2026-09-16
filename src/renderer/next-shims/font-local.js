@@ -1,0 +1,1 @@
+function r(t){let a=t.variable??"--font-local",s=t.className??"__font_local",l=typeof t.src=="string"?t.src.split("/").pop()?.replace(/\.[^.]+$/,"")??"local":"local";return{className:s,style:{fontFamily:l},variable:a.startsWith("--")?a:`--${a}`}}export{r as default};

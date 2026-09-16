@@ -1,0 +1,10 @@
+[
+ {
+  "name": "recovered/prosemirror-history-dist-index-spill.ts",
+  "region": "../../node_modules/.pnpm/prosemirror-history@1.5.0/node_modules/prosemirror-history/dist/index.js",
+  "names": [
+   "index_default"
+  ],
+  "redirect": "@tiptap/starter-kit"
+ }
+]

@@ -1,0 +1,16 @@
+{
+ "files": 396,
+ "barrelsRebuilt": 8,
+ "filesWithJsxRestored": 170,
+ "importStatements": 2127,
+ "ambiguousSymbols": {
+  "packages/workspace/src/lib/auth-client.ts:createAuthClient": 2,
+  "packages/editor/src/shared/utils/idUtils.ts:nanoid": 2,
+  "src/main/auth.ts:createAuthClient": 2,
+  "src/main/index.ts:is": 2
+ },
+ "unresolved": {},
+ "unresolvedCount": 0,
+ "ghostSymbols": {},
+ "ghostCount": 0
+}

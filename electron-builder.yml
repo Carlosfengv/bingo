@@ -1,0 +1,45 @@
+appId: com.bingo.desktop
+productName: Bingo
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
+directories:
+  output: release
+  buildResources: build
+
+# esbuild and ripgrep spawn native executables at runtime. Their packages resolve
+# executable paths relative to their JavaScript modules, so keeping the app tree
+# as normal files avoids virtual app.asar paths that fail with spawn ENOTDIR.
+asar: false
+
+files:
+  - out/**/*
+  - package.json
+
+extraResources:
+  - from: packages/compiler/skills
+    to: system-skills
+  - from: build/en.lproj
+    to: en.lproj
+  - from: build/zh_CN.lproj
+    to: zh_CN.lproj
+
+afterPack: tools/after-pack.cjs
+
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  extendInfo:
+    CFBundleDevelopmentRegion: en
+    CFBundleLocalizations:
+      - en
+      - zh_CN
+    NSCameraUsageDescription: Bingo uses the camera only when you add live media to a local canvas.
+    NSMicrophoneUsageDescription: Bingo uses the microphone only when you add live audio to a local canvas.
+
+dmg:
+  title: Bingo ${version}
+  sign: false
+
+publish: null

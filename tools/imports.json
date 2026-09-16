@@ -1,0 +1,4725 @@
+{
+ "packages/workspace/src/backends/CloudBackend.ts": {
+  "region_path": "../../packages/workspace/src/backends/CloudBackend.ts",
+  "specifiers": [
+   "../client",
+   "../lib/planRecommendations",
+   "../queryClient",
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/workspace/src/client.ts": {
+  "region_path": "../../packages/workspace/src/client.ts",
+  "specifiers": [
+   "hono/client"
+  ],
+  "packages": [
+   "hono"
+  ]
+ },
+ "packages/workspace/src/components/AgentConnectCard.tsx": {
+  "region_path": "../../packages/workspace/src/components/AgentConnectCard.tsx",
+  "specifiers": [
+   "../constants/agentPaths",
+   "./AgentPathSummary",
+   "@bingo/ui",
+   "@posthog/react",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@posthog/react",
+   "react"
+  ]
+ },
+ "packages/workspace/src/components/AgentPathSummary.tsx": {
+  "region_path": "../../packages/workspace/src/components/AgentPathSummary.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/workspace/src/components/EditorView.tsx": {
+  "region_path": "../../packages/workspace/src/components/EditorView.tsx",
+  "specifiers": [
+   "../../../../src/renderer/vite-preload-helper",
+   "../assets/logoText.png",
+   "../backends/CloudBackend",
+   "../client",
+   "../hooks/useComponents",
+   "../hooks/useFigma",
+   "../hooks/useProject",
+   "../hooks/useProjectBuilderSession",
+   "../hooks/useProjects",
+   "../hooks/useSkillOverrides",
+   "../queryClient",
+   "../services/ProjectBuilderClient",
+   "../services/projectStylesheet",
+   "./ProjectsSidebarFeedback",
+   "./UpgradeModalProvider",
+   "@bingo/compiler",
+   "@bingo/editor",
+   "@bingo/ui",
+   "@posthog/react",
+   "react",
+   "react/compiler-runtime",
+   "sonner"
+  ],
+  "packages": [
+   "@posthog/react",
+   "react",
+   "sonner"
+  ]
+ },
+ "packages/workspace/src/components/LoginSplash.tsx": {
+  "region_path": "../../packages/workspace/src/components/LoginSplash.tsx",
+  "specifiers": [
+   "../assets/claudeMark.webp",
+   "../assets/logoText.png",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/ArrowRight",
+   "@phosphor-icons/react/dist/icons/ArrowUp",
+   "@phosphor-icons/react/dist/icons/Image",
+   "@phosphor-icons/react/dist/icons/PaintBucket",
+   "@phosphor-icons/react/dist/icons/Paperclip",
+   "@phosphor-icons/react/dist/icons/X",
+   "react",
+   "react/compiler-runtime",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react"
+  ]
+ },
+ "packages/workspace/src/components/OnboardingFlow.tsx": {
+  "region_path": "../../packages/workspace/src/components/OnboardingFlow.tsx",
+  "specifiers": [
+   "../assets/logoText.png",
+   "../constants/steps",
+   "../hooks/useOnboarding",
+   "../hooks/useOnboardingController",
+   "./AgentPathSummary",
+   "./OnboardingOptionGroup",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/ArrowRight",
+   "@phosphor-icons/react/dist/icons/CaretLeft",
+   "@phosphor-icons/react/dist/icons/XLogo",
+   "react",
+   "react/compiler-runtime",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react"
+  ]
+ },
+ "packages/workspace/src/components/OnboardingOptionGroup.tsx": {
+  "region_path": "../../packages/workspace/src/components/OnboardingOptionGroup.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/Check",
+   "react",
+   "react/compiler-runtime",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react"
+  ]
+ },
+ "packages/workspace/src/components/ProjectSearchNavContext.tsx": {
+  "region_path": "../../packages/workspace/src/components/ProjectSearchNavContext.tsx",
+  "specifiers": [
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/workspace/src/components/ProjectsPage.tsx": {
+  "region_path": "../../packages/workspace/src/components/ProjectsPage.tsx",
+  "specifiers": [
+   "../client",
+   "../hooks/useProjects",
+   "../hooks/useSession",
+   "../lib/planRecommendations",
+   "./AgentConnectCard",
+   "./ProjectSearchNavContext",
+   "./UpgradeModalProvider",
+   "@bingo/editor",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/DotsThree",
+   "@phosphor-icons/react/dist/icons/GridFour",
+   "@phosphor-icons/react/dist/icons/List",
+   "@posthog/react",
+   "react",
+   "react/compiler-runtime",
+   "react/jsx-runtime",
+   "sonner"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "@posthog/react",
+   "react",
+   "sonner"
+  ]
+ },
+ "packages/workspace/src/components/ProjectsSidebar.tsx": {
+  "region_path": "../../packages/workspace/src/components/ProjectsSidebar.tsx",
+  "specifiers": [
+   "../hooks/useOrganizations",
+   "../utils/isElectronApp",
+   "./ProjectSearchNavContext",
+   "./ProjectsSidebarFeedback",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/workspace/src/components/ProjectsSidebarFeedback.tsx": {
+  "region_path": "../../packages/workspace/src/components/ProjectsSidebarFeedback.tsx",
+  "specifiers": [
+   "../client",
+   "../hooks/useSession",
+   "../utils/isElectronApp",
+   "@bingo/ui",
+   "@posthog/react",
+   "react",
+   "react/compiler-runtime",
+   "sonner"
+  ],
+  "packages": [
+   "@posthog/react",
+   "react",
+   "sonner"
+  ]
+ },
+ "packages/workspace/src/components/ShareDialog.tsx": {
+  "region_path": "../../packages/workspace/src/components/ShareDialog.tsx",
+  "specifiers": [
+   "../client",
+   "../hooks/useProject",
+   "../lib/planRecommendations",
+   "./UpgradeModalProvider",
+   "@bingo/editor",
+   "@bingo/ui",
+   "@posthog/react",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@posthog/react",
+   "react"
+  ]
+ },
+ "packages/workspace/src/components/UpgradeModalProvider.tsx": {
+  "region_path": "../../packages/workspace/src/components/UpgradeModalProvider.tsx",
+  "specifiers": [
+   "../client",
+   "../hooks/useBilling",
+   "../lib/planRecommendations",
+   "./UpgradePlanModal",
+   "@posthog/react",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@posthog/react",
+   "react"
+  ]
+ },
+ "packages/workspace/src/components/UpgradePlanModal.tsx": {
+  "region_path": "../../packages/workspace/src/components/UpgradePlanModal.tsx",
+  "specifiers": [
+   "../hooks/useBilling",
+   "../lib/planRecommendations",
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/workspace/src/components/icons.tsx": {
+  "region_path": "../../packages/workspace/src/components/icons.tsx",
+  "specifiers": [
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/workspace/src/constants/agentPaths.ts": {
+  "region_path": "../../packages/workspace/src/constants/agentPaths.ts",
+  "specifiers": [
+   "@bingo/ui"
+  ],
+  "packages": []
+ },
+ "packages/workspace/src/constants/steps.ts": {
+  "region_path": "../../packages/workspace/src/constants/steps.ts",
+  "specifiers": [
+   "../components/icons",
+   "./agentPaths",
+   "@phosphor-icons/react/dist/icons/Briefcase",
+   "@phosphor-icons/react/dist/icons/Buildings",
+   "@phosphor-icons/react/dist/icons/Code",
+   "@phosphor-icons/react/dist/icons/Coffee",
+   "@phosphor-icons/react/dist/icons/DotsThree",
+   "@phosphor-icons/react/dist/icons/Globe",
+   "@phosphor-icons/react/dist/icons/Intersect",
+   "@phosphor-icons/react/dist/icons/Layout",
+   "@phosphor-icons/react/dist/icons/LinkedinLogo",
+   "@phosphor-icons/react/dist/icons/MagnifyingGlass",
+   "@phosphor-icons/react/dist/icons/Palette",
+   "@phosphor-icons/react/dist/icons/PenNib",
+   "@phosphor-icons/react/dist/icons/Rocket",
+   "@phosphor-icons/react/dist/icons/Shapes",
+   "@phosphor-icons/react/dist/icons/Sparkle",
+   "@phosphor-icons/react/dist/icons/User",
+   "@phosphor-icons/react/dist/icons/Users",
+   "@phosphor-icons/react/dist/icons/XLogo"
+  ],
+  "packages": [
+   "@phosphor-icons/react"
+  ]
+ },
+ "packages/workspace/src/hooks/useBilling.ts": {
+  "region_path": "../../packages/workspace/src/hooks/useBilling.ts",
+  "specifiers": [
+   "../client",
+   "../queryClient",
+   "@tanstack/react-query",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@tanstack/react-query",
+   "react"
+  ]
+ },
+ "packages/workspace/src/hooks/useComments.ts": {
+  "region_path": "../../packages/workspace/src/hooks/useComments.ts",
+  "specifiers": [
+   "../client",
+   "../queryClient",
+   "@tanstack/react-query",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@tanstack/react-query",
+   "react"
+  ]
+ },
+ "packages/workspace/src/hooks/useComponents.ts": {
+  "region_path": "../../packages/workspace/src/hooks/useComponents.ts",
+  "specifiers": [
+   "../services/ComponentLoader",
+   "../services/ProjectBuilderClient",
+   "react"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/workspace/src/hooks/useFigma.ts": {
+  "region_path": "../../packages/workspace/src/hooks/useFigma.ts",
+  "specifiers": [
+   "../client",
+   "../lib/figmaOAuth",
+   "@tanstack/react-query",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@tanstack/react-query",
+   "react"
+  ]
+ },
+ "packages/workspace/src/hooks/useGit.ts": {
+  "region_path": "../../packages/workspace/src/hooks/useGit.ts",
+  "specifiers": [
+   "../client",
+   "../queryClient",
+   "@tanstack/react-query",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@tanstack/react-query",
+   "react"
+  ]
+ },
+ "packages/workspace/src/hooks/useOnboarding.ts": {
+  "region_path": "../../packages/workspace/src/hooks/useOnboarding.ts",
+  "specifiers": [
+   "../client",
+   "../queryClient",
+   "@tanstack/react-query",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@tanstack/react-query",
+   "react"
+  ]
+ },
+ "packages/workspace/src/hooks/useOnboardingController.ts": {
+  "region_path": "../../packages/workspace/src/hooks/useOnboardingController.ts",
+  "specifiers": [
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/workspace/src/hooks/useOrganizations.ts": {
+  "region_path": "../../packages/workspace/src/hooks/useOrganizations.ts",
+  "specifiers": [
+   "../lib/auth-client",
+   "../queryClient",
+   "./useSession",
+   "@tanstack/react-query",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@tanstack/react-query",
+   "react"
+  ]
+ },
+ "packages/workspace/src/hooks/useProject.ts": {
+  "region_path": "../../packages/workspace/src/hooks/useProject.ts",
+  "specifiers": [
+   "../client",
+   "../queryClient",
+   "./useBilling",
+   "@tanstack/react-query",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@tanstack/react-query",
+   "react"
+  ]
+ },
+ "packages/workspace/src/hooks/useProjectBuilderSession.ts": {
+  "region_path": "../../packages/workspace/src/hooks/useProjectBuilderSession.ts",
+  "specifiers": [
+   "../services/ProjectBuilderClient",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/workspace/src/hooks/useProjectIconSettings.ts": {
+  "region_path": "../../packages/workspace/src/hooks/useProjectIconSettings.ts",
+  "specifiers": [
+   "../../../../src/renderer/vite-preload-helper",
+   "../client",
+   "../queryClient",
+   "@bingo/compiler",
+   "@tanstack/react-query",
+   "react",
+   "react/compiler-runtime",
+   "sonner"
+  ],
+  "packages": [
+   "@tanstack/react-query",
+   "react",
+   "sonner"
+  ]
+ },
+ "packages/workspace/src/hooks/useProjects.ts": {
+  "region_path": "../../packages/workspace/src/hooks/useProjects.ts",
+  "specifiers": [
+   "../client",
+   "../queryClient",
+   "@tanstack/react-query",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@tanstack/react-query",
+   "react"
+  ]
+ },
+ "packages/workspace/src/hooks/useSession.ts": {
+  "region_path": "../../packages/workspace/src/hooks/useSession.ts",
+  "specifiers": [
+   "../client",
+   "@tanstack/react-query",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@tanstack/react-query",
+   "react"
+  ]
+ },
+ "packages/workspace/src/hooks/useSkillOverrides.ts": {
+  "region_path": "../../packages/workspace/src/hooks/useSkillOverrides.ts",
+  "specifiers": [
+   "../queryClient",
+   "@tanstack/react-query",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@tanstack/react-query",
+   "react"
+  ]
+ },
+ "packages/workspace/src/lib/auth-client.ts": {
+  "region_path": "../../packages/workspace/src/lib/auth-client.ts",
+  "specifiers": [
+   "../client",
+   "better-auth/client",
+   "better-auth/client/plugins",
+   "better-auth/plugins/access",
+   "better-auth/plugins/organization/access"
+  ],
+  "packages": [
+   "better-auth"
+  ]
+ },
+ "packages/workspace/src/lib/figmaOAuth.ts": {
+  "region_path": "../../packages/workspace/src/lib/figmaOAuth.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/workspace/src/lib/planRecommendations.ts": {
+  "region_path": "../../packages/workspace/src/lib/planRecommendations.ts",
+  "specifiers": [
+   "../client"
+  ],
+  "packages": []
+ },
+ "packages/workspace/src/queryClient.ts": {
+  "region_path": "../../packages/workspace/src/queryClient.ts",
+  "specifiers": [
+   "@tanstack/query-core"
+  ],
+  "packages": [
+   "@tanstack/query-core"
+  ]
+ },
+ "packages/workspace/src/services/ComponentLoader.ts": {
+  "region_path": "../../packages/workspace/src/services/ComponentLoader.ts",
+  "specifiers": [
+   "../client",
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/workspace/src/services/ProjectBuilderClient.ts": {
+  "region_path": "../../packages/workspace/src/services/ProjectBuilderClient.ts",
+  "specifiers": [
+   "../client"
+  ],
+  "packages": []
+ },
+ "packages/workspace/src/services/projectStylesheet.ts": {
+  "region_path": "../../packages/workspace/src/services/projectStylesheet.ts",
+  "specifiers": [
+   "../utils/projectCssIsolation"
+  ],
+  "packages": []
+ },
+ "packages/workspace/src/utils/isElectronApp.ts": {
+  "region_path": "../../packages/workspace/src/utils/isElectronApp.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/workspace/src/utils/projectCssIsolation.ts": {
+  "region_path": "../../packages/workspace/src/utils/projectCssIsolation.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/codegen/aiShared.ts": {
+  "region_path": "../../packages/compiler/src/codegen/aiShared.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/codegen/canvasAiEdit.ts": {
+  "region_path": "../../packages/compiler/src/codegen/canvasAiEdit.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/codegen/claudeEffort.ts": {
+  "region_path": "../../packages/compiler/src/codegen/claudeEffort.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/codegen/claudeMerge.ts": {
+  "region_path": "../../packages/compiler/src/codegen/claudeMerge.ts",
+  "specifiers": [
+   "child_process",
+   "util"
+  ],
+  "packages": [
+   "child_process",
+   "util"
+  ]
+ },
+ "packages/compiler/src/codegen/closeIncompleteJsx.ts": {
+  "region_path": "../../packages/compiler/src/codegen/closeIncompleteJsx.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/codegen/extractCompositionElement.ts": {
+  "region_path": "../../packages/compiler/src/codegen/extractCompositionElement.ts",
+  "specifiers": [
+   "@babel/generator",
+   "@babel/parser",
+   "@babel/traverse",
+   "@babel/types"
+  ],
+  "packages": [
+   "@babel/generator",
+   "@babel/parser",
+   "@babel/traverse",
+   "@babel/types"
+  ]
+ },
+ "packages/compiler/src/codegen/extractDependencies.ts": {
+  "region_path": "../../packages/compiler/src/codegen/extractDependencies.ts",
+  "specifiers": [
+   "../store/read",
+   "../store/types"
+  ],
+  "packages": []
+ },
+ "packages/compiler/src/codegen/extractPartialJson.ts": {
+  "region_path": "../../packages/compiler/src/codegen/extractPartialJson.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/codegen/generateCompleteFile.ts": {
+  "region_path": "../../packages/compiler/src/codegen/generateCompleteFile.ts",
+  "specifiers": [
+   "./extractDependencies",
+   "./generateImports",
+   "./generateJSX",
+   "@babel/generator",
+   "@babel/traverse"
+  ],
+  "packages": [
+   "@babel/generator",
+   "@babel/traverse"
+  ]
+ },
+ "packages/compiler/src/codegen/generateImports.ts": {
+  "region_path": "../../packages/compiler/src/codegen/generateImports.ts",
+  "specifiers": [
+   "@babel/traverse"
+  ],
+  "packages": [
+   "@babel/traverse"
+  ]
+ },
+ "packages/compiler/src/codegen/generateJSX.ts": {
+  "region_path": "../../packages/compiler/src/codegen/generateJSX.ts",
+  "specifiers": [
+   "../store/commentedStyles",
+   "../store/read",
+   "../store/sanitize",
+   "./htmlAttrCasing"
+  ],
+  "packages": []
+ },
+ "packages/compiler/src/codegen/htmlAttrCasing.ts": {
+  "region_path": "../../packages/compiler/src/codegen/htmlAttrCasing.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/codegen/parseComposition.ts": {
+  "region_path": "../../packages/compiler/src/codegen/parseComposition.ts",
+  "specifiers": [
+   "../runtime/settingsParser",
+   "../store/legacy",
+   "../store/read",
+   "./parseJSX",
+   "@babel/parser",
+   "@babel/traverse",
+   "@babel/types"
+  ],
+  "packages": [
+   "@babel/parser",
+   "@babel/traverse",
+   "@babel/types"
+  ]
+ },
+ "packages/compiler/src/codegen/parseJSX.ts": {
+  "region_path": "../../packages/compiler/src/codegen/parseJSX.ts",
+  "specifiers": [
+   "../store/commentedStyles",
+   "../store/ensureV2",
+   "../store/sanitize",
+   "@babel/parser",
+   "@babel/types"
+  ],
+  "packages": [
+   "@babel/parser",
+   "@babel/types"
+  ]
+ },
+ "packages/compiler/src/codegen/parseJSXPartial.ts": {
+  "region_path": "../../packages/compiler/src/codegen/parseJSXPartial.ts",
+  "specifiers": [
+   "../store/ensureV2",
+   "../store/legacy",
+   "../store/read",
+   "./closeIncompleteJsx",
+   "./parseJSX"
+  ],
+  "packages": []
+ },
+ "packages/compiler/src/codegen/projectCopyFile.ts": {
+  "region_path": "../../packages/compiler/src/codegen/projectCopyFile.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/codegen/saveToCode.ts": {
+  "region_path": "../../packages/compiler/src/codegen/saveToCode.ts",
+  "specifiers": [
+   "./generateImports",
+   "@babel/parser",
+   "@babel/traverse",
+   "@babel/types"
+  ],
+  "packages": [
+   "@babel/parser",
+   "@babel/traverse",
+   "@babel/types"
+  ]
+ },
+ "packages/compiler/src/codegen/sourceEdit.ts": {
+  "region_path": "../../packages/compiler/src/codegen/sourceEdit.ts",
+  "specifiers": [
+   "@babel/parser",
+   "@babel/traverse",
+   "@babel/types"
+  ],
+  "packages": [
+   "@babel/parser",
+   "@babel/traverse",
+   "@babel/types"
+  ]
+ },
+ "packages/compiler/src/codegen/updateExistingFile.ts": {
+  "region_path": "../../packages/compiler/src/codegen/updateExistingFile.ts",
+  "specifiers": [
+   "@babel/generator",
+   "@babel/traverse"
+  ],
+  "packages": [
+   "@babel/generator",
+   "@babel/traverse"
+  ]
+ },
+ "packages/compiler/src/runtime/ComponentCompiler.ts": {
+  "region_path": "../../packages/compiler/src/runtime/ComponentCompiler.ts",
+  "specifiers": [
+   "./runtime"
+  ],
+  "packages": []
+ },
+ "packages/compiler/src/runtime/compositionFiles.ts": {
+  "region_path": "../../packages/compiler/src/runtime/compositionFiles.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/runtime/executeModule.ts": {
+  "region_path": "../../packages/compiler/src/runtime/executeModule.ts",
+  "specifiers": [
+   "../../../../src/renderer/vite-preload-helper"
+  ],
+  "packages": []
+ },
+ "packages/compiler/src/runtime/figma/parser/clipboard.ts": {
+  "region_path": "../../packages/compiler/src/runtime/figma/parser/clipboard.ts",
+  "specifiers": [
+   "../utils/node",
+   "./kiwi",
+   "base64-js",
+   "fzstd",
+   "kiwi-schema",
+   "openfig-core",
+   "pako"
+  ],
+  "packages": [
+   "base64-js",
+   "fzstd",
+   "kiwi-schema",
+   "openfig-core",
+   "pako"
+  ]
+ },
+ "packages/compiler/src/runtime/figma/parser/kiwi.ts": {
+  "region_path": "../../packages/compiler/src/runtime/figma/parser/kiwi.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/runtime/figma/parser/vector.ts": {
+  "region_path": "../../packages/compiler/src/runtime/figma/parser/vector.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/runtime/figma/paste.ts": {
+  "region_path": "../../packages/compiler/src/runtime/figma/paste.ts",
+  "specifiers": [
+   "../../store/ensureV2",
+   "../../store/legacy",
+   "../../store/types",
+   "./parser/clipboard",
+   "./translator/toStore",
+   "./types",
+   "./utils/node",
+   "openfig-core"
+  ],
+  "packages": [
+   "openfig-core"
+  ]
+ },
+ "packages/compiler/src/runtime/figma/translator/instance.ts": {
+  "region_path": "../../packages/compiler/src/runtime/figma/translator/instance.ts",
+  "specifiers": [
+   "../utils/node",
+   "openfig-core"
+  ],
+  "packages": [
+   "openfig-core"
+  ]
+ },
+ "packages/compiler/src/runtime/figma/translator/styles/effect.ts": {
+  "region_path": "../../packages/compiler/src/runtime/figma/translator/styles/effect.ts",
+  "specifiers": [
+   "../../utils/color"
+  ],
+  "packages": []
+ },
+ "packages/compiler/src/runtime/figma/translator/styles/index.ts": {
+  "region_path": "../../packages/compiler/src/runtime/figma/translator/styles/index.ts",
+  "specifiers": [
+   "./effect",
+   "./layout",
+   "./paint",
+   "./text"
+  ],
+  "packages": []
+ },
+ "packages/compiler/src/runtime/figma/translator/styles/layout.ts": {
+  "region_path": "../../packages/compiler/src/runtime/figma/translator/styles/layout.ts",
+  "specifiers": [
+   "../../utils/node"
+  ],
+  "packages": []
+ },
+ "packages/compiler/src/runtime/figma/translator/styles/paint.ts": {
+  "region_path": "../../packages/compiler/src/runtime/figma/translator/styles/paint.ts",
+  "specifiers": [
+   "../../utils/color",
+   "../../utils/imagePaint",
+   "./layout",
+   "openfig-core"
+  ],
+  "packages": [
+   "openfig-core"
+  ]
+ },
+ "packages/compiler/src/runtime/figma/translator/styles/text.ts": {
+  "region_path": "../../packages/compiler/src/runtime/figma/translator/styles/text.ts",
+  "specifiers": [
+   "./paint"
+  ],
+  "packages": []
+ },
+ "packages/compiler/src/runtime/figma/translator/toStore.ts": {
+  "region_path": "../../packages/compiler/src/runtime/figma/translator/toStore.ts",
+  "specifiers": [
+   "../../../store/ensureV2",
+   "../utils/imagePaint",
+   "../utils/node",
+   "./instance",
+   "./styles/index",
+   "./styles/paint",
+   "./styles/text",
+   "./vector",
+   "openfig-core"
+  ],
+  "packages": [
+   "openfig-core"
+  ]
+ },
+ "packages/compiler/src/runtime/figma/translator/vector.ts": {
+  "region_path": "../../packages/compiler/src/runtime/figma/translator/vector.ts",
+  "specifiers": [
+   "../parser/vector",
+   "../utils/color",
+   "../utils/node",
+   "./instance",
+   "./styles/index",
+   "./styles/paint",
+   "openfig-core"
+  ],
+  "packages": [
+   "openfig-core"
+  ]
+ },
+ "packages/compiler/src/runtime/figma/types.ts": {
+  "region_path": "../../packages/compiler/src/runtime/figma/types.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/runtime/figma/utils/color.ts": {
+  "region_path": "../../packages/compiler/src/runtime/figma/utils/color.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/runtime/figma/utils/imagePaint.ts": {
+  "region_path": "../../packages/compiler/src/runtime/figma/utils/imagePaint.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/runtime/figma/utils/node.ts": {
+  "region_path": "../../packages/compiler/src/runtime/figma/utils/node.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/runtime/projectCss.ts": {
+  "region_path": "../../packages/compiler/src/runtime/projectCss.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/runtime/projectScanner.ts": {
+  "region_path": "../../packages/compiler/src/runtime/projectScanner.ts",
+  "specifiers": [
+   "./settingsParser",
+   "fs",
+   "fs/promises",
+   "path"
+  ],
+  "packages": [
+   "fs",
+   "path"
+  ]
+ },
+ "packages/compiler/src/runtime/runtime.ts": {
+  "region_path": "../../packages/compiler/src/runtime/runtime.ts",
+  "specifiers": [
+   "react",
+   "react-dom"
+  ],
+  "packages": [
+   "react",
+   "react-dom"
+  ]
+ },
+ "packages/compiler/src/runtime/settingsParser.ts": {
+  "region_path": "../../packages/compiler/src/runtime/settingsParser.ts",
+  "specifiers": [
+   "@babel/generator"
+  ],
+  "packages": [
+   "@babel/generator"
+  ]
+ },
+ "packages/compiler/src/runtime/skills.ts": {
+  "region_path": "../../packages/compiler/src/runtime/skills.ts",
+  "specifiers": [
+   "fs/promises",
+   "path",
+   "url"
+  ],
+  "packages": [
+   "fs",
+   "path",
+   "url"
+  ]
+ },
+ "packages/compiler/src/runtime/stampMapHosts.ts": {
+  "region_path": "../../packages/compiler/src/runtime/stampMapHosts.ts",
+  "specifiers": [
+   "@babel/generator",
+   "@babel/traverse"
+  ],
+  "packages": [
+   "@babel/generator",
+   "@babel/traverse"
+  ]
+ },
+ "packages/compiler/src/runtime/tailwindUtils.ts": {
+  "region_path": "../../packages/compiler/src/runtime/tailwindUtils.ts",
+  "specifiers": [
+   "../store/ensureV2",
+   "../store/read",
+   "../store/types"
+  ],
+  "packages": []
+ },
+ "packages/compiler/src/store/apply.ts": {
+  "region_path": "../../packages/compiler/src/store/apply.ts",
+  "specifiers": [
+   "./types"
+  ],
+  "packages": []
+ },
+ "packages/compiler/src/store/commentedStyles.ts": {
+  "region_path": "../../packages/compiler/src/store/commentedStyles.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/store/ensureV2.ts": {
+  "region_path": "../../packages/compiler/src/store/ensureV2.ts",
+  "specifiers": [
+   "./sanitize",
+   "./types"
+  ],
+  "packages": []
+ },
+ "packages/compiler/src/store/legacy.ts": {
+  "region_path": "../../packages/compiler/src/store/legacy.ts",
+  "specifiers": [
+   "./read"
+  ],
+  "packages": []
+ },
+ "packages/compiler/src/store/read.ts": {
+  "region_path": "../../packages/compiler/src/store/read.ts",
+  "specifiers": [
+   "./apply"
+  ],
+  "packages": []
+ },
+ "packages/compiler/src/store/sanitize.ts": {
+  "region_path": "../../packages/compiler/src/store/sanitize.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/store/types.ts": {
+  "region_path": "../../packages/compiler/src/store/types.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/compiler/src/store/wire.ts": {
+  "region_path": "../../packages/compiler/src/store/wire.ts",
+  "specifiers": [
+   "./sanitize"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/assets/BingoLogo.tsx": {
+  "region_path": "../../packages/editor/src/assets/BingoLogo.tsx",
+  "specifiers": [
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/backends/BackendContext.tsx": {
+  "region_path": "../../packages/editor/src/backends/BackendContext.tsx",
+  "specifiers": [
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/backends/planLimits.ts": {
+  "region_path": "../../packages/editor/src/backends/planLimits.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/canvas/components/AgentFollowFrame.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/AgentFollowFrame.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/components/Canvas.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/Canvas.tsx",
+  "specifiers": [
+   "../../shared/contexts/ActiveToolContext",
+   "../../shared/contexts/AssetContext",
+   "../../shared/hooks/useUploadImage",
+   "../../shared/shortcuts/catalog",
+   "../../shared/shortcuts/matchShortcut",
+   "../../shared/state/hoverChannel",
+   "../../shared/utils/clipboard",
+   "../../shared/utils/dropPlan",
+   "../../shared/utils/operations",
+   "../../shared/utils/toolElements",
+   "../../shell/utils/chatShortcuts",
+   "../hooks/drawParent",
+   "../hooks/useCanvasDraw",
+   "../hooks/useCanvasMarquee",
+   "../hooks/useDndCanvas",
+   "../hooks/usePotentialParentOverlay",
+   "../hooks/useResizing",
+   "../utils/absolutePositioning",
+   "../utils/adoptionGuard",
+   "../utils/collisionUtils",
+   "../utils/domGeometry",
+   "../utils/dragFrame",
+   "../utils/dragPreviewGeometry",
+   "../utils/renderElement",
+   "../utils/snapping",
+   "../utils/zoom",
+   "./AgentFollowFrame",
+   "./CanvasOverlays",
+   "./CanvasPixelGrid",
+   "./CanvasToolbar",
+   "./ComponentEditingModeBar",
+   "./ErrorBoundary",
+   "@dnd-kit/core",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/DiamondsFour",
+   "react",
+   "react-zoom-pan-pinch",
+   "react/compiler-runtime",
+   "react/jsx-runtime",
+   "sonner"
+  ],
+  "packages": [
+   "@dnd-kit/core",
+   "@phosphor-icons/react",
+   "react",
+   "react-zoom-pan-pinch",
+   "sonner"
+  ]
+ },
+ "packages/editor/src/canvas/components/CanvasLayout.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/CanvasLayout.tsx",
+  "specifiers": [
+   "../../shared/contexts/EditorModeContext",
+   "../../shared/shortcuts/useGlobalShortcut",
+   "react",
+   "react-resizable-panels",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react",
+   "react-resizable-panels"
+  ]
+ },
+ "packages/editor/src/canvas/components/CanvasOverlays.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/CanvasOverlays.tsx",
+  "specifiers": [
+   "../../shared/state/hoverChannel",
+   "../../shared/utils/transformControls",
+   "../../shared/utils/visibleElement",
+   "../../shell/utils/chatShortcuts",
+   "../utils/captureComponentInstance",
+   "../utils/followAiCamera",
+   "../utils/transformMatrix",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/CursorClick",
+   "react",
+   "react/compiler-runtime",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/components/CanvasPixelGrid.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/CanvasPixelGrid.tsx",
+  "specifiers": [
+   "../../shared/state/canvasDisplayPreferences",
+   "../../shell/utils/chatShortcuts",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/components/CanvasToolbar.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/CanvasToolbar.tsx",
+  "specifiers": [
+   "../../shared/contexts/ActiveToolContext",
+   "../../shared/contexts/EditorModeContext",
+   "./SplitButton",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/components/CanvasZoomMenu.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/CanvasZoomMenu.tsx",
+  "specifiers": [
+   "../../shared/shortcuts/catalog",
+   "../../shared/shortcuts/matchShortcut",
+   "../../shared/state/canvasDisplayPreferences",
+   "../../shell/components/panels/styles/primitives",
+   "../../shell/utils/chatShortcuts",
+   "../utils/domGeometry",
+   "../utils/zoom",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/CaretDown",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/components/CapturedPageRenderer.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/CapturedPageRenderer.tsx",
+  "specifiers": [
+   "../../shared/lib/projectRootStore",
+   "../../shared/utils/captureStore",
+   "../utils/fiberExtract",
+   "../utils/renderElement",
+   "@dnd-kit/core",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@dnd-kit/core",
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/components/CommentPins.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/CommentPins.tsx",
+  "specifiers": [
+   "../../shell/utils/chatShortcuts",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/components/ComponentEditingModeBar.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/ComponentEditingModeBar.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/Cube",
+   "react",
+   "react/compiler-runtime",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/components/DraggableElement.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/DraggableElement.tsx",
+  "specifiers": [
+   "@dnd-kit/core",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@dnd-kit/core",
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/components/ErrorBoundary.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/ErrorBoundary.tsx",
+  "specifiers": [
+   "react"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/components/MediaUploadPlaceholder.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/MediaUploadPlaceholder.tsx",
+  "specifiers": [
+   "../../shared/hooks/useUploadImage",
+   "../../shared/utils/clipboard",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime",
+   "sonner"
+  ],
+  "packages": [
+   "react",
+   "sonner"
+  ]
+ },
+ "packages/editor/src/canvas/components/MediaWithFallback.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/MediaWithFallback.tsx",
+  "specifiers": [
+   "./MediaUploadPlaceholder",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/VideoCameraSlash",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/components/SplitButton.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/SplitButton.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/components/TextEditor.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/TextEditor.tsx",
+  "specifiers": [
+   "../../shared/utils/idUtils",
+   "../../shared/utils/tailwindScale",
+   "@tiptap/core",
+   "@tiptap/extension-text-style",
+   "@tiptap/extension-underline",
+   "@tiptap/react",
+   "@tiptap/starter-kit",
+   "prosemirror-state",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@tiptap/core",
+   "@tiptap/extension-text-style",
+   "@tiptap/extension-underline",
+   "@tiptap/react",
+   "@tiptap/starter-kit",
+   "prosemirror-state",
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/components/WebviewRenderer.tsx": {
+  "region_path": "../../packages/editor/src/canvas/components/WebviewRenderer.tsx",
+  "specifiers": [
+   "../../shared/state/webviewEditStore",
+   "../../shared/utils/captureStore",
+   "../../shared/utils/useScrub",
+   "../../shell/utils/chatShortcuts",
+   "../utils/fiberExtract",
+   "@dnd-kit/core",
+   "@bingo/ui",
+   "react",
+   "sonner"
+  ],
+  "packages": [
+   "@dnd-kit/core",
+   "react",
+   "sonner"
+  ]
+ },
+ "packages/editor/src/canvas/hooks/drawParent.ts": {
+  "region_path": "../../packages/editor/src/canvas/hooks/drawParent.ts",
+  "specifiers": [
+   "../utils/renderElement"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/hooks/useCanvasDraw.ts": {
+  "region_path": "../../packages/editor/src/canvas/hooks/useCanvasDraw.ts",
+  "specifiers": [
+   "../../shared/shortcuts/catalog",
+   "../../shared/shortcuts/matchShortcut",
+   "../../shared/utils/toolElements",
+   "../utils/absolutePositioning",
+   "../utils/renderElement",
+   "./drawParent",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/hooks/useCanvasMarquee.ts": {
+  "region_path": "../../packages/editor/src/canvas/hooks/useCanvasMarquee.ts",
+  "specifiers": [
+   "../../shared/shortcuts/catalog",
+   "../../shared/shortcuts/matchShortcut",
+   "../../shared/state/hoverChannel",
+   "@bingo/compiler",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/hooks/useCanvasPersistence.ts": {
+  "region_path": "../../packages/editor/src/canvas/hooks/useCanvasPersistence.ts",
+  "specifiers": [
+   "../../backends/BackendContext",
+   "react"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/hooks/useDndCanvas.tsx": {
+  "region_path": "../../packages/editor/src/canvas/hooks/useDndCanvas.tsx",
+  "specifiers": [
+   "../../shared/utils/dropPlan",
+   "../../shared/utils/operations",
+   "../../shell/utils/chatShortcuts",
+   "../utils/absolutePositioning",
+   "../utils/collisionUtils",
+   "../utils/domGeometry",
+   "../utils/dragFrame",
+   "../utils/dragPreviewGeometry",
+   "../utils/nestTarget",
+   "../utils/snapping",
+   "@bingo/compiler",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/hooks/usePotentialParentOverlay.tsx": {
+  "region_path": "../../packages/editor/src/canvas/hooks/usePotentialParentOverlay.tsx",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/canvas/hooks/useResizing.tsx": {
+  "region_path": "../../packages/editor/src/canvas/hooks/useResizing.tsx",
+  "specifiers": [
+   "../../shared/utils/scalePivot",
+   "../../shared/utils/scaleTransform",
+   "../../shared/utils/transformControls",
+   "../../shared/utils/visibleElement",
+   "../../shell/utils/chatShortcuts",
+   "../utils/multiResize",
+   "../utils/snapping",
+   "../utils/transformMatrix",
+   "@bingo/compiler",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/lib/canvasPreview.ts": {
+  "region_path": "../../packages/editor/src/canvas/lib/canvasPreview.ts",
+  "specifiers": [
+   "../../../../../src/renderer/vite-preload-helper"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/lib/capture/artifact.generated.ts": {
+  "region_path": "../../packages/editor/src/canvas/lib/capture/artifact.generated.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/canvas/lib/capture/attrs.ts": {
+  "region_path": "../../packages/editor/src/canvas/lib/capture/attrs.ts",
+  "specifiers": [
+   "./constants"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/lib/capture/constants.ts": {
+  "region_path": "../../packages/editor/src/canvas/lib/capture/constants.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/canvas/lib/capture/fiber.ts": {
+  "region_path": "../../packages/editor/src/canvas/lib/capture/fiber.ts",
+  "specifiers": [
+   "bippy/core",
+   "bippy/source"
+  ],
+  "packages": [
+   "bippy"
+  ]
+ },
+ "packages/editor/src/canvas/lib/capture/runCapture.ts": {
+  "region_path": "../../packages/editor/src/canvas/lib/capture/runCapture.ts",
+  "specifiers": [
+   "./fiber",
+   "./stylesheets",
+   "./walk",
+   "bippy/source"
+  ],
+  "packages": [
+   "bippy"
+  ]
+ },
+ "packages/editor/src/canvas/lib/capture/styles.ts": {
+  "region_path": "../../packages/editor/src/canvas/lib/capture/styles.ts",
+  "specifiers": [
+   "../../utils/absolutePositioning",
+   "./constants",
+   "./stylesheets"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/lib/capture/stylesheets.ts": {
+  "region_path": "../../packages/editor/src/canvas/lib/capture/stylesheets.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/canvas/lib/capture/svg.ts": {
+  "region_path": "../../packages/editor/src/canvas/lib/capture/svg.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/canvas/lib/capture/walk.ts": {
+  "region_path": "../../packages/editor/src/canvas/lib/capture/walk.ts",
+  "specifiers": [
+   "./attrs",
+   "./constants",
+   "./fiber",
+   "./styles",
+   "./svg"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/lib/figmaExport.ts": {
+  "region_path": "../../packages/editor/src/canvas/lib/figmaExport.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/canvas/lib/fontUtils.ts": {
+  "region_path": "../../packages/editor/src/canvas/lib/fontUtils.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/absolutePositioning.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/absolutePositioning.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/adoptionGuard.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/adoptionGuard.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/canvasPayload.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/canvasPayload.ts",
+  "specifiers": [
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/captureComponentInstance.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/captureComponentInstance.ts",
+  "specifiers": [
+   "../../shared/utils/elementCloning",
+   "../../shared/utils/idUtils",
+   "../lib/capture/runCapture",
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/collisionUtils.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/collisionUtils.ts",
+  "specifiers": [
+   "../../shell/utils/chatShortcuts",
+   "./transformMatrix"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/coveredRoot.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/coveredRoot.ts",
+  "specifiers": [
+   "./domGeometry",
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/domGeometry.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/domGeometry.ts",
+  "specifiers": [
+   "./absolutePositioning"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/dragFrame.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/dragFrame.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/dragPreviewGeometry.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/dragPreviewGeometry.ts",
+  "specifiers": [
+   "../../shared/utils/visibleElement",
+   "./transformMatrix"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/fiberExtract.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/fiberExtract.ts",
+  "specifiers": [
+   "../lib/capture/artifact.generated",
+   "../lib/capture/runCapture"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/figma.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/figma.ts",
+  "specifiers": [
+   "../../shared/utils/operations",
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/fitCamera.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/fitCamera.ts",
+  "specifiers": [
+   "./zoom"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/followAiCamera.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/followAiCamera.ts",
+  "specifiers": [
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/multiResize.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/multiResize.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/nestTarget.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/nestTarget.ts",
+  "specifiers": [
+   "./collisionUtils",
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/pointerTarget.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/pointerTarget.ts",
+  "specifiers": [
+   "./coveredRoot",
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/renderElement.tsx": {
+  "region_path": "../../packages/editor/src/canvas/utils/renderElement.tsx",
+  "specifiers": [
+   "../../shared/utils/visibleElement",
+   "../components/CapturedPageRenderer",
+   "../components/DraggableElement",
+   "../components/ErrorBoundary",
+   "../components/MediaWithFallback",
+   "../components/TextEditor",
+   "../components/WebviewRenderer",
+   "./coveredRoot",
+   "./selection",
+   "@bingo/compiler",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/canvas/utils/selection.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/selection.ts",
+  "specifiers": [
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/snapping.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/snapping.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/transformMatrix.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/transformMatrix.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/canvas/utils/zoom.ts": {
+  "region_path": "../../packages/editor/src/canvas/utils/zoom.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shared/contexts/ActiveToolContext.tsx": {
+  "region_path": "../../packages/editor/src/shared/contexts/ActiveToolContext.tsx",
+  "specifiers": [
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shared/contexts/AssetContext.tsx": {
+  "region_path": "../../packages/editor/src/shared/contexts/AssetContext.tsx",
+  "specifiers": [
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shared/contexts/EditorModeContext.tsx": {
+  "region_path": "../../packages/editor/src/shared/contexts/EditorModeContext.tsx",
+  "specifiers": [
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shared/hooks/useUploadImage.ts": {
+  "region_path": "../../packages/editor/src/shared/hooks/useUploadImage.ts",
+  "specifiers": [
+   "../../backends/BackendContext",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shared/lib/cameraStore.ts": {
+  "region_path": "../../packages/editor/src/shared/lib/cameraStore.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shared/lib/projectRootStore.ts": {
+  "region_path": "../../packages/editor/src/shared/lib/projectRootStore.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shared/shortcuts/catalog.ts": {
+  "region_path": "../../packages/editor/src/shared/shortcuts/catalog.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shared/shortcuts/matchShortcut.ts": {
+  "region_path": "../../packages/editor/src/shared/shortcuts/matchShortcut.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shared/shortcuts/useGlobalShortcut.ts": {
+  "region_path": "../../packages/editor/src/shared/shortcuts/useGlobalShortcut.ts",
+  "specifiers": [
+   "./catalog",
+   "./matchShortcut",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shared/state/aiWriteTarget.ts": {
+  "region_path": "../../packages/editor/src/shared/state/aiWriteTarget.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shared/state/canvasDisplayPreferences.ts": {
+  "region_path": "../../packages/editor/src/shared/state/canvasDisplayPreferences.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shared/state/folderShared.ts": {
+  "region_path": "../../packages/editor/src/shared/state/folderShared.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shared/state/hoverChannel.ts": {
+  "region_path": "../../packages/editor/src/shared/state/hoverChannel.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shared/state/webviewEditStore.ts": {
+  "region_path": "../../packages/editor/src/shared/state/webviewEditStore.ts",
+  "specifiers": [
+   "react"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shared/utils/captureElementImage.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/captureElementImage.ts",
+  "specifiers": [
+   "../../../../../src/renderer/vite-preload-helper"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/captureStore.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/captureStore.ts",
+  "specifiers": [
+   "@bingo/compiler",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shared/utils/clipboard.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/clipboard.ts",
+  "specifiers": [
+   "./idUtils"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/dropPlan.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/dropPlan.ts",
+  "specifiers": [
+   "./operations",
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/elementCloning.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/elementCloning.ts",
+  "specifiers": [
+   "./idUtils"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/expandLinkedMapOps.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/expandLinkedMapOps.ts",
+  "specifiers": [
+   "../../canvas/utils/captureComponentInstance",
+   "./operations",
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/flexShrink.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/flexShrink.ts",
+  "specifiers": [
+   "./operations",
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/flowLayoutChildren.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/flowLayoutChildren.ts",
+  "specifiers": [
+   "../../canvas/utils/absolutePositioning",
+   "./operations",
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/frameAdoptionOps.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/frameAdoptionOps.ts",
+  "specifiers": [
+   "../../canvas/utils/absolutePositioning",
+   "./operations",
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/idUtils.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/idUtils.ts",
+  "specifiers": [
+   "nanoid"
+  ],
+  "packages": [
+   "nanoid"
+  ]
+ },
+ "packages/editor/src/shared/utils/operations.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/operations.ts",
+  "specifiers": [
+   "./elementCloning",
+   "./scalePivot",
+   "./scaleTransform",
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/pasteTargets.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/pasteTargets.ts",
+  "specifiers": [
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/positionAlignment.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/positionAlignment.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/reorderSelection.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/reorderSelection.ts",
+  "specifiers": [
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/scalePivot.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/scalePivot.ts",
+  "specifiers": [
+   "../../canvas/utils/transformMatrix",
+   "../../shell/utils/chatShortcuts",
+   "./visibleElement"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/scaleTransform.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/scaleTransform.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/tailwindScale.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/tailwindScale.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/toolElements.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/toolElements.ts",
+  "specifiers": [
+   "./idUtils"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/transformControls.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/transformControls.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shared/utils/useScrub.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/useScrub.ts",
+  "specifiers": [
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shared/utils/visibleElement.ts": {
+  "region_path": "../../packages/editor/src/shared/utils/visibleElement.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/components/ArchivedChatsPanel.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ArchivedChatsPanel.tsx",
+  "specifiers": [
+   "../utils/chatDeletion",
+   "./ChatListRow",
+   "./panels/styles/primitives",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime",
+   "sonner"
+  ],
+  "packages": [
+   "react",
+   "sonner"
+  ]
+ },
+ "packages/editor/src/shell/components/BottomBar.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/BottomBar.tsx",
+  "specifiers": [
+   "../../backends/BackendContext",
+   "../../backends/planLimits",
+   "../../shared/contexts/AssetContext",
+   "../../shared/shortcuts/catalog",
+   "../../shared/shortcuts/useGlobalShortcut",
+   "../hooks/useSelectionJsxEditor",
+   "../utils/codeEditorTheme",
+   "../utils/editorBreadcrumb",
+   "./EditorStatusBar",
+   "./panels/TerminalPanel",
+   "@codemirror/lang-css",
+   "@codemirror/lang-javascript",
+   "@codemirror/lang-markdown",
+   "@codemirror/view",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/FileTs",
+   "@uiw/codemirror-theme-github",
+   "@uiw/react-codemirror",
+   "react",
+   "react/compiler-runtime",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@codemirror/lang-css",
+   "@codemirror/lang-javascript",
+   "@codemirror/lang-markdown",
+   "@codemirror/view",
+   "@phosphor-icons/react",
+   "@uiw/codemirror-theme-github",
+   "@uiw/react-codemirror",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/CanvasContextChip.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/CanvasContextChip.tsx",
+  "specifiers": [
+   "./ChatContextControls",
+   "./panels/LayerIcon",
+   "./panels/layerAppearance",
+   "./panels/layerSearch",
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ChatContextControls.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ChatContextControls.tsx",
+  "specifiers": [
+   "../hooks/useClaudeContext",
+   "./panels/styles/primitives",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ChatConversations.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ChatConversations.tsx",
+  "specifiers": [
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ChatListRow.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ChatListRow.tsx",
+  "specifiers": [
+   "./EditableChatTitle",
+   "./SidebarSectionHeader",
+   "./panels/styles/primitives",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ChatMarkdown.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ChatMarkdown.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react",
+   "react-markdown",
+   "react/compiler-runtime",
+   "rehype-highlight",
+   "remark-gfm"
+  ],
+  "packages": [
+   "react",
+   "react-markdown",
+   "rehype-highlight",
+   "remark-gfm"
+  ]
+ },
+ "packages/editor/src/shell/components/ChatPanel.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ChatPanel.tsx",
+  "specifiers": [
+   "../../assets/BingoLogo",
+   "../../backends/BackendContext",
+   "../../backends/planLimits",
+   "../../shared/contexts/AssetContext",
+   "../../shared/state/aiWriteTarget",
+   "../../shared/state/folderShared",
+   "../../shared/utils/captureElementImage",
+   "../hooks/useChatScroll",
+   "../hooks/useClaudeContext",
+   "../hooks/useClaudeStatus",
+   "../hooks/useContextMentions",
+   "../utils/chatAttachments",
+   "../utils/chatContextReferences",
+   "../utils/chatShortcuts",
+   "../utils/chatToolFailure",
+   "../utils/chatWorkTarget",
+   "../utils/inlineChatComposer",
+   "./CanvasContextChip",
+   "./ChatContextControls",
+   "./ChatMarkdown",
+   "./ChatReferenceChip",
+   "./ClaudeCodeSetupModal",
+   "./ContextMentionMenu",
+   "./ImageContextChip",
+   "./SelectionContextChip",
+   "./SlashCommandMenu",
+   "./ToolFailureDetails",
+   "./panels/PanelEmptyState",
+   "./panels/layerSearch",
+   "./panels/styles/primitives",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "@radix-ui/react-popover",
+   "react",
+   "react-dom",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@radix-ui/react-popover",
+   "react",
+   "react-dom"
+  ]
+ },
+ "packages/editor/src/shell/components/ChatReferenceChip.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ChatReferenceChip.tsx",
+  "specifiers": [
+   "../hooks/useClaudeContext",
+   "./CanvasContextChip",
+   "./ChatContextControls",
+   "./ImageContextChip",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ChatTitleText.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ChatTitleText.tsx",
+  "specifiers": [
+   "../utils/chatTitleAnimation",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ClaudeCodeSetupModal.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ClaudeCodeSetupModal.tsx",
+  "specifiers": [
+   "../hooks/useClaudeStatus",
+   "./panels/TerminalPanel",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/CheckCircle",
+   "react",
+   "react/compiler-runtime",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/CommentComposer.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/CommentComposer.tsx",
+  "specifiers": [
+   "../../shared/contexts/AssetContext",
+   "../../shared/hooks/useUploadImage",
+   "../../shared/shortcuts/catalog",
+   "../../shared/shortcuts/matchShortcut",
+   "../utils/chatShortcuts",
+   "@bingo/ui",
+   "react"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/CommentThread.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/CommentThread.tsx",
+  "specifiers": [
+   "../../shared/contexts/AssetContext",
+   "../../shared/hooks/useUploadImage",
+   "../../shared/shortcuts/catalog",
+   "../../shared/shortcuts/matchShortcut",
+   "../utils/chatShortcuts",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/CheckCircle",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ComposerSuggestionMenu.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ComposerSuggestionMenu.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ConfirmDialog.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ConfirmDialog.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ContextMentionMenu.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ContextMentionMenu.tsx",
+  "specifiers": [
+   "./ComposerSuggestionMenu",
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/CreateComponentModal.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/CreateComponentModal.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/EditableChatTitle.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/EditableChatTitle.tsx",
+  "specifiers": [
+   "./ChatTitleText",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/EditorStatusBar.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/EditorStatusBar.tsx",
+  "specifiers": [
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/FigmaConnectDialog.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/FigmaConnectDialog.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/GitPanel.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/GitPanel.tsx",
+  "specifiers": [
+   "./ConfirmDialog",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/Layout",
+   "react",
+   "react/compiler-runtime",
+   "sonner"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react",
+   "sonner"
+  ]
+ },
+ "packages/editor/src/shell/components/HeaderActions.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/HeaderActions.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ImageContextChip.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ImageContextChip.tsx",
+  "specifiers": [
+   "./ChatContextControls",
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/InsertItem.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/InsertItem.tsx",
+  "specifiers": [
+   "../../shared/utils/clipboard",
+   "../utils/htmlTagsData",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/LeftSidebarV2.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/LeftSidebarV2.tsx",
+  "specifiers": [
+   "../../assets/BingoLogo",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/BingoEditor.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/BingoEditor.tsx",
+  "specifiers": [
+   "../../../../../src/renderer/vite-preload-helper",
+   "../../backends/BackendContext",
+   "../../backends/planLimits",
+   "../../canvas/components/Canvas",
+   "../../canvas/components/CanvasLayout",
+   "../../canvas/components/CanvasZoomMenu",
+   "../../canvas/components/CommentPins",
+   "../../canvas/hooks/drawParent",
+   "../../canvas/hooks/useCanvasPersistence",
+   "../../canvas/lib/canvasPreview",
+   "../../canvas/lib/capture/fiber",
+   "../../canvas/lib/capture/styles",
+   "../../canvas/lib/figmaExport",
+   "../../canvas/utils/absolutePositioning",
+   "../../canvas/utils/canvasPayload",
+   "../../canvas/utils/captureComponentInstance",
+   "../../canvas/utils/collisionUtils",
+   "../../canvas/utils/domGeometry",
+   "../../canvas/utils/figma",
+   "../../canvas/utils/fitCamera",
+   "../../canvas/utils/followAiCamera",
+   "../../canvas/utils/pointerTarget",
+   "../../canvas/utils/selection",
+   "../../shared/contexts/ActiveToolContext",
+   "../../shared/contexts/AssetContext",
+   "../../shared/contexts/EditorModeContext",
+   "../../shared/hooks/useUploadImage",
+   "../../shared/lib/cameraStore",
+   "../../shared/shortcuts/matchShortcut",
+   "../../shared/shortcuts/useGlobalShortcut",
+   "../../shared/state/aiWriteTarget",
+   "../../shared/utils/captureStore",
+   "../../shared/utils/clipboard",
+   "../../shared/utils/dropPlan",
+   "../../shared/utils/elementCloning",
+   "../../shared/utils/expandLinkedMapOps",
+   "../../shared/utils/flexShrink",
+   "../../shared/utils/flowLayoutChildren",
+   "../../shared/utils/frameAdoptionOps",
+   "../../shared/utils/idUtils",
+   "../../shared/utils/operations",
+   "../../shared/utils/pasteTargets",
+   "../../shared/utils/reorderSelection",
+   "../../shared/utils/useScrub",
+   "../../shared/utils/visibleElement",
+   "../constants",
+   "../hooks/rootBoxes",
+   "../hooks/useBackendActions",
+   "../hooks/useCanvasToolHandler",
+   "../hooks/useHistory",
+   "../hooks/usePromptContextInsertion",
+   "../utils/chatPersistence",
+   "../utils/chatShortcuts",
+   "../utils/chatWorkTarget",
+   "../utils/fontLoader",
+   "../utils/normalizeTextRuns",
+   "../utils/pasteClassStyles",
+   "../utils/tailwindClasses",
+   "./ArchivedChatsPanel",
+   "./BottomBar",
+   "./ChatConversations",
+   "./ChatPanel",
+   "./CommentComposer",
+   "./CommentThread",
+   "./CreateComponentModal",
+   "./LeftSidebarV2",
+   "./PreviewWindow",
+   "./ProtoPlayer",
+   "./VersionHistoryModal",
+   "./panels/AgentsSidebarTabV2",
+   "./panels/AssetsPanel",
+   "./panels/AssetsSidebarTabV2",
+   "./panels/IconsPanel",
+   "./panels/InsertPanel",
+   "./panels/LayersPanel",
+   "./panels/PagePanel",
+   "./panels/PagesPanel",
+   "./panels/PagesSidebarTabV2",
+   "./panels/PropsPanel",
+   "./panels/SkillsPanel",
+   "./panels/StylesPanelTabs",
+   "./panels/WebviewEditPanel",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/FigmaLogo",
+   "react",
+   "react-resizable-panels",
+   "react/compiler-runtime",
+   "react/jsx-runtime",
+   "sonner"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react",
+   "react-resizable-panels",
+   "sonner"
+  ]
+ },
+ "packages/editor/src/shell/components/McpConnectButton.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/McpConnectButton.tsx",
+  "specifiers": [
+   "./McpConnectModal",
+   "react"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/McpConnectModal.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/McpConnectModal.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime",
+   "sonner"
+  ],
+  "packages": [
+   "react",
+   "sonner"
+  ]
+ },
+ "packages/editor/src/shell/components/PreviewWindow.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/PreviewWindow.tsx",
+  "specifiers": [
+   "../../shared/shortcuts/catalog",
+   "./presentation",
+   "lucide-react",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "lucide-react",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ProjectSettingsModal/AIChatSettings.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ProjectSettingsModal/AIChatSettings.tsx",
+  "specifiers": [
+   "../../../shared/state/folderShared",
+   "./SettingRow",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/XCircle",
+   "react/compiler-runtime",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ProjectSettingsModal/GeneralSettings.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ProjectSettingsModal/GeneralSettings.tsx",
+  "specifiers": [
+   "./SettingRow",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ProjectSettingsModal/IconsSettings.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ProjectSettingsModal/IconsSettings.tsx",
+  "specifiers": [
+   "./SettingRow",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/Cube",
+   "@phosphor-icons/react/dist/icons/XCircle",
+   "react",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ProjectSettingsModal/ProjectSettingsModal.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ProjectSettingsModal/ProjectSettingsModal.tsx",
+  "specifiers": [
+   "./AIChatSettings",
+   "./GeneralSettings",
+   "./IconsSettings",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/Cube",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ProjectSettingsModal/SettingRow.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ProjectSettingsModal/SettingRow.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ProtoPlayer.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ProtoPlayer.tsx",
+  "specifiers": [
+   "../../shared/shortcuts/catalog",
+   "../../shared/shortcuts/matchShortcut",
+   "./presentation",
+   "lucide-react",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "lucide-react",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/SelectionContextChip.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/SelectionContextChip.tsx",
+  "specifiers": [
+   "./CanvasContextChip",
+   "./panels/layerAppearance",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/SidebarSectionHeader.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/SidebarSectionHeader.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/SlashCommandMenu.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/SlashCommandMenu.tsx",
+  "specifiers": [
+   "./ComposerSuggestionMenu",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/ToolFailureDetails.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/ToolFailureDetails.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/VersionHistoryModal.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/VersionHistoryModal.tsx",
+  "specifiers": [
+   "../hooks/useBackendActions",
+   "../utils/codeEditorTheme",
+   "./panels/AssetsPanel",
+   "@codemirror/lang-javascript",
+   "@bingo/ui",
+   "@uiw/codemirror-theme-github",
+   "@uiw/react-codemirror",
+   "react",
+   "react/compiler-runtime",
+   "sonner"
+  ],
+  "packages": [
+   "@codemirror/lang-javascript",
+   "@uiw/codemirror-theme-github",
+   "@uiw/react-codemirror",
+   "react",
+   "sonner"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/AgentsSidebarTabV2.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/AgentsSidebarTabV2.tsx",
+  "specifiers": [
+   "../ChatConversations",
+   "../ChatListRow",
+   "../EditableChatTitle",
+   "./styles/primitives",
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/AssetsPanel.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/AssetsPanel.tsx",
+  "specifiers": [
+   "../../../shared/utils/clipboard",
+   "../../../shared/utils/idUtils",
+   "./PanelEmptyState",
+   "./PanelSearchInput",
+   "./compositionDrag",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/DiamondsFour",
+   "@phosphor-icons/react/dist/icons/Shapes",
+   "@phosphor-icons/react/dist/icons/SquaresFour",
+   "react",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/AssetsSidebarTabV2.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/AssetsSidebarTabV2.tsx",
+  "specifiers": [
+   "../../../shared/utils/clipboard",
+   "../../../shared/utils/idUtils",
+   "../../utils/htmlTagsData",
+   "../../utils/iconUtils",
+   "../SidebarSectionHeader",
+   "./AssetsPanel",
+   "./IconsPanel",
+   "./compositionDrag",
+   "./styles/primitives",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/DiamondsFour",
+   "react",
+   "react/compiler-runtime",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/IconsPanel.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/IconsPanel.tsx",
+  "specifiers": [
+   "../../../shared/utils/idUtils",
+   "../../utils/iconUtils",
+   "./PanelEmptyState",
+   "./PanelSearchInput",
+   "@bingo/ui",
+   "@tanstack/react-virtual",
+   "react"
+  ],
+  "packages": [
+   "@tanstack/react-virtual",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/InsertPanel.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/InsertPanel.tsx",
+  "specifiers": [
+   "../../../shared/utils/clipboard",
+   "../../../shared/utils/idUtils",
+   "../../utils/htmlTagsData",
+   "../InsertItem",
+   "./PanelSearchInput",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/LayerIcon.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/LayerIcon.tsx",
+  "specifiers": [
+   "./layerAppearance",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/LayersPanel.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/LayersPanel.tsx",
+  "specifiers": [
+   "../../../shared/state/hoverChannel",
+   "../../../shared/utils/dropPlan",
+   "../../hooks/useScrolledHeader",
+   "../SidebarSectionHeader",
+   "./LayerIcon",
+   "./PanelSearchInput",
+   "./layerAppearance",
+   "./layerSearch",
+   "./styles/primitives",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "@tanstack/react-virtual",
+   "@tanstack/virtual-core",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@tanstack/react-virtual",
+   "@tanstack/virtual-core",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/PagePanel.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/PagePanel.tsx",
+  "specifiers": [
+   "../../hooks/useClassSuggestions",
+   "./styles/inputs/ColorRow",
+   "./styles/sections/BackgroundSection",
+   "./styles/sections/InspectorSection",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/PagesLayersSplit.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/PagesLayersSplit.tsx",
+  "specifiers": [
+   "./PagePanel",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/PagesPanel.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/PagesPanel.tsx",
+  "specifiers": [
+   "../../hooks/useScrolledHeader",
+   "../ConfirmDialog",
+   "../SidebarSectionHeader",
+   "./styles/primitives",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/PagesSidebarTabV2.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/PagesSidebarTabV2.tsx",
+  "specifiers": [
+   "./LayersPanel",
+   "./PagesLayersSplit",
+   "./PagesPanel",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/PanelEmptyState.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/PanelEmptyState.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/PanelSearchInput.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/PanelSearchInput.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/PropsPanel.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/PropsPanel.tsx",
+  "specifiers": [
+   "../../../shared/contexts/AssetContext",
+   "../../../shared/hooks/useUploadImage",
+   "../../../shared/utils/clipboard",
+   "../../../types/components",
+   "./props/PropField",
+   "./styles/primitives",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/DiamondsFour",
+   "@phosphor-icons/react/dist/icons/FileTs",
+   "react",
+   "react/compiler-runtime",
+   "sonner"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react",
+   "sonner"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/SkillsPanel.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/SkillsPanel.tsx",
+  "specifiers": [
+   "./PanelEmptyState",
+   "@bingo/ui",
+   "react"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/StylesPanelTabs.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/StylesPanelTabs.tsx",
+  "specifiers": [
+   "../../../shared/contexts/ActiveToolContext",
+   "./styles/tabs/CodeView",
+   "./styles/tabs/DesignTab",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/TerminalPanel.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/TerminalPanel.tsx",
+  "specifiers": [
+   "@xterm/addon-fit",
+   "@xterm/xterm",
+   "react"
+  ],
+  "packages": [
+   "@xterm/addon-fit",
+   "@xterm/xterm",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/WebviewEditPanel.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/WebviewEditPanel.tsx",
+  "specifiers": [
+   "../../../shared/state/webviewEditStore",
+   "./StylesPanelTabs",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/ArrowCounterClockwise",
+   "@phosphor-icons/react/dist/icons/CursorClick",
+   "react-resizable-panels",
+   "react/compiler-runtime",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react",
+   "react-resizable-panels"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/compositionDrag.ts": {
+  "region_path": "../../packages/editor/src/shell/components/panels/compositionDrag.ts",
+  "specifiers": [
+   "../../../canvas/components/ErrorBoundary",
+   "../../../canvas/utils/renderElement",
+   "../../../shared/contexts/AssetContext",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/layerAppearance.ts": {
+  "region_path": "../../packages/editor/src/shell/components/panels/layerAppearance.ts",
+  "specifiers": [
+   "./layerLayoutIcon",
+   "@bingo/ui"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shell/components/panels/layerLayoutIcon.ts": {
+  "region_path": "../../packages/editor/src/shell/components/panels/layerLayoutIcon.ts",
+  "specifiers": [
+   "../../../shared/utils/tailwindScale",
+   "@bingo/ui"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shell/components/panels/layerSearch.ts": {
+  "region_path": "../../packages/editor/src/shell/components/panels/layerSearch.ts",
+  "specifiers": [
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shell/components/panels/props/PropField.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/props/PropField.tsx",
+  "specifiers": [
+   "../styles/inputs/ColorRow",
+   "../styles/inputs/parts/InspectorDropdown",
+   "../styles/inputs/useInspectorScrub",
+   "../styles/primitives",
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/InspectorToggleGroup.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/InspectorToggleGroup.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/StyleOpsContext.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/StyleOpsContext.tsx",
+  "specifiers": [
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/fields/color.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/fields/color.tsx",
+  "specifiers": [
+   "../../../../utils/fillValue",
+   "../StyleOpsContext",
+   "../inputs/ColorRow",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/fields/controls.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/fields/controls.tsx",
+  "specifiers": [
+   "../InspectorToggleGroup",
+   "../StyleOpsContext",
+   "../inputs/InlineInput",
+   "../primitives",
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/fields/layout.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/fields/layout.tsx",
+  "specifiers": [
+   "../../../../utils/cssValue",
+   "../StyleOpsContext",
+   "../inputs/DimensionInput",
+   "../inputs/LayoutMinMaxInput",
+   "../inputs/LayoutValueInput",
+   "../positioning/widgets",
+   "../primitives",
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/fields/typography.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/fields/typography.tsx",
+  "specifiers": [
+   "../../../../hooks/useClassSuggestions",
+   "../../../../utils/cssValue",
+   "../StyleOpsContext",
+   "../inputs/parts/ActiveClassChip",
+   "../inputs/parts/ClassPickerPopover",
+   "../inputs/parts/OverrideChip",
+   "../inputs/useInspectorScrub",
+   "../primitives",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/inputs/ClassPickerContent.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/inputs/ClassPickerContent.tsx",
+  "specifiers": [
+   "../../../../../shared/utils/tailwindScale",
+   "../primitives",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/inputs/ColorPickerPopover.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/inputs/ColorPickerPopover.tsx",
+  "specifiers": [
+   "../../../../../shared/contexts/AssetContext",
+   "../../../../../shared/hooks/useUploadImage",
+   "../../../../../shared/utils/clipboard",
+   "../../../../utils/colorMath",
+   "../../../../utils/fillValue",
+   "../primitives",
+   "./ClassPickerContent",
+   "./GradientEditor",
+   "./SolidColorPicker",
+   "./parts/InspectorDropdown",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/SquareLogo",
+   "react",
+   "react/compiler-runtime",
+   "sonner"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react",
+   "sonner"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/inputs/ColorRow.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/inputs/ColorRow.tsx",
+  "specifiers": [
+   "../../../../../shared/contexts/AssetContext",
+   "../../../../../shared/utils/useScrub",
+   "../../../../hooks/useClassSuggestions",
+   "../../../../hooks/useMixedLocalValue",
+   "../../../../utils/colorMath",
+   "../../../../utils/fillValue",
+   "../primitives",
+   "./ColorPickerPopover",
+   "./parts/ActiveClassChip",
+   "./useInspectorScrub",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/inputs/DimensionInput.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/inputs/DimensionInput.tsx",
+  "specifiers": [
+   "../../../../utils/unitValue",
+   "../primitives",
+   "./UnitMenu",
+   "./useInspectorScrub",
+   "./useUnitValue",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/inputs/GradientEditor.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/inputs/GradientEditor.tsx",
+  "specifiers": [
+   "../../../../utils/colorMath",
+   "../primitives",
+   "./ColorPickerPopover",
+   "./parts/ActiveClassChip",
+   "./parts/InspectorDropdown",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/inputs/InlineInput.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/inputs/InlineInput.tsx",
+  "specifiers": [
+   "../../../../hooks/useClassSuggestions",
+   "../../../../utils/cssValue",
+   "../../../../utils/unitValue",
+   "../primitives",
+   "./UnitMenu",
+   "./parts/ActiveClassChip",
+   "./parts/ClassPickerPopover",
+   "./useInspectorScrub",
+   "./useUnitValue",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/inputs/LayoutMinMaxInput.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/inputs/LayoutMinMaxInput.tsx",
+  "specifiers": [
+   "../../../../utils/unitValue",
+   "../primitives",
+   "./UnitMenu",
+   "./useInspectorScrub",
+   "./useUnitValue",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/inputs/LayoutValueInput.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/inputs/LayoutValueInput.tsx",
+  "specifiers": [
+   "../../../../hooks/useClassSuggestions",
+   "../../../../utils/cssValue",
+   "../../../../utils/unitValue",
+   "../layout/glyphs",
+   "../primitives",
+   "./UnitMenu",
+   "./parts/ActiveClassChip",
+   "./parts/ClassPickerPopover",
+   "./parts/OverrideChip",
+   "./useInspectorScrub",
+   "./useUnitValue",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/inputs/SolidColorPicker.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/inputs/SolidColorPicker.tsx",
+  "specifiers": [
+   "../../../../utils/colorMath",
+   "../primitives",
+   "./parts/InspectorDropdown",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/inputs/UnitMenu.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/inputs/UnitMenu.tsx",
+  "specifiers": [
+   "../../../../utils/unitValue",
+   "../primitives",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/inputs/parts/ActiveClassChip.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/inputs/parts/ActiveClassChip.tsx",
+  "specifiers": [
+   "../../primitives",
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/inputs/parts/ClassPickerPopover.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/inputs/parts/ClassPickerPopover.tsx",
+  "specifiers": [
+   "../../primitives",
+   "../ClassPickerContent",
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/inputs/parts/InspectorDropdown.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/inputs/parts/InspectorDropdown.tsx",
+  "specifiers": [
+   "../../primitives",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/inputs/parts/OverrideChip.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/inputs/parts/OverrideChip.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/inputs/useInspectorScrub.ts": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/inputs/useInspectorScrub.ts",
+  "specifiers": [
+   "../../../../../shared/utils/useScrub",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/inputs/useUnitValue.ts": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/inputs/useUnitValue.ts",
+  "specifiers": [
+   "../../../../utils/unitValue",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/layout/controls.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/layout/controls.tsx",
+  "specifiers": [
+   "../InspectorToggleGroup",
+   "../StyleOpsContext",
+   "../fields/layout",
+   "../inputs/LayoutValueInput",
+   "../primitives",
+   "./flexDistribution",
+   "./glyphs",
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/layout/flexDistribution.ts": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/layout/flexDistribution.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/components/panels/styles/layout/glyphs.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/layout/glyphs.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/positioning/PositionSection.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/positioning/PositionSection.tsx",
+  "specifiers": [
+   "../../../../../canvas/utils/transformMatrix",
+   "../../../../../shared/utils/positionAlignment",
+   "../../../../../shared/utils/transformControls",
+   "../../../../../shared/utils/visibleElement",
+   "../../../../constants",
+   "../../../../utils/chatShortcuts",
+   "../StyleOpsContext",
+   "../fields/layout",
+   "../inputs/parts/InspectorDropdown",
+   "../primitives",
+   "../sections/InspectorSection",
+   "./widgets",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/positioning/widgets.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/positioning/widgets.tsx",
+  "specifiers": [
+   "../inputs/UnitMenu",
+   "../inputs/parts/InspectorDropdown",
+   "../inputs/useInspectorScrub",
+   "../inputs/useUnitValue",
+   "../primitives",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/primitives.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/primitives.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/sections/AppearanceSection.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/sections/AppearanceSection.tsx",
+  "specifiers": [
+   "../StyleOpsContext",
+   "../fields/layout",
+   "../inputs/parts/InspectorDropdown",
+   "../layout/controls",
+   "../primitives",
+   "./InspectorSection",
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/sections/BackgroundSection.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/sections/BackgroundSection.tsx",
+  "specifiers": [
+   "../../../../hooks/useClassSuggestions",
+   "../../../../utils/backgroundFills",
+   "../../../../utils/fillValue",
+   "../StyleOpsContext",
+   "../inputs/ClassPickerContent",
+   "../inputs/ColorRow",
+   "../primitives",
+   "./InspectorSection",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/sections/BorderSection.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/sections/BorderSection.tsx",
+  "specifiers": [
+   "../../../../../shared/utils/tailwindScale",
+   "../../../../constants",
+   "../../../../hooks/useClassSuggestions",
+   "../StyleOpsContext",
+   "../fields/color",
+   "../fields/layout",
+   "../inputs/ClassPickerContent",
+   "../inputs/parts/InspectorDropdown",
+   "../primitives",
+   "./InspectorSection",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/sections/FiltersSection.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/sections/FiltersSection.tsx",
+  "specifiers": [
+   "../../../../utils/effectValues",
+   "../../../../utils/effects",
+   "../StyleOpsContext",
+   "../inputs/LayoutValueInput",
+   "../inputs/parts/InspectorDropdown",
+   "../primitives",
+   "./InspectorSection",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/sections/InspectorSection.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/sections/InspectorSection.tsx",
+  "specifiers": [
+   "../inputs/ClassPickerContent",
+   "../primitives",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/sections/MarginSection.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/sections/MarginSection.tsx",
+  "specifiers": [
+   "../../../../constants",
+   "../../../../hooks/useClassSuggestions",
+   "../StyleOpsContext",
+   "../layout/controls",
+   "../primitives",
+   "./InspectorSection",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/sections/OutlineSection.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/sections/OutlineSection.tsx",
+  "specifiers": [
+   "../../../../../shared/utils/tailwindScale",
+   "../../../../utils/effects",
+   "../StyleOpsContext",
+   "../inputs/ColorRow",
+   "../inputs/LayoutValueInput",
+   "../primitives",
+   "./InspectorSection",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/sections/PaddingSection.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/sections/PaddingSection.tsx",
+  "specifiers": [
+   "../../../../constants",
+   "../../../../hooks/useClassSuggestions",
+   "../StyleOpsContext",
+   "../layout/controls",
+   "../primitives",
+   "./InspectorSection",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/sections/RadiusSection.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/sections/RadiusSection.tsx",
+  "specifiers": [
+   "../../../../constants",
+   "../../../../hooks/useClassSuggestions",
+   "../StyleOpsContext",
+   "../fields/layout",
+   "../primitives",
+   "./InspectorSection",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/sections/ScaleSection.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/sections/ScaleSection.tsx",
+  "specifiers": [
+   "../../../../../canvas/utils/transformMatrix",
+   "../../../../../shared/contexts/ActiveToolContext",
+   "../../../../../shared/utils/scaleTransform",
+   "../../../../../shared/utils/visibleElement",
+   "../StyleOpsContext",
+   "../inputs/DimensionInput",
+   "../inputs/LayoutValueInput",
+   "../primitives",
+   "./InspectorSection",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/sections/ShadowSection.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/sections/ShadowSection.tsx",
+  "specifiers": [
+   "../../../../utils/effectValues",
+   "../../../../utils/effects",
+   "../StyleOpsContext",
+   "../inputs/ColorRow",
+   "../inputs/LayoutValueInput",
+   "../inputs/parts/InspectorDropdown",
+   "../primitives",
+   "./InspectorSection",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/sections/TypographySection.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/sections/TypographySection.tsx",
+  "specifiers": [
+   "../../../../constants",
+   "../../../../utils/tailwindClasses",
+   "../../../../utils/typography",
+   "../StyleOpsContext",
+   "../fields/color",
+   "../fields/controls",
+   "../fields/typography",
+   "../primitives",
+   "../typography/FontPickers",
+   "../typography/TextFormatRow",
+   "./InspectorSection",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/tabs/CSSTab.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/tabs/CSSTab.tsx",
+  "specifiers": [
+   "../../../../utils/computedStyles",
+   "../../../../utils/multiSelect",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/tabs/ClassesTab.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/tabs/ClassesTab.tsx",
+  "specifiers": [
+   "../../../../../shared/utils/tailwindScale",
+   "../../../../utils/classIndex",
+   "../primitives",
+   "../sections/InspectorSection",
+   "@bingo/ui",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/tabs/CodeView.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/tabs/CodeView.tsx",
+  "specifiers": [
+   "../../../../utils/styleResolution",
+   "../sections/InspectorSection",
+   "./CSSTab",
+   "./ClassesTab",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/tabs/DesignTab.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/tabs/DesignTab.tsx",
+  "specifiers": [
+   "../../../../../canvas/utils/absolutePositioning",
+   "../../../../../canvas/utils/domGeometry",
+   "../../../../../shared/utils/positionAlignment",
+   "../../../../../shared/utils/tailwindScale",
+   "../../../../constants",
+   "../../../../utils/multiSelect",
+   "../../../../utils/styleResolution",
+   "../../../../utils/tailwindClasses",
+   "../StyleOpsContext",
+   "../fields/layout",
+   "../inputs/parts/InspectorDropdown",
+   "../layout/controls",
+   "../layout/flexDistribution",
+   "../layout/glyphs",
+   "../positioning/PositionSection",
+   "../primitives",
+   "../sections/AppearanceSection",
+   "../sections/BackgroundSection",
+   "../sections/BorderSection",
+   "../sections/FiltersSection",
+   "../sections/InspectorSection",
+   "../sections/MarginSection",
+   "../sections/OutlineSection",
+   "../sections/PaddingSection",
+   "../sections/RadiusSection",
+   "../sections/ScaleSection",
+   "../sections/ShadowSection",
+   "../sections/TypographySection",
+   "@bingo/compiler",
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/ArrowsInLineHorizontal",
+   "@phosphor-icons/react/dist/icons/ArrowsInLineVertical",
+   "@phosphor-icons/react/dist/icons/ArrowsOutLineVertical",
+   "react",
+   "react/compiler-runtime",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/typography/FontPickers.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/typography/FontPickers.tsx",
+  "specifiers": [
+   "../../../../../../../../src/renderer/vite-preload-helper",
+   "../../../../utils/fontLoader",
+   "../../../../utils/typography",
+   "../inputs/parts/InspectorDropdown",
+   "../primitives",
+   "@bingo/ui",
+   "@tanstack/react-virtual",
+   "react"
+  ],
+  "packages": [
+   "@tanstack/react-virtual",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/panels/styles/typography/TextFormatRow.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/panels/styles/typography/TextFormatRow.tsx",
+  "specifiers": [
+   "../../../../utils/typography",
+   "../primitives",
+   "@bingo/ui",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/components/presentation.tsx": {
+  "region_path": "../../packages/editor/src/shell/components/presentation.tsx",
+  "specifiers": [
+   "../../canvas/utils/renderElement",
+   "../../shared/shortcuts/matchShortcut",
+   "@bingo/compiler",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/constants.ts": {
+  "region_path": "../../packages/editor/src/shell/constants.ts",
+  "specifiers": [
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shell/hooks/canvasDrawStream.ts": {
+  "region_path": "../../packages/editor/src/shell/hooks/canvasDrawStream.ts",
+  "specifiers": [
+   "../../shared/utils/operations",
+   "@bingo/compiler",
+   "react-dom"
+  ],
+  "packages": [
+   "react-dom"
+  ]
+ },
+ "packages/editor/src/shell/hooks/nextRootPlacement.ts": {
+  "region_path": "../../packages/editor/src/shell/hooks/nextRootPlacement.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/hooks/rootBoxes.ts": {
+  "region_path": "../../packages/editor/src/shell/hooks/rootBoxes.ts",
+  "specifiers": [
+   "../../canvas/utils/domGeometry",
+   "./nextRootPlacement",
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shell/hooks/useBackendActions.ts": {
+  "region_path": "../../packages/editor/src/shell/hooks/useBackendActions.ts",
+  "specifiers": [
+   "../../backends/BackendContext",
+   "react"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/hooks/useCanvasToolHandler.ts": {
+  "region_path": "../../packages/editor/src/shell/hooks/useCanvasToolHandler.ts",
+  "specifiers": [
+   "../../shared/utils/operations",
+   "./canvasDrawStream",
+   "./nextRootPlacement",
+   "./rootBoxes",
+   "@bingo/compiler",
+   "react",
+   "react-dom"
+  ],
+  "packages": [
+   "react",
+   "react-dom"
+  ]
+ },
+ "packages/editor/src/shell/hooks/useChatScroll.ts": {
+  "region_path": "../../packages/editor/src/shell/hooks/useChatScroll.ts",
+  "specifiers": [
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/hooks/useClassSuggestions.ts": {
+  "region_path": "../../packages/editor/src/shell/hooks/useClassSuggestions.ts",
+  "specifiers": [
+   "../utils/classIndex",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/hooks/useClaudeContext.ts": {
+  "region_path": "../../packages/editor/src/shell/hooks/useClaudeContext.ts",
+  "specifiers": [
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shell/hooks/useClaudeStatus.ts": {
+  "region_path": "../../packages/editor/src/shell/hooks/useClaudeStatus.ts",
+  "specifiers": [
+   "react"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/hooks/useContextMentions.ts": {
+  "region_path": "../../packages/editor/src/shell/hooks/useContextMentions.ts",
+  "specifiers": [
+   "../utils/chatContextReferences",
+   "./useClaudeContext",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/hooks/useHistory.ts": {
+  "region_path": "../../packages/editor/src/shell/hooks/useHistory.ts",
+  "specifiers": [
+   "../../shared/utils/operations",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/hooks/useMixedLocalValue.ts": {
+  "region_path": "../../packages/editor/src/shell/hooks/useMixedLocalValue.ts",
+  "specifiers": [
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/hooks/usePromptContextInsertion.ts": {
+  "region_path": "../../packages/editor/src/shell/hooks/usePromptContextInsertion.ts",
+  "specifiers": [
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/hooks/useScrolledHeader.ts": {
+  "region_path": "../../packages/editor/src/shell/hooks/useScrolledHeader.ts",
+  "specifiers": [
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/hooks/useSelectionJsxEditor.ts": {
+  "region_path": "../../packages/editor/src/shell/hooks/useSelectionJsxEditor.ts",
+  "specifiers": [
+   "@bingo/compiler",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/types.ts": {
+  "region_path": "../../packages/editor/src/shell/types.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/backgroundFills.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/backgroundFills.ts",
+  "specifiers": [
+   "./fillValue"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/chatAttachments.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/chatAttachments.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/chatContextReferences.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/chatContextReferences.ts",
+  "specifiers": [
+   "../hooks/useClaudeContext"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/chatDeletion.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/chatDeletion.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/chatPersistence.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/chatPersistence.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/chatShortcuts.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/chatShortcuts.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/chatTitleAnimation.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/chatTitleAnimation.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/chatToolFailure.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/chatToolFailure.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/chatWorkTarget.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/chatWorkTarget.ts",
+  "specifiers": [
+   "../../canvas/utils/followAiCamera",
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/classIndex.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/classIndex.ts",
+  "specifiers": [
+   "./computedStyles"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/codeEditorTheme.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/codeEditorTheme.ts",
+  "specifiers": [
+   "@codemirror/view",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@codemirror/view",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/utils/colorMath.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/colorMath.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/computedStyles.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/computedStyles.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/cssValue.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/cssValue.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/editorBreadcrumb.tsx": {
+  "region_path": "../../packages/editor/src/shell/utils/editorBreadcrumb.tsx",
+  "specifiers": [
+   "@bingo/ui",
+   "@phosphor-icons/react/dist/icons/Cube",
+   "@phosphor-icons/react/dist/icons/FileTs",
+   "react/compiler-runtime",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/utils/effectValues.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/effectValues.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/effects.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/effects.ts",
+  "specifiers": [
+   "../constants"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/fillValue.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/fillValue.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/fontLoader.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/fontLoader.ts",
+  "specifiers": [
+   "./typography"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/htmlTagsData.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/htmlTagsData.ts",
+  "specifiers": [
+   "../../shared/utils/idUtils",
+   "../../shared/utils/toolElements"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/iconUtils.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/iconUtils.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/inlineChatComposer.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/inlineChatComposer.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/multiSelect.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/multiSelect.ts",
+  "specifiers": [
+   "../types"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/normalizeTextRuns.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/normalizeTextRuns.ts",
+  "specifiers": [
+   "@bingo/compiler"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/pasteClassStyles.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/pasteClassStyles.ts",
+  "specifiers": [
+   "./classIndex"
+  ],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/styleResolution.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/styleResolution.ts",
+  "specifiers": [
+   "../../shared/utils/tailwindScale",
+   "./classIndex",
+   "./computedStyles",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/editor/src/shell/utils/tailwindClasses.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/tailwindClasses.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/typography.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/typography.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/shell/utils/unitValue.ts": {
+  "region_path": "../../packages/editor/src/shell/utils/unitValue.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/editor/src/types/components.ts": {
+  "region_path": "../../packages/editor/src/types/components.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "packages/ui/src/components/Avatar.tsx": {
+  "region_path": "../../packages/ui/src/components/Avatar.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "@radix-ui/react-avatar",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@radix-ui/react-avatar",
+   "react"
+  ]
+ },
+ "packages/ui/src/components/Badge.tsx": {
+  "region_path": "../../packages/ui/src/components/Badge.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "@radix-ui/react-slot",
+   "class-variance-authority",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@radix-ui/react-slot",
+   "class-variance-authority",
+   "react"
+  ]
+ },
+ "packages/ui/src/components/Button.tsx": {
+  "region_path": "../../packages/ui/src/components/Button.tsx",
+  "specifiers": [
+   "../icons",
+   "../lib/utils",
+   "./Text",
+   "./Tooltip",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/ui/src/components/ButtonGroup.tsx": {
+  "region_path": "../../packages/ui/src/components/ButtonGroup.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "class-variance-authority",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "class-variance-authority",
+   "react"
+  ]
+ },
+ "packages/ui/src/components/Checkbox.tsx": {
+  "region_path": "../../packages/ui/src/components/Checkbox.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "@phosphor-icons/react/dist/icons/Check",
+   "@radix-ui/react-checkbox",
+   "react/compiler-runtime",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "@radix-ui/react-checkbox",
+   "react"
+  ]
+ },
+ "packages/ui/src/components/ContextMenu.tsx": {
+  "region_path": "../../packages/ui/src/components/ContextMenu.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "@phosphor-icons/react/dist/icons/CaretRight",
+   "@phosphor-icons/react/dist/icons/Check",
+   "@phosphor-icons/react/dist/icons/Circle",
+   "@radix-ui/react-context-menu",
+   "react",
+   "react/compiler-runtime",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "@radix-ui/react-context-menu",
+   "react"
+  ]
+ },
+ "packages/ui/src/components/Dialog.tsx": {
+  "region_path": "../../packages/ui/src/components/Dialog.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "@radix-ui/react-dialog",
+   "lucide-react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@radix-ui/react-dialog",
+   "lucide-react",
+   "react"
+  ]
+ },
+ "packages/ui/src/components/DropdownMenu.tsx": {
+  "region_path": "../../packages/ui/src/components/DropdownMenu.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "@phosphor-icons/react/dist/icons/CaretRight",
+   "@phosphor-icons/react/dist/icons/Check",
+   "@radix-ui/react-dropdown-menu",
+   "react",
+   "react/compiler-runtime",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "@radix-ui/react-dropdown-menu",
+   "react"
+  ]
+ },
+ "packages/ui/src/components/HoverCard.tsx": {
+  "region_path": "../../packages/ui/src/components/HoverCard.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "@radix-ui/react-hover-card",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@radix-ui/react-hover-card",
+   "react"
+  ]
+ },
+ "packages/ui/src/components/Input.tsx": {
+  "region_path": "../../packages/ui/src/components/Input.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "./Tooltip",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/ui/src/components/InputGroup.tsx": {
+  "region_path": "../../packages/ui/src/components/InputGroup.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "./Tooltip",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/ui/src/components/Kbd.tsx": {
+  "region_path": "../../packages/ui/src/components/Kbd.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/ui/src/components/Popover.tsx": {
+  "region_path": "../../packages/ui/src/components/Popover.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "@radix-ui/react-popover",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@radix-ui/react-popover",
+   "react"
+  ]
+ },
+ "packages/ui/src/components/RippleLoader.tsx": {
+  "region_path": "../../packages/ui/src/components/RippleLoader.tsx",
+  "specifiers": [
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/ui/src/components/ScrollArea.tsx": {
+  "region_path": "../../packages/ui/src/components/ScrollArea.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "@radix-ui/react-scroll-area",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@radix-ui/react-scroll-area",
+   "react"
+  ]
+ },
+ "packages/ui/src/components/SegmentedIconButton.tsx": {
+  "region_path": "../../packages/ui/src/components/SegmentedIconButton.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "./Button",
+   "./Tooltip",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/ui/src/components/Select.tsx": {
+  "region_path": "../../packages/ui/src/components/Select.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "@phosphor-icons/react/dist/icons/CaretDown",
+   "@phosphor-icons/react/dist/icons/CaretUp",
+   "@phosphor-icons/react/dist/icons/Check",
+   "@radix-ui/react-select",
+   "react",
+   "react/compiler-runtime",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "@radix-ui/react-select",
+   "react"
+  ]
+ },
+ "packages/ui/src/components/Separator.tsx": {
+  "region_path": "../../packages/ui/src/components/Separator.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "@radix-ui/react-separator",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@radix-ui/react-separator",
+   "react"
+  ]
+ },
+ "packages/ui/src/components/Sidebar.tsx": {
+  "region_path": "../../packages/ui/src/components/Sidebar.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "./Tooltip",
+   "@radix-ui/react-slot",
+   "class-variance-authority",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@radix-ui/react-slot",
+   "class-variance-authority",
+   "react"
+  ]
+ },
+ "packages/ui/src/components/Skeleton.tsx": {
+  "region_path": "../../packages/ui/src/components/Skeleton.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/ui/src/components/Sonner.tsx": {
+  "region_path": "../../packages/ui/src/components/Sonner.tsx",
+  "specifiers": [
+   "../hooks/useIsDark",
+   "lucide-react",
+   "react/compiler-runtime",
+   "sonner"
+  ],
+  "packages": [
+   "lucide-react",
+   "react",
+   "sonner"
+  ]
+ },
+ "packages/ui/src/components/Switch.tsx": {
+  "region_path": "../../packages/ui/src/components/Switch.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "@radix-ui/react-switch",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@radix-ui/react-switch",
+   "react"
+  ]
+ },
+ "packages/ui/src/components/Tabs.tsx": {
+  "region_path": "../../packages/ui/src/components/Tabs.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "@radix-ui/react-tabs",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@radix-ui/react-tabs",
+   "react"
+  ]
+ },
+ "packages/ui/src/components/Text.tsx": {
+  "region_path": "../../packages/ui/src/components/Text.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "react"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/ui/src/components/ToggleGroup.tsx": {
+  "region_path": "../../packages/ui/src/components/ToggleGroup.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "@radix-ui/react-toggle-group",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@radix-ui/react-toggle-group",
+   "react"
+  ]
+ },
+ "packages/ui/src/components/Tooltip.tsx": {
+  "region_path": "../../packages/ui/src/components/Tooltip.tsx",
+  "specifiers": [
+   "../lib/utils",
+   "@radix-ui/react-tooltip",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "@radix-ui/react-tooltip",
+   "react"
+  ]
+ },
+ "packages/ui/src/hooks/EditorThemeProvider.tsx": {
+  "region_path": "../../packages/ui/src/hooks/EditorThemeProvider.tsx",
+  "specifiers": [
+   "./useEditorTheme",
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/ui/src/hooks/useEditorTheme.ts": {
+  "region_path": "../../packages/ui/src/hooks/useEditorTheme.ts",
+  "specifiers": [
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/ui/src/hooks/useIsDark.ts": {
+  "region_path": "../../packages/ui/src/hooks/useIsDark.ts",
+  "specifiers": [
+   "react",
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/ui/src/icons.tsx": {
+  "region_path": "../../packages/ui/src/icons.tsx",
+  "specifiers": [
+   "react/compiler-runtime"
+  ],
+  "packages": [
+   "react"
+  ]
+ },
+ "packages/ui/src/lib/utils.ts": {
+  "region_path": "../../packages/ui/src/lib/utils.ts",
+  "specifiers": [
+   "clsx",
+   "tailwind-merge"
+  ],
+  "packages": [
+   "clsx",
+   "tailwind-merge"
+  ]
+ },
+ "src/main/aiChat.ts": {
+  "region_path": "src/main/aiChat.ts",
+  "specifiers": [
+   "./captureImage",
+   "./claudeBinary",
+   "./mcpServer",
+   "./toolInputStream",
+   "@bingo/compiler",
+   "child_process",
+   "crypto",
+   "electron",
+   "fs",
+   "fs/promises",
+   "os",
+   "path",
+   "util"
+  ],
+  "packages": [
+   "child_process",
+   "crypto",
+   "electron",
+   "fs",
+   "os",
+   "path",
+   "util"
+  ]
+ },
+ "src/main/auth.ts": {
+  "region_path": "src/main/auth.ts",
+  "specifiers": [
+   "@better-auth/electron/client",
+   "@better-auth/electron/storage",
+   "better-auth/client"
+  ],
+  "packages": [
+   "@better-auth/electron",
+   "better-auth"
+  ]
+ },
+ "src/main/canvasToolResult.ts": {
+  "region_path": "src/main/canvasToolResult.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "src/main/captureImage.ts": {
+  "region_path": "src/main/captureImage.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "src/main/claudeBinary.ts": {
+  "region_path": "src/main/claudeBinary.ts",
+  "specifiers": [
+   "child_process",
+   "fs",
+   "fs/promises",
+   "os",
+   "path",
+   "util"
+  ],
+  "packages": [
+   "child_process",
+   "fs",
+   "os",
+   "path",
+   "util"
+  ]
+ },
+ "src/main/claudeContext.ts": {
+  "region_path": "src/main/claudeContext.ts",
+  "specifiers": [
+   "./connectionMetadata",
+   "fs",
+   "os",
+   "path"
+  ],
+  "packages": [
+   "fs",
+   "os",
+   "path"
+  ]
+ },
+ "src/main/connectionMetadata.ts": {
+  "region_path": "src/main/connectionMetadata.ts",
+  "specifiers": [
+   "@modelcontextprotocol/sdk/client",
+   "@modelcontextprotocol/sdk/client/sse.js",
+   "@modelcontextprotocol/sdk/client/stdio.js",
+   "@modelcontextprotocol/sdk/client/streamableHttp.js",
+   "node:crypto"
+  ],
+  "packages": [
+   "@modelcontextprotocol/sdk",
+   "node:crypto"
+  ]
+ },
+ "src/main/githubOAuth.ts": {
+  "region_path": "src/main/githubOAuth.ts",
+  "specifiers": [
+   "./auth",
+   "http"
+  ],
+  "packages": [
+   "http"
+  ]
+ },
+ "src/main/index.ts": {
+  "region_path": "src/main/index.ts",
+  "specifiers": [
+   "./aiChat",
+   "./auth",
+   "./claudeContext",
+   "./githubOAuth",
+   "./mcpServer",
+   "./promptFolders",
+   "./terminal",
+   "./windowManager",
+   "@electron-toolkit/utils",
+   "@bingo/compiler",
+   "crypto",
+   "electron",
+   "electron-updater",
+   "fs",
+   "path"
+  ],
+  "packages": [
+   "@electron-toolkit/utils",
+   "crypto",
+   "electron",
+   "electron-updater",
+   "fs",
+   "path"
+  ]
+ },
+ "src/main/mcpServer.ts": {
+  "region_path": "src/main/mcpServer.ts",
+  "specifiers": [
+   "./auth",
+   "./canvasToolResult",
+   "./captureImage",
+   "./promptFolders",
+   "./windowManager",
+   "@bingo/compiler",
+   "child_process",
+   "crypto",
+   "electron",
+   "events",
+   "fs/promises",
+   "http",
+   "path",
+   "util"
+  ],
+  "packages": [
+   "child_process",
+   "crypto",
+   "electron",
+   "events",
+   "fs",
+   "http",
+   "path",
+   "util"
+  ]
+ },
+ "src/main/promptFolders.ts": {
+  "region_path": "src/main/promptFolders.ts",
+  "specifiers": [
+   "node:fs/promises",
+   "node:path"
+  ],
+  "packages": [
+   "node:fs",
+   "node:path"
+  ]
+ },
+ "src/main/terminal.ts": {
+  "region_path": "src/main/terminal.ts",
+  "specifiers": [
+   "./mcpServer",
+   "./windowManager",
+   "electron",
+   "fs",
+   "node-pty",
+   "os",
+   "path"
+  ],
+  "packages": [
+   "electron",
+   "fs",
+   "node-pty",
+   "os",
+   "path"
+  ]
+ },
+ "src/main/toolInputStream.ts": {
+  "region_path": "src/main/toolInputStream.ts",
+  "specifiers": [],
+  "packages": []
+ },
+ "src/main/windowManager.ts": {
+  "region_path": "src/main/windowManager.ts",
+  "specifiers": [
+   "electron"
+  ],
+  "packages": [
+   "electron"
+  ]
+ },
+ "src/preload/index.ts": {
+  "region_path": "src/preload/index.ts",
+  "specifiers": [
+   "@better-auth/electron/preload",
+   "@electron-toolkit/preload",
+   "electron"
+  ],
+  "packages": [
+   "@better-auth/electron",
+   "@electron-toolkit/preload",
+   "electron"
+  ]
+ },
+ "src/renderer/src/App.tsx": {
+  "region_path": "src/renderer/src/App.tsx",
+  "specifiers": [
+   "../../../packages/workspace/src/assets/logoIcon.png",
+   "../../../packages/workspace/src/assets/logoText.png",
+   "./backends/ElectronBackend",
+   "@bingo/editor",
+   "@bingo/ui",
+   "@bingo/workspace",
+   "@phosphor-icons/react/dist/icons/ArrowRight",
+   "@phosphor-icons/react/dist/icons/ArrowsClockwise",
+   "@phosphor-icons/react/dist/icons/MonitorPlay",
+   "@phosphor-icons/react/dist/icons/Play",
+   "@phosphor-icons/react/dist/icons/Plugs",
+   "@phosphor-icons/react/dist/icons/X",
+   "@posthog/react",
+   "posthog-js",
+   "react",
+   "react/compiler-runtime",
+   "react/jsx-runtime",
+   "sonner"
+  ],
+  "packages": [
+   "@phosphor-icons/react",
+   "@posthog/react",
+   "posthog-js",
+   "react",
+   "sonner"
+  ]
+ },
+ "src/renderer/src/backends/ElectronBackend.ts": {
+  "region_path": "src/renderer/src/backends/ElectronBackend.ts",
+  "specifiers": [
+   "@bingo/editor",
+   "@bingo/workspace"
+  ],
+  "packages": []
+ },
+ "src/renderer/src/main.tsx": {
+  "region_path": "src/renderer/src/main.tsx",
+  "specifiers": [
+   "./App",
+   "@bingo/compiler",
+   "@bingo/editor",
+   "@bingo/workspace",
+   "@tanstack/react-query",
+   "react",
+   "react-dom",
+   "react-dom/client",
+   "react-dom/server",
+   "react/jsx-runtime"
+  ],
+  "packages": [
+   "@tanstack/react-query",
+   "react",
+   "react-dom"
+  ]
+ },
+ "src/renderer/vite-preload-helper.ts": {
+  "region_path": "src/renderer/vite-preload-helper.ts",
+  "specifiers": [],
+  "packages": []
+ }
+}

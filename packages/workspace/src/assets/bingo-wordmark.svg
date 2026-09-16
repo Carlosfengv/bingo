@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 240">
+  <circle cx="120" cy="120" r="92" fill="none" stroke="#111111" stroke-width="20"/>
+  <path transform="translate(8 8) scale(.85)" fill="#111111" d="M76 55h50c35 0 56 17 56 45 0 18-8 31-24 39 19 7 29 22 29 42 0 33-24 52-63 52H76V55Zm28 25v48h20c19 0 30-9 30-24s-11-24-30-24h-20Zm0 72v56h22c22 0 33-9 33-28 0-18-12-28-34-28h-21Z"/>
+  <text x="250" y="174" fill="#111111" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="150" font-weight="700" letter-spacing="-7">Bingo</text>
+</svg>

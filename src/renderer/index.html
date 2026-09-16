@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Bingo</title>
+    <!-- Set the chrome theme class before first paint to avoid a light flash.
+         Mirrors applyEditorTheme in @bingo/ui (default: system). -->
+    <script>
+      try {
+        var theme = localStorage.getItem('bingo-editor-theme');
+        if (theme === 'dark' || (theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('editor-dark');
+        }
+      } catch (e) { }
+    </script>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' data: blob: file:; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'self' 'unsafe-inline' data: blob: https://fonts.googleapis.com; img-src 'self' data: blob: file:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; frame-src 'self' data: blob: file: http://127.0.0.1:* http://localhost:*"
+    />
+    <!-- Local component bundles share the editor's React instance through this import map. -->
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "data:text/javascript,const R=window.React;export default R;export const{Activity,Children,Component,Fragment,Profiler,PureComponent,StrictMode,Suspense,act,cache,cacheSignal,captureOwnerStack,cloneElement,createContext,createElement,createRef,forwardRef,isValidElement,lazy,memo,startTransition,unstable_useCacheRefresh,use,useActionState,useCallback,useContext,useDebugValue,useDeferredValue,useEffect,useEffectEvent,useId,useImperativeHandle,useInsertionEffect,useLayoutEffect,useMemo,useOptimistic,useReducer,useRef,useState,useSyncExternalStore,useTransition,version}=R;",
+        "react-dom": "data:text/javascript,const R=window.ReactDOM;export default R;export const{createPortal,flushSync,preconnect,prefetchDNS,preinit,preinitModule,preload,preloadModule,requestFormReset,unstable_batchedUpdates,useFormState,useFormStatus,version}=R;",
+        "react-dom/client": "data:text/javascript,const R=window.ReactDOMClient;export default R;export const{createRoot,hydrateRoot,version}=R;",
+        "react-dom/server": "data:text/javascript,const R=window.__BINGO_REACT_DOM_SERVER__;export default R;export const{renderToReadableStream,renderToStaticMarkup,renderToString,resume,version}=R;",
+        "react-dom/server.browser": "data:text/javascript,const R=window.__BINGO_REACT_DOM_SERVER__;export default R;export const{renderToReadableStream,renderToStaticMarkup,renderToString,resume,version}=R;",
+        "react/jsx-runtime": "data:text/javascript,const G=()=>window.__BINGO_REACT_JSX_RUNTIME__;export function jsx(t,p,k){return G().jsx(t,p,k)}export function jsxs(t,p,k){return G().jsxs(t,p,k)}export function jsxDEV(t,p,k,a,b,c){const R=G();return(R.jsxDEV||R.jsx)(t,p,k,a,b,c)}export const Fragment=window.React.Fragment;",
+        "react/jsx-dev-runtime": "data:text/javascript,const G=()=>window.__BINGO_REACT_JSX_RUNTIME__;export function jsx(t,p,k){return G().jsx(t,p,k)}export function jsxs(t,p,k){return G().jsxs(t,p,k)}export function jsxDEV(t,p,k,a,b,c){const R=G();return(R.jsxDEV||R.jsx)(t,p,k,a,b,c)}export const Fragment=window.React.Fragment;",
+        "next/link": "./next-shims/link.js",
+        "next/image": "./next-shims/image.js",
+        "next/navigation": "./next-shims/navigation.js",
+        "next/head": "./next-shims/head.js",
+        "next/dynamic": "./next-shims/dynamic.js",
+        "next/script": "./next-shims/script.js",
+        "next/router": "./next-shims/router.js",
+        "next/form": "./next-shims/form.js",
+        "next/font/google": "./next-shims/font-google.js",
+        "next/font/local": "./next-shims/font-local.js",
+        "next/server": "./next-shims/server.js",
+        "next/headers": "./next-shims/headers.js",
+        "next/cache": "./next-shims/cache.js"
+      }
+    }
+    </script>
+    <script type="module" src="/entry.tsx"></script>
+  </head>
+  <body>
+    <div id="bingo-root"></div>
+  </body>
+</html>
