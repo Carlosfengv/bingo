@@ -12,13 +12,30 @@ function getNpmPackageUrl(importPath) {
   return `https://www.npmjs.com/package/${encodeURIComponent(packageName)}`;
 }
 
-function IconsSettings({ iconLibraries, onAddIconPackage, onRemoveIconPackage, onAskAIForIconSetup }) {
+function isConfigurationRequired(cause) {
+  return cause?.code === "CONFIG_INITIALIZATION_REQUIRED" || /choose where (?:bingo should save|to save) (?:this project's |project )?configuration/i.test(String(cause?.message || cause));
+}
+
+function IconsSettings({ iconLibraries, automaticIconLibraries = [], iconLibraryPolicy = { mode: "auto" }, onAddIconPackage, onRemoveIconPackage, onSetIconLibraryMode, onAskAIForIconSetup, onConfigurationRequired }) {
   const { t } = useTranslation("editor");
   const [packageName, setPackageName] = React.useState("");
   const [error, setError] = React.useState(null);
   const [lastFailure, setLastFailure] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [removing, setRemoving] = React.useState(null);
+  const [changingMode, setChangingMode] = React.useState(false);
+
+  const changeMode = async mode => {
+    if (!onSetIconLibraryMode || mode === iconLibraryPolicy.mode) return;
+    setChangingMode(true);
+    setError(null);
+    try { await onSetIconLibraryMode(mode); }
+    catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      if (isConfigurationRequired(cause)) onConfigurationRequired?.();
+    }
+    finally { setChangingMode(false); }
+  };
 
   const handleSubmit = async event => {
     event.preventDefault();
@@ -48,6 +65,7 @@ function IconsSettings({ iconLibraries, onAddIconPackage, onRemoveIconPackage, o
       const suggestions = Array.isArray(iconSetup?.suggestions) ? iconSetup.suggestions.filter(item => typeof item === "string") : [];
       setError(issue);
       setLastFailure({ attemptedPackage: trimmed, issue, suggestions });
+      if (isConfigurationRequired(cause)) onConfigurationRequired?.();
     } finally {
       setSaving(false);
     }
@@ -66,6 +84,7 @@ function IconsSettings({ iconLibraries, onAddIconPackage, onRemoveIconPackage, o
       const issue = cause instanceof Error ? cause.message : String(cause);
       setError(issue);
       setLastFailure({ attemptedPackage: library, issue, suggestions: [] });
+      if (isConfigurationRequired(cause)) onConfigurationRequired?.();
     } finally {
       setRemoving(null);
     }
@@ -79,6 +98,11 @@ function IconsSettings({ iconLibraries, onAddIconPackage, onRemoveIconPackage, o
     <div className="flex flex-col gap-6 rounded-2xl border border-ed-border bg-ed-background p-4">
       <SettingRow Icon={IconsIcon} title={t("projectSettings.iconPackages")} description={t("projectSettings.iconPackagesDescription")}>
         <div className="flex w-full flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <Button type="button" size="xs" variant={iconLibraryPolicy.mode === "auto" ? "secondary" : "outline"} disabled={changingMode} onClick={() => void changeMode("auto")}>{t("projectSettings.iconModeAuto")}</Button>
+            <Button type="button" size="xs" variant={iconLibraryPolicy.mode === "manual" ? "secondary" : "outline"} disabled={changingMode} onClick={() => void changeMode("manual")}>{t("projectSettings.iconModeManual")}</Button>
+            <Text$4 size="2xs" variant="tertiary">{iconLibraryPolicy.mode === "auto" ? t("projectSettings.iconModeAutoDescription", { count: automaticIconLibraries.length }) : t("projectSettings.iconModeManualDescription")}</Text$4>
+          </div>
           <form onSubmit={handleSubmit} className="flex items-center gap-2">
             <Input value={packageName} onChange={event => { setPackageName(event.target.value); setError(null); setLastFailure(null); }} placeholder="lucide-react" className="font-mono" />
             <Button type="submit" size="xs" variant="outline" loading={saving} disabled={saving || !packageName.trim()}>{t("projectSettings.addIconPackage")}</Button>

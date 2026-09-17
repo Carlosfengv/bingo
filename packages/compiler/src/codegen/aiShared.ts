@@ -195,7 +195,7 @@ Quick reference for ad-hoc questions about the project's settings/state:
 
 - **Tailwind tokens** → \`tailwind.config.*\` + \`app/globals.css\` (\`@theme inline\` / \`:root { --token }\` blocks). The local builder picks up changes automatically on file write.
 - **Fonts** → declared self-contained in \`app/globals.css\`: an \`@import url('https://fonts.googleapis.com/...')\` for Google families plus literal family names in the \`@theme inline\` block (\`--font-sans\` / \`--font-serif\` / \`--font-mono\`, e.g. \`--font-serif: 'Domine', serif\`). The css-builder extracts the \`@import\` URL and injects it as a \`<link>\`; the literal \`@theme\` tokens compile straight into \`font-*\` utilities. No separate settings file, no \`var()\` indirection.
-- **Icon library preference** → \`project.settings.iconLibraries\` JSONB column on the project row. Auto-detected from likely icon packages in \`package.json\` deps if not set explicitly. To change it during an import, use the \`set_icon_library\` MCP tool with any npm package that exports named React icon components.
+- **Icon libraries** → use \`get_icon_libraries\` to inspect packages discovered from the bound project's npm dependencies and source imports. Auto-discovered libraries do not require a configuration write. Use \`set_icon_library\` only when a required installed library is not already enabled; it saves a manual preference when necessary.
 - **Allowed local paths** → per-project, set via Settings UI in the editor. Listed in session context when connected from Bingo chat.
 - **Canvas pages** → \`page\` table (one row per canvas tab). Use \`canvas_list\` to see them; the project always has at least one canvas.
 - **Project files** → \`file\` table, accessed via \`project_read\`/\`project_write\`/\`project_glob\`/\`project_grep\` MCP tools. Path-based, like a regular filesystem.
@@ -278,7 +278,7 @@ This MCP session is **already bound** to the Bingo project for this chat. Do **n
 - local_* — User's machine (ABSOLUTE paths within allowed directories configured per project). NEVER substitute project_write when local access is denied — they are completely different file trees.
 - canvas_* — In-memory visual canvas (not a file; no canvas.json). Prefer canvas_edit/canvas_insert over full canvas_update for deltas. canvas_add can only write to the active page. Read → claim → mutate → take_screenshot → canvas_release.
 - list_skills / read_skill — Bingo-owned workflow recipes (not global Claude skills)
-- get_design_context, search_components, get_theme, search_icons, take_screenshot, canvas_grep, canvas_query, scan_project, set_icon_library, project_copy_asset, project_copy_file
+- get_design_context, search_components, get_theme, search_icons, get_icon_libraries, take_screenshot, canvas_grep, canvas_query, scan_project, set_icon_library, project_copy_asset, project_copy_file
 
 ${buildBingoGuidance({
     iconLibraryNames: options.iconLibraryNames
@@ -298,7 +298,7 @@ function buildChatSystemPrompt(context) {
 - If a tool call returns an error, report the specific error — but NEVER say "tools are not available". They are.
 - **Think briefly, act fast.** Pick an approach and execute it. Don't go in circles.
 - **For multi-step tasks** (design→code, component porting, etc.): plan your steps in thinking first, then execute step by step. After each step, check your progress before moving on.
-- **Design skill first:** Before any canvas_add/canvas_update/canvas_edit/canvas_insert, call read_skill with name "bingo-design". Those tools error until you load it.
+- **Design skill first:** Bingo in-app chat injects the full bingo-design skill for every run. External MCP clients must call read_skill with name "bingo-design" before canvas_add/canvas_update/canvas_edit/canvas_insert/canvas_create_import_scaffold. Those tools error until the current run or MCP session has loaded it.
 - **Surgical edits:** Prefer canvas_edit/canvas_insert; do not rewrite unrelated cells.
 - **Three.js/WebGL is supported:** For requested 3D work, create a component file and use \`three\` or \`@react-three/fiber\` when it is installed in the local project. Check \`package.json\` first and report a missing dependency clearly.
 

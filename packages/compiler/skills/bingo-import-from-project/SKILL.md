@@ -27,6 +27,7 @@ allowed-tools:
   - mcp__bingo__canvas_claim
   - mcp__bingo__canvas_release
   - mcp__bingo__search_icons
+  - mcp__bingo__get_icon_libraries
   - mcp__bingo__set_icon_library
   - mcp__bingo__project_copy_asset
   - mcp__bingo__project_copy_file
@@ -45,7 +46,7 @@ Follow these phases in order. Do not complete a later phase early.
 ### 1. Bind and inspect
 
 1. Use the accessible local folders listed in the current request. For “my codebase” without another explicit target, use the current project; do not ask the user to share it again. Call `local_folders` only when the list is missing or needs refreshing. Respect disabled access. The local root is the current project or the other accessible folder the user explicitly named.
-2. Call `read_skill({ name: "bingo-design" })`. The design skill is required before canvas mutation. Do not call `list_skills`; both skill names are already known.
+2. Ensure `bingo-design` is loaded for the current run. Bingo in-app chat injects it automatically; external MCP clients must call `read_skill({ name: "bingo-design" })`. Do not call `list_skills`; both skill names are already known.
 3. Call `scan_project` exactly once for the local root.
 4. Call `canvas_list` exactly once.
 5. Resolve the destination page:
@@ -65,7 +66,7 @@ Write only what is needed to make the visual foundation work:
 - the CSS entry and its required imported CSS files
 - Tailwind configuration exactly as authored by the source project
 - small shared class-name utilities only when required by the first component batch
-- icon-library setting
+- icon-library availability: call `get_icon_libraries` after the destination dependency files are present. Auto-discovered libraries need no settings write; call `set_icon_library` only if a required installed library is not already enabled.
 
 The theme did not exist when this run started, so any earlier "no project theme"
 result is now stale. Call `get_theme` once after the CSS entry lands, then style the

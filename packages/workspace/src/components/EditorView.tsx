@@ -26,19 +26,27 @@ const ICON_LIBRARY_DISPLAY_NAMES = {
 };
 const iconLibraryCache = new Map();
 
+function isUsableIconExport(name, value) {
+  return (typeof value === "function" || (typeof value === "object" && value !== null && "$$typeof" in value)) &&
+    /^[A-Z][a-zA-Z0-9]*$/.test(name) && name !== "default";
+}
+
 function displayNameForIconLibrary(library) {
   return ICON_LIBRARY_DISPLAY_NAMES[library] ||
     (library.split("/").pop() || library).replace(/[-_]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-async function loadInstalledIconLibrary(projectId, library) {
-  if (iconLibraryCache.has(`${projectId}:${library}`)) return iconLibraryCache.get(`${projectId}:${library}`);
+async function loadInstalledIconLibrary(projectId, library, revision) {
+  const cacheKey = `${projectId}:${library}:${revision || "current"}`;
+  if (iconLibraryCache.has(cacheKey)) return iconLibraryCache.get(cacheKey);
   if (!isLoadableIconLibrary(library)) return undefined;
   const result = await window.api.invoke("bingo:load-module", { root: projectId, specifier: library });
   if (!result?.success || !result.url) throw new Error(result?.error || `Could not load ${library}`);
   const module = await executeCompiledModule(result.url);
-  iconLibraryCache.set(`${projectId}:${library}`, module);
-  return module;
+  const icons = Object.fromEntries(Object.entries(module).filter(([name, value]) => isUsableIconExport(name, value)));
+  if (Object.keys(icons).length === 0) throw new Error(`${library} does not export named React icon components`);
+  iconLibraryCache.set(cacheKey, icons);
+  return icons;
 }
 
 function projectAssetUrl(projectId, assetPath) {
@@ -91,6 +99,7 @@ function EditorView({
   const [cssError, setCssError] = React.useState(null);
   const loadStartedAt = React.useRef(Date.now());
   const [iconLibraries, setIconLibraries] = React.useState({});
+  const [iconLoadErrors, setIconLoadErrors] = React.useState([]);
   const [projectFonts, setProjectFonts] = React.useState(undefined);
   const [settingsNonce, setSettingsNonce] = React.useState(0);
   const [backendChangedFile, setBackendChangedFile] = React.useState(null);
@@ -100,6 +109,9 @@ function EditorView({
   useProjectBuilderSession(projectId, projectAccessToken);
   const onSourceFilesUpdated = React.useCallback((paths) => {
     for (const filePath of paths) if (/\.(tsx?|jsx?)$/.test(filePath)) fileChangedRef.current?.(filePath);
+    if (paths.some(filePath => /(?:^|\/)(?:package\.json|[^/]+\.(?:tsx?|jsx?))$/.test(filePath))) {
+      setSettingsNonce(value => value + 1);
+    }
   }, []);
   const componentsState = useComponents(projectId, { onSourceFilesUpdated });
   const {
@@ -182,16 +194,21 @@ function EditorView({
     window.api.invoke("bingo:store", { op: "read-settings", root: projectId }).then(async (settings) => {
       if (cancelled || !settings) return;
       const loadedLibraries = {};
-      for (const library of settings.iconLibraries || []) {
+      const loadErrors = [];
+      const libraries = settings.effectiveIconLibraries || settings.iconLibraries || [];
+      const discoveryRevision = `${settings._iconDiscovery?.revision || "settings"}:${loadAttempt}`;
+      for (const library of libraries) {
         try {
-          const icons = await loadInstalledIconLibrary(projectId, library);
+          const icons = await loadInstalledIconLibrary(projectId, library, discoveryRevision);
           if (icons) loadedLibraries[library] = { icons, displayName: displayNameForIconLibrary(library) };
         } catch (cause) {
           console.warn(`[EditorView] Installed icon package unavailable: ${library}`, cause);
+          loadErrors.push(`${library}: ${cause?.message || cause}`);
         }
       }
       if (cancelled) return;
       setIconLibraries(loadedLibraries);
+      setIconLoadErrors(loadErrors);
       cleanupFonts();
       const fonts = settings.fonts;
       if (fonts && ((fonts.google?.length || 0) > 0 || (fonts.local?.length || 0) > 0)) {
@@ -202,7 +219,7 @@ function EditorView({
       }
     }).catch((cause) => console.warn("[EditorView] Failed to load local settings:", cause));
     return () => { cancelled = true; };
-  }, [initialized, projectId, settingsNonce, settingsRevision]);
+  }, [initialized, loadAttempt, projectId, settingsNonce, settingsRevision]);
 
   React.useEffect(() => () => {
     cleanupProjectStylesheet(projectId);
@@ -322,12 +339,15 @@ function EditorView({
       skillOverrides={skillOverrides}
       onUpdateSkillOverrides={(overrides) => updateSkillOverrides.mutate(overrides)}
       onFeedback={setFeedbackDraft}
-      canvasAlert={cssError || environment.visible ? <div
+      canvasAlert={cssError || iconLoadErrors.length > 0 || environment.visible ? <div
         style={{ top: 12, left: 12, right: 12, maxHeight: "60%" }}
         className="absolute z-30 flex flex-col gap-2 overflow-auto"
       >
         {dependencyPrompt}
         {cssError && <ProjectStylesAlert error={cssError} inline />}
+        {iconLoadErrors.length > 0 && <div className="rounded-md border border-amber-500/30 bg-ed-background px-3 py-2 text-xs text-ed-foreground">
+          Some project icon libraries could not be loaded: {iconLoadErrors.join(" · ")}
+        </div>}
       </div> : undefined}
     />
     {feedbackDraft !== null && <FeedbackDialog

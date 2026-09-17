@@ -11,7 +11,7 @@ import { getLocalAgents } from "./aiConfig";
 import { AGENT_INFO, runAgent } from "./agentRuntime";
 import { BINGO_MCP_TOOL_PREFIX, bingoToolName } from "./brand";
 import { claudeInvocation, findClaudeBinary, getShellEnv$1, isWindows, resolvedClaudeBinary, sanitizeShellOutput, userHome } from "./claudeBinary";
-import { PERMISSION_PROMPT_TOOL, TOOLS_WITHOUT_BOUND_PROJECT, abandonClaimsForChatTab, cancelApprovalsForChat, checkMcpHealth, clearChatCancelled, enqueueCanvasDrawPreview, ensureMcpServerReady, getMcpChatUrl, getProjectThemeSummary, markChatCancelled, mcpEvents, registerMcpChatSession, seedCoveringReadsFromAttachedElements, setProjectComponentIndex } from "./mcpServer";
+import { PERMISSION_PROMPT_TOOL, TOOLS_WITHOUT_BOUND_PROJECT, abandonClaimsForChatTab, cancelApprovalsForChat, checkMcpHealth, clearChatCancelled, enqueueCanvasDrawPreview, ensureMcpServerReady, getMcpChatUrl, getProjectThemeSummary, markChatCancelled, mcpEvents, prepareInAppDesignSkill, registerMcpChatSession, seedCoveringReadsFromAttachedElements, setProjectComponentIndex } from "./mcpServer";
 import { ToolInputStream } from "./toolInputStream";
 import { buildCLIPrompt, buildChatSystemPrompt, ensureV2, extractPartialCanvasDrawArgs, extractPartialFileWriteArgs, isCanvasDrawToolName, isFileWriteToolName, resolveClaudeEffort, storeToLegacyNested, toClaudeEffortEnvValue } from "@bingo/compiler";
 import * as child_process from "child_process";
@@ -253,7 +253,7 @@ Use absolute paths within the accessible folders for local file tools. Work acro
 Choosing a folder for file operations does not change which MCP connections or skills are loaded. Use only available tools and request a missing connection when it is needed.
 
 ## Design skill (MANDATORY)
-Before ANY canvas_add, canvas_update, canvas_edit, or canvas_insert, call read_skill with name "bingo-design" and follow it. Those tools will error until you do. Prefer canvas_edit/canvas_insert for surgical changes. Do this first — do not skip.`;
+The Bingo host includes the complete bingo-design skill below for every in-app run. Follow it before any canvas mutation, including canvas_create_import_scaffold. External MCP clients must call read_skill with name "bingo-design" in their own session.`;
 async function runClaudeCLI(prompt, mcpConfigPath, sessionId, emit, cliModel, images, claudeSessionId, resumeSessionId, runtime, projectId, chatTabId) {
   const [claudeBin, shellEnv] = await Promise.all([findClaudeBinary(), getShellEnv$1()]);
   return new Promise((resolve, reject) => {
@@ -611,9 +611,16 @@ async function handleChat(opts) {
       });
     }
   }
-  const unregisterMcpChat = registerMcpChatSession(projectId, chatTabId);
+  const unregisterMcpChat = registerMcpChatSession(projectId, chatTabId, sessionId);
+  let designSkillInstructions;
+  try {
+    designSkillInstructions = await prepareInAppDesignSkill(projectId, chatTabId, sessionId);
+  } catch (error) {
+    unregisterMcpChat();
+    throw error;
+  }
   if (options.attachedElements?.length) seedCoveringReadsFromAttachedElements(projectId, chatTabId, options.attachedElements);
-  const mcpUrl = getMcpChatUrl(projectId, chatTabId);
+  const mcpUrl = getMcpChatUrl(projectId, chatTabId, sessionId);
   const mcpConfig = {
     mcpServers: {
       "bingo": {
@@ -751,7 +758,7 @@ Never grep repeatedly to reconstruct a file — just read it.
       permissionMode: options.autoApprove === false ? "default" : "auto",
       effort: selectedAgent === "claude" && options.effort ? resolveClaudeEffort(model ?? "", options.effort) : undefined,
       ...resolveCliDirs(localPaths, sandboxDir),
-      systemPromptAppend: SYSTEM_PROMPT_APPEND
+      systemPromptAppend: `${SYSTEM_PROMPT_APPEND}\n\n${designSkillInstructions}`
     };
     if (runtime.effort === "ultracode") runtime.systemPromptAppend += "\n\nUltracode is enabled. Use the Workflow tool for substantive tasks, supplying the orchestration script inline. Workflow agents must use Bingo MCP tools for canvas and file operations and follow the same folder and canvas-claim rules. Monitor the workflow and report its completed result.";
     let prompt = buildCLIPrompt(systemPrompt + themeSummary + mcpNote, messages);

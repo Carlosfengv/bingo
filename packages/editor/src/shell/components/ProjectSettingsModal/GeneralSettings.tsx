@@ -1,4 +1,5 @@
 import { SettingRow } from "./SettingRow";
+import { ConfigurationStorageSettings } from "./ConfigurationStorageSettings";
 import { useTranslation } from "@bingo/i18n";
 import { Button, DatabaseIcon, Input, Text$4, TextTIcon } from "@bingo/ui";
 import * as React from "react";
@@ -15,7 +16,7 @@ function formatProjectBytes(bytes) {
   return mb >= 10 ? `${Math.round(mb)} MB` : `${mb.toFixed(1)} MB`;
 }
 
-function GeneralSettings({ projectName, onRenameProject, canRename = false, projectSize }) {
+function GeneralSettings({ projectId, projectName, onRenameProject, canRename = false, projectSize, isElectron = false }) {
   const { t } = useTranslation("editor");
   const [name, setName] = React.useState(projectName);
   const [saving, setSaving] = React.useState(false);
@@ -60,6 +61,7 @@ function GeneralSettings({ projectName, onRenameProject, canRename = false, proj
         </div>
       </SettingRow>
       {projectSize ? <ProjectSizeRow size={projectSize} /> : null}
+      {isElectron && projectId ? <ConfigurationStorageSettings projectId={projectId} /> : null}
     </div>
   </>;
 }

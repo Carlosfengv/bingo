@@ -51,7 +51,10 @@ function ConfigurationStorageSettings({ projectId }) {
         root: projectId,
         mode,
         gitPreference,
-        initialPatch: { iconLibraries: configuration?.settings?.iconLibraries ?? [] }
+        initialPatch: {
+          iconLibraries: configuration?.settings?.iconLibraries ?? [],
+          iconLibraryPolicy: configuration?.settings?.iconLibraryPolicy ?? { mode: "auto", disabledLibraries: [] }
+        }
       });
       await window.api.invoke("bingo:configuration-apply", {
         root: projectId,

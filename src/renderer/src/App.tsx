@@ -138,6 +138,7 @@ function ProjectEditor({ projectId, onBack }) {
     <ProjectSettingsModal
       open={settingsOpen}
       onOpenChange={setSettingsOpen}
+      projectId={projectId}
       projectName={project?.name ?? ""}
       onRenameProject={(name) => updateProject.mutateAsync({ projectId, name })}
       canRename={true}
@@ -145,8 +146,11 @@ function ProjectEditor({ projectId, onBack }) {
       onAddAllowedPath={addAllowedPath}
       onRemoveAllowedPath={removeAllowedPath}
       iconLibraries={iconSettings.iconLibraries}
+      automaticIconLibraries={iconSettings.automaticIconLibraries}
+      iconLibraryPolicy={iconSettings.iconLibraryPolicy}
       onAddIconPackage={iconSettings.addIconPackage}
       onRemoveIconPackage={iconSettings.removeIconPackage}
+      onSetIconLibraryMode={iconSettings.setIconLibraryMode}
       onAskAIForIconSetup={iconSettings.askAIForIconSetup}
       isElectron={true}
       initialSection={settingsSection}

@@ -15,6 +15,7 @@ const CATEGORIES = [
 function ProjectSettingsModal({
   open,
   onOpenChange,
+  projectId,
   projectName = "",
   onRenameProject,
   canRename = false,
@@ -23,8 +24,11 @@ function ProjectSettingsModal({
   onRemoveAllowedPath,
   isElectron = false,
   iconLibraries = [],
+  automaticIconLibraries = [],
+  iconLibraryPolicy = { mode: "auto", disabledLibraries: [] },
   onAddIconPackage,
   onRemoveIconPackage,
+  onSetIconLibraryMode,
   onAskAIForIconSetup,
   initialSection = "general",
   projectSize,
@@ -56,9 +60,9 @@ function ProjectSettingsModal({
       </aside>
       <ScrollArea className="flex-1 bg-ed-muted/30">
         <div className="flex flex-col gap-7 px-10 py-8">
-          {active === "general" ? <GeneralSettings projectName={projectName} onRenameProject={onRenameProject} canRename={canRename} projectSize={projectSize} /> : null}
+          {active === "general" ? <GeneralSettings projectId={projectId} projectName={projectName} onRenameProject={onRenameProject} canRename={canRename} projectSize={projectSize} isElectron={isElectron} /> : null}
           {active === "ai" ? <AIChatSettings allowedPaths={allowedPaths} onAddAllowedPath={onAddAllowedPath} onRemoveAllowedPath={onRemoveAllowedPath} isElectron={isElectron} /> : null}
-          {active === "icons" ? <IconsSettings iconLibraries={iconLibraries} onAddIconPackage={onAddIconPackage} onRemoveIconPackage={onRemoveIconPackage} onAskAIForIconSetup={onAskAIForIconSetup} /> : null}
+          {active === "icons" ? <IconsSettings iconLibraries={iconLibraries} automaticIconLibraries={automaticIconLibraries} iconLibraryPolicy={iconLibraryPolicy} onAddIconPackage={onAddIconPackage} onRemoveIconPackage={onRemoveIconPackage} onSetIconLibraryMode={onSetIconLibraryMode} onAskAIForIconSetup={onAskAIForIconSetup} onConfigurationRequired={() => setActive("general")} /> : null}
         </div>
       </ScrollArea>
     </DialogContent>

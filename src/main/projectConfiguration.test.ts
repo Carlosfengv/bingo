@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  addProjectIconLibraries,
   applyProjectConfiguration,
   inspectProjectConfiguration,
   prepareProjectConfiguration,
@@ -43,6 +44,7 @@ test("inspection is read-only and starts with an unselected local default", asyn
     assert.equal(result.mode, "unselected");
     assert.equal(result.initializationRequired, true);
     assert.deepEqual(result.settings.iconLibraries, []);
+    assert.deepEqual(result.settings.iconLibraryPolicy, { mode: "auto", disabledLibraries: [] });
     assert.deepEqual(await fs.readdir(project), []);
     await assert.rejects(fs.stat(userData), { code: "ENOENT" });
   });
@@ -60,8 +62,9 @@ test("creates project configuration without changing gitignore when sharing is s
     assert.equal(applied.mode, "project");
     assert.deepEqual(applied.settings.iconLibraries, ["lucide-react"]);
     assert.deepEqual(JSON.parse(await fs.readFile(path.join(project, ".bingo/config.json"), "utf8")), {
-      schemaVersion: 1,
+      schemaVersion: 2,
       iconLibraries: ["lucide-react"],
+      iconLibraryPolicy: { mode: "auto", disabledLibraries: [] },
     });
     await assert.rejects(fs.stat(path.join(project, ".gitignore")), { code: "ENOENT" });
   });
@@ -138,7 +141,10 @@ test("discovers a checked-in configuration without writing a policy", async () =
     const effective = readEffectiveConfiguration(project, userData);
     assert.equal(effective.mode, "project");
     assert.equal(effective.source, "discovered");
-    assert.deepEqual(effective.settings, { iconLibraries: ["lucide-react"] });
+    assert.deepEqual(effective.settings, {
+      iconLibraries: ["lucide-react"],
+      iconLibraryPolicy: { mode: "manual", disabledLibraries: [] },
+    });
     await writeProjectConfiguration(project, userData, { iconLibraries: ["react-icons/fa"] }, effective.revision);
     const written = JSON.parse(await fs.readFile(path.join(project, ".bingo/config.json"), "utf8"));
     assert.deepEqual(written.futureField, { keep: true });
@@ -151,8 +157,47 @@ test("refuses to overwrite invalid or unsupported project configuration", async 
     await fs.mkdir(path.join(project, ".bingo"));
     await fs.writeFile(path.join(project, ".bingo/config.json"), "{ broken");
     assert.throws(() => readEffectiveConfiguration(project, userData), (error) => error?.code === "CONFIG_INVALID");
-    await fs.writeFile(path.join(project, ".bingo/config.json"), JSON.stringify({ schemaVersion: 2, iconLibraries: [] }));
+    await fs.writeFile(path.join(project, ".bingo/config.json"), JSON.stringify({ schemaVersion: 99, iconLibraries: [] }));
     assert.throws(() => readEffectiveConfiguration(project, userData), (error) => error?.code === "CONFIG_VERSION_UNSUPPORTED");
+  });
+});
+
+test("preserves an explicit empty v1 icon selection as manual mode and migrates on write", async () => {
+  await withFixture(async ({ project, userData }) => {
+    await fs.mkdir(path.join(project, ".bingo"));
+    const configFile = path.join(project, ".bingo/config.json");
+    await fs.writeFile(configFile, JSON.stringify({ schemaVersion: 1, iconLibraries: [] }));
+    const effective = readEffectiveConfiguration(project, userData);
+    assert.deepEqual(effective.settings.iconLibraryPolicy, { mode: "manual", disabledLibraries: [] });
+    await writeProjectConfiguration(project, userData, { iconLibraries: ["lucide-react"] }, effective.revision);
+    const migrated = JSON.parse(await fs.readFile(configFile, "utf8"));
+    assert.equal(migrated.schemaVersion, 2);
+    assert.deepEqual(migrated.iconLibraryPolicy, { mode: "manual", disabledLibraries: [] });
+  });
+});
+
+test("semantic icon additions merge concurrently and re-enable an auto-discovered library", async () => {
+  await withFixture(async ({ project, userData }) => {
+    const prepared = await prepareProjectConfiguration(project, userData, {
+      mode: "project",
+      gitPreference: "unchanged",
+      initialPatch: {
+        iconLibraries: [],
+        iconLibraryPolicy: { mode: "auto", disabledLibraries: ["lucide-react"] },
+      },
+    });
+    await applyProjectConfiguration(project, userData, { planId: prepared.planId, operationId: "icons-init" });
+    const configFile = path.join(project, ".bingo/config.json");
+    const config = JSON.parse(await fs.readFile(configFile, "utf8"));
+    await fs.writeFile(configFile, JSON.stringify({ ...config, futureSetting: { keep: true } }));
+    await Promise.all([
+      addProjectIconLibraries(project, userData, ["lucide-react"]),
+      addProjectIconLibraries(project, userData, ["react-icons/fa"]),
+    ]);
+    const settings = readEffectiveConfiguration(project, userData).settings;
+    assert.deepEqual(settings.iconLibraries.sort(), ["lucide-react", "react-icons/fa"]);
+    assert.deepEqual(settings.iconLibraryPolicy, { mode: "auto", disabledLibraries: [] });
+    assert.deepEqual(JSON.parse(await fs.readFile(configFile, "utf8")).futureSetting, { keep: true });
   });
 });
 

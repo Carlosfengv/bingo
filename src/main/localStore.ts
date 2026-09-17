@@ -27,6 +27,7 @@ import { ChatStore } from "./chatStore";
 import { ProjectMemoryStore } from "./projectMemory";
 import { createIncident, recordDiagnosticEvent } from "./diagnosticsStore";
 import {
+  addProjectIconLibraries,
   applyProjectConfiguration,
   inspectProjectConfiguration,
   prepareProjectConfiguration,
@@ -48,6 +49,7 @@ import { tNative } from "./localization";
 import { watchPortableDesign } from "./projectDesignWatcher";
 import { deleteProjectDesignData, ensureProjectDesignData, legacyProjectDataPath, projectDesignDataPath } from "./projectDesignData";
 import { ensureProjectDesignIgnored } from "./projectGitIgnore";
+import { discoverProjectIconLibraries } from "./projectIconDiscovery";
 import { discoverProjectCandidates } from "./projectDiscovery";
 import { getProjectAccessContext, getProjectAllowedPaths, setProjectAccessMode, setProjectAllowedPaths } from "./projectAccess";
 import { inspectProjectEnvironment, prepareProjectEnvironment } from "./projectEnvironment";
@@ -808,8 +810,11 @@ async function readSettings(root) {
   root = assertRegisteredProjectRoot(root);
   ensureConfigurationWatcher(root);
   const effective = readEffectiveConfiguration(root, app.getPath("userData"));
+  const iconDiscovery = discoverProjectIconLibraries(root, effective.settings);
   return {
     ...effective.settings,
+    effectiveIconLibraries: iconDiscovery.enabled,
+    _iconDiscovery: iconDiscovery,
     _configuration: {
       mode: effective.mode,
       source: effective.source,
@@ -827,6 +832,14 @@ async function writeSettings(root, patch, expectedRevision) {
   const keys = Object.keys(patch || {});
   if (keys.length === 1) broadcastSettingsChanged(canonicalPath(root), "configuration", keys[0]);
   else broadcastSettingsChanged(canonicalPath(root));
+  return settings;
+}
+
+async function addIconLibraries(root, libraries) {
+  root = assertRegisteredProjectRoot(root);
+  assertProjectWriteAllowed(root);
+  const settings = await addProjectIconLibraries(root, app.getPath("userData"), libraries);
+  broadcastSettingsChanged(canonicalPath(root), "configuration", "iconLibraries");
   return settings;
 }
 
@@ -1008,6 +1021,7 @@ const OPS = {
   "upload-asset": (root, args, a) => saveAsset(root, a),
   "read-settings": (root) => readSettings(root),
   "write-settings": (root, args, a) => writeSettings(root, a.patch || {}, a.expectedRevision),
+  "add-icon-libraries": (root, args, a) => addIconLibraries(root, a.libraries || []),
   "read-prototype-theme-preference": (root) => {
     root = assertRegisteredProjectRoot(root);
     return readPrototypeThemePreference(root, app.getPath("userData"));
@@ -1448,6 +1462,7 @@ export {
   projectEntry,
   readSettings as readProjectSettings,
   writeSettings as writeProjectSettings,
+  addIconLibraries as addProjectIconLibrarySettings,
   listCanvases as listProjectCanvases,
   chatStoreForRoot,
   projectMemoryStoreForRoot,

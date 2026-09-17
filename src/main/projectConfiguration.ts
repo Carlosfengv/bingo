@@ -86,6 +86,22 @@ function normalizeIconLibraries(value, { legacy = false } = {}) {
   return output;
 }
 
+function normalizeIconLibraryPolicy(value, { defaultMode = "auto" } = {}) {
+  if (value == null) return { mode: defaultMode, disabledLibraries: [] };
+  if (!value || typeof value !== "object" || Array.isArray(value) || !["auto", "manual"].includes(value.mode)) {
+    throw new ProjectConfigurationError("CONFIG_INVALID", "iconLibraryPolicy.mode must be auto or manual.", {
+      field: "iconLibraryPolicy",
+    });
+  }
+  const disabledLibraries = normalizeIconLibraries(value.disabledLibraries, { legacy: true });
+  if (value.mode === "manual" && disabledLibraries.length > 0) {
+    throw new ProjectConfigurationError("CONFIG_INVALID", "Manual icon library mode cannot contain disabled libraries.", {
+      field: "iconLibraryPolicy.disabledLibraries",
+    });
+  }
+  return { mode: value.mode, disabledLibraries };
+}
+
 function normalizePrototypeTheme(value) {
   if (value == null) return undefined;
   try {
@@ -109,7 +125,7 @@ function parseProjectConfigText(text, file) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new ProjectConfigurationError("CONFIG_INVALID", "Project configuration must be a JSON object.", { path: file });
   }
-  if (value.schemaVersion !== CONFIG_SCHEMA_VERSION) {
+  if (value.schemaVersion !== 1 && value.schemaVersion !== CONFIG_SCHEMA_VERSION) {
     throw new ProjectConfigurationError(
       "CONFIG_VERSION_UNSUPPORTED",
       `Unsupported project configuration version: ${String(value.schemaVersion)}`,
@@ -117,9 +133,13 @@ function parseProjectConfigText(text, file) {
     );
   }
   const prototypeTheme = normalizePrototypeTheme(value.prototypeTheme);
+  const iconLibraryPolicy = normalizeIconLibraryPolicy(value.iconLibraryPolicy, {
+    defaultMode: value.schemaVersion === 1 ? "manual" : "auto",
+  });
   return {
     ...value,
     iconLibraries: normalizeIconLibraries(value.iconLibraries),
+    iconLibraryPolicy,
     ...(prototypeTheme ? { prototypeTheme } : {})
   };
 }
@@ -128,20 +148,30 @@ function settingsFromProjectConfig(value) {
   const prototypeTheme = normalizePrototypeTheme(value.prototypeTheme);
   return {
     iconLibraries: normalizeIconLibraries(value.iconLibraries),
+    iconLibraryPolicy: normalizeIconLibraryPolicy(value.iconLibraryPolicy, {
+      defaultMode: value.schemaVersion === 1 ? "manual" : "auto",
+    }),
     ...(prototypeTheme ? { prototypeTheme } : {})
   };
 }
 
 function readLegacySettings(file) {
   const source = readText(file);
-  if (!source.exists) return { value: { iconLibraries: [] }, revision: "missing", exists: false };
+  if (!source.exists) return {
+    value: { iconLibraries: [], iconLibraryPolicy: { mode: "auto", disabledLibraries: [] } },
+    revision: "missing",
+    exists: false
+  };
   try {
     const parsed = JSON.parse(source.text);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("settings must be an object");
     const iconLibraries = normalizeIconLibraries(parsed.iconLibraries, { legacy: true });
+    const iconLibraryPolicy = normalizeIconLibraryPolicy(parsed.iconLibraryPolicy, {
+      defaultMode: Object.prototype.hasOwnProperty.call(parsed, "iconLibraries") ? "manual" : "auto",
+    });
     const prototypeTheme = normalizePrototypeTheme(parsed.prototypeTheme);
     return {
-      value: { ...parsed, iconLibraries, ...(prototypeTheme ? { prototypeTheme } : {}) },
+      value: { ...parsed, iconLibraries, iconLibraryPolicy, ...(prototypeTheme ? { prototypeTheme } : {}) },
       revision: revisionOfText(source.text),
       exists: true
     };
@@ -272,6 +302,7 @@ function serializeProjectConfig(settings, existing = {}) {
     ...existing,
     schemaVersion: CONFIG_SCHEMA_VERSION,
     iconLibraries: normalizeIconLibraries(settings.iconLibraries, { legacy: true }),
+    iconLibraryPolicy: normalizeIconLibraryPolicy(settings.iconLibraryPolicy),
   };
   if (prototypeTheme) result.prototypeTheme = prototypeTheme;
   else delete result.prototypeTheme;
@@ -279,7 +310,7 @@ function serializeProjectConfig(settings, existing = {}) {
 }
 
 function mergeSettings(current, patch) {
-  const unsupported = Object.keys(patch || {}).filter((key) => key !== "iconLibraries" && key !== "prototypeTheme");
+  const unsupported = Object.keys(patch || {}).filter((key) => key !== "iconLibraries" && key !== "iconLibraryPolicy" && key !== "prototypeTheme");
   if (unsupported.length) {
     throw new ProjectConfigurationError("CONFIG_INVALID", `Unsupported project setting: ${unsupported.join(", ")}`, {
       fields: unsupported,
@@ -289,6 +320,9 @@ function mergeSettings(current, patch) {
     ...current,
     ...(Object.prototype.hasOwnProperty.call(patch || {}, "iconLibraries")
       ? { iconLibraries: normalizeIconLibraries(patch.iconLibraries, { legacy: true }) }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(patch || {}, "iconLibraryPolicy")
+      ? { iconLibraryPolicy: normalizeIconLibraryPolicy(patch.iconLibraryPolicy) }
       : {}),
     ...(Object.prototype.hasOwnProperty.call(patch || {}, "prototypeTheme")
       ? { prototypeTheme: normalizePrototypeTheme(patch.prototypeTheme) }
@@ -478,9 +512,12 @@ async function applyProjectConfiguration(root, userDataRoot, { planId, operation
         writeResult = atomicWriteJson(pathInfo.projectConfig, serializeProjectConfig(plan.settings, existing), pathInfo.projectRoot, 0o644);
       } else {
         const local = readLegacySettings(pathInfo.appSettings).value;
+        const prototypeTheme = normalizePrototypeTheme(plan.settings.prototypeTheme);
         writeResult = atomicWriteJson(pathInfo.appSettings, {
           ...local,
           iconLibraries: normalizeIconLibraries(plan.settings.iconLibraries, { legacy: true }),
+          iconLibraryPolicy: normalizeIconLibraryPolicy(plan.settings.iconLibraryPolicy),
+          ...(prototypeTheme ? { prototypeTheme } : {}),
         }, pathInfo.appDataDir);
       }
       transaction.phase = "config-written";
@@ -553,7 +590,11 @@ async function writeProjectConfiguration(root, userDataRoot, patch, expectedRevi
         const existing = readProjectConfig(effective.paths.projectConfig).value || {};
         atomicWriteJson(effective.paths.projectConfig, serializeProjectConfig(settings, existing), effective.paths.projectRoot, 0o644);
       } else {
-        atomicWriteJson(effective.paths.appSettings, settings, effective.paths.appDataDir);
+        atomicWriteJson(effective.paths.appSettings, {
+          ...settings,
+          iconLibraries: normalizeIconLibraries(settings.iconLibraries, { legacy: true }),
+          iconLibraryPolicy: normalizeIconLibraryPolicy(settings.iconLibraryPolicy),
+        }, effective.paths.appDataDir);
       }
     } finally {
       releaseLock?.();
@@ -566,18 +607,33 @@ async function writeProjectConfiguration(root, userDataRoot, patch, expectedRevi
 
 async function addProjectIconLibraries(root, userDataRoot, libraries) {
   return queueForProject(root, async () => {
-    const effective = readEffectiveConfiguration(root, userDataRoot);
-    if (effective.mode === "unselected") {
+    const initial = readEffectiveConfiguration(root, userDataRoot);
+    if (initial.mode === "unselected") {
       throw new ProjectConfigurationError("CONFIG_INITIALIZATION_REQUIRED", "Choose where to save project configuration first.", {
-        configPath: effective.paths.projectConfig,
+        configPath: initial.paths.projectConfig,
       });
     }
     const additions = normalizeIconLibraries(libraries);
-    const iconLibraries = Array.from(new Set([...normalizeIconLibraries(effective.settings.iconLibraries, { legacy: true }), ...additions]));
-    const settings = { ...effective.settings, iconLibraries };
     let releaseLock = null;
-    if (effective.mode === "project") releaseLock = acquireProjectLock(effective.paths, `icons_${crypto.randomUUID()}`);
+    if (initial.mode === "project") releaseLock = acquireProjectLock(initial.paths, `icons_${crypto.randomUUID()}`);
     try {
+      // Re-read after taking the cross-process lock so concurrent semantic adds
+      // cannot overwrite one another with an older full-list snapshot.
+      const effective = readEffectiveConfiguration(root, userDataRoot);
+      if (effective.mode !== initial.mode) {
+        throw new ProjectConfigurationError("CONFIG_CONFLICT", "The configuration storage mode changed before the icon preference was saved.");
+      }
+      const iconLibraries = Array.from(new Set([...normalizeIconLibraries(effective.settings.iconLibraries, { legacy: true }), ...additions]));
+      const settings = {
+        ...effective.settings,
+        iconLibraries,
+        iconLibraryPolicy: effective.settings.iconLibraryPolicy?.mode === "auto"
+          ? {
+              mode: "auto",
+              disabledLibraries: effective.settings.iconLibraryPolicy.disabledLibraries.filter(library => !additions.includes(library)),
+            }
+          : { mode: "manual", disabledLibraries: [] },
+      };
       if (effective.mode === "project") {
         if (!effective.policy) {
           atomicWriteJson(effective.paths.policy, {
@@ -587,14 +643,15 @@ async function addProjectIconLibraries(root, userDataRoot, libraries) {
             decisionAt: new Date().toISOString(),
           }, effective.paths.appDataDir);
         }
-        atomicWriteJson(effective.paths.projectConfig, serializeProjectConfig(settings, effective.settings), effective.paths.projectRoot, 0o644);
+        const existing = readProjectConfig(effective.paths.projectConfig).value || {};
+        atomicWriteJson(effective.paths.projectConfig, serializeProjectConfig(settings, existing), effective.paths.projectRoot, 0o644);
       } else {
         atomicWriteJson(effective.paths.appSettings, settings, effective.paths.appDataDir);
       }
+      return readEffectiveConfiguration(root, userDataRoot).settings;
     } finally {
       releaseLock?.();
     }
-    return readEffectiveConfiguration(root, userDataRoot).settings;
   }).catch((error) => {
     throw configurationError(error);
   });

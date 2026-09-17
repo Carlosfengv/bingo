@@ -17,6 +17,7 @@ import {
   projectEntry,
   readProjectFile,
   readProjectSettings,
+  addProjectIconLibrarySettings,
   listProjectCanvases,
   writeProjectFile,
   writeProjectBinaryFile,
@@ -155,9 +156,12 @@ async function routeProjects(pathname, init) {
 
   if (tail === "/settings/icon-libraries" && method === "PATCH") {
     const body = readBody(init);
-    const written = await writeProjectSettings(root, {
-      iconLibraries: body.iconLibraries ?? body.libraries ?? [],
-    });
+    const written = Array.isArray(body.additions)
+      ? await addProjectIconLibrarySettings(root, body.additions)
+      : await writeProjectSettings(root, {
+          iconLibraries: body.iconLibraries ?? body.libraries ?? [],
+          ...(body.iconLibraryPolicy ? { iconLibraryPolicy: body.iconLibraryPolicy } : {}),
+        });
     return respond(200, { iconLibraries: written.iconLibraries ?? [] });
   }
 

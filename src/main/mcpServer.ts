@@ -178,15 +178,38 @@ function ensureCanvasResultListener() {
     }
   });
 }
-/** Register a Bingo chat panel session for MCP event routing and canvas lock UI. */
-function registerMcpChatSession(projectId, chatTabId) {
+var activeChatRuns = new Map();
+function chatRunSetKey(projectId, chatTabId) {
+  return `${projectId}:${chatTabId}`;
+}
+function isActiveChatRun(projectId, chatTabId, chatRunId) {
+  return !!chatRunId && activeChatRuns.get(chatRunSetKey(projectId, chatTabId))?.has(chatRunId) === true;
+}
+/** Register one Bingo chat run for MCP event routing and canvas lock UI. */
+function registerMcpChatSession(projectId, chatTabId, chatRunId) {
+  if (!chatRunId) throw new Error("registerMcpChatSession requires a chat run id");
   let sessions = activeChatTabSessions.get(projectId);
   if (!sessions) {
     sessions = new Set();
     activeChatTabSessions.set(projectId, sessions);
   }
   sessions.add(chatTabId);
+  const runKey = chatRunSetKey(projectId, chatTabId);
+  let runs = activeChatRuns.get(runKey);
+  if (!runs) {
+    runs = new Set();
+    activeChatRuns.set(runKey, runs);
+  }
+  runs.add(chatRunId);
+  let registered = true;
   return () => {
+    if (!registered) return;
+    registered = false;
+    runs.delete(chatRunId);
+    clearReaderKeyedState(designSkillRunKey(projectId, chatTabId, chatRunId));
+    if (runs.size > 0) return;
+    if (activeChatRuns.get(runKey) !== runs) return;
+    activeChatRuns.delete(runKey);
     sessions.delete(chatTabId);
     if (sessions.size === 0) activeChatTabSessions.delete(projectId);
     clearReaderKeyedState(designSkillChatKey(projectId, chatTabId));
@@ -394,7 +417,7 @@ function withCanvasOperationSource(args, sessionId) {
 }
 var DESIGN_SKILL_NAME = "bingo-design";
 var DESIGN_SKILL_REQUIRED_TOOLS = new Set(["canvas_add", "canvas_update", "canvas_edit", "canvas_insert", "canvas_create_import_scaffold"]);
-var DESIGN_SKILL_REQUIRED_MSG = `Design skill not loaded. Before canvas_add/canvas_update/canvas_edit/canvas_insert, call read_skill with name "${DESIGN_SKILL_NAME}" and follow it (including the screenshot-critique loop).`;
+var DESIGN_SKILL_REQUIRED_MSG = `Design skill not loaded. Before canvas_add/canvas_update/canvas_edit/canvas_insert/canvas_create_import_scaffold, call read_skill with name "${DESIGN_SKILL_NAME}" and follow it (including the screenshot-critique loop).`;
 /** Keys that have successfully loaded bingo-design this session (MCP session or chat tab). */
 var designSkillLoadedKeys = new Set();
 function designSkillSessionKey(sessionId) {
@@ -403,12 +426,17 @@ function designSkillSessionKey(sessionId) {
 function designSkillChatKey(projectId, chatTabId) {
   return `c:${projectId}:${chatTabId}`;
 }
+function designSkillRunKey(projectId, chatTabId, chatRunId) {
+  return `r:${projectId}:${chatTabId}:${chatRunId}`;
+}
 function markDesignSkillLoaded(opts) {
   if (opts.sessionId) designSkillLoadedKeys.add(designSkillSessionKey(opts.sessionId));
-  if (opts.projectId && opts.chatTabId) designSkillLoadedKeys.add(designSkillChatKey(opts.projectId, opts.chatTabId));
+  if (opts.projectId && opts.chatTabId && opts.chatRunId) designSkillLoadedKeys.add(designSkillRunKey(opts.projectId, opts.chatTabId, opts.chatRunId));
+  else if (opts.projectId && opts.chatTabId) designSkillLoadedKeys.add(designSkillChatKey(opts.projectId, opts.chatTabId));
 }
 function hasDesignSkillLoaded(opts) {
   if (opts.sessionId && designSkillLoadedKeys.has(designSkillSessionKey(opts.sessionId))) return true;
+  if (opts.projectId && opts.chatTabId && opts.chatRunId) return designSkillLoadedKeys.has(designSkillRunKey(opts.projectId, opts.chatTabId, opts.chatRunId));
   if (opts.projectId && opts.chatTabId && designSkillLoadedKeys.has(designSkillChatKey(opts.projectId, opts.chatTabId))) return true;
   if (opts.projectId && !opts.chatTabId) {
     const sole = resolveChatTabId(opts.projectId);
@@ -610,8 +638,12 @@ function extractSkillDescription(skillMd) {
 }
 async function loadAvailableSkills() {
   if (!builtInSkillsPromise) builtInSkillsPromise = (async () => {
-    const skillsRoot = systemSkillsPath({ packaged: electron.app.isPackaged,
-      resourcesPath: process.resourcesPath, appPath: electron.app.getAppPath() });
+    const electronApp = electron.app;
+    const skillsRoot = systemSkillsPath({
+      packaged: !!electronApp?.isPackaged,
+      resourcesPath: process.resourcesPath || process.cwd(),
+      appPath: electronApp?.getAppPath?.() || process.cwd()
+    });
     const loaded = await loadSystemSkills(skillsRoot);
     if (loaded.length === 0) console.error(`[skills] No built-in skills found at ${skillsRoot}`);
     return loaded.map(skill => ({
@@ -625,6 +657,33 @@ async function loadAvailableSkills() {
 /** Built-in skills from disk (no localStorage overrides). Used by the Skills UI. */
 async function getSystemSkills() {
   return loadAvailableSkills();
+}
+/** Inject the effective design skill into one in-app chat run before tools are available. */
+async function prepareInAppDesignSkill(projectId, chatTabId, chatRunId) {
+  if (!isActiveChatRun(projectId, chatTabId, chatRunId)) {
+    const error = new Error("Cannot load the design skill for an inactive chat run");
+    error.code = "DESIGN_SKILL_UNAVAILABLE";
+    throw error;
+  }
+  const skill = applySkillOverrides(await loadAvailableSkills()).find(candidate => candidate.name === DESIGN_SKILL_NAME);
+  if (!skill) {
+    const error = new Error(`Required design skill is unavailable: ${DESIGN_SKILL_NAME}`);
+    error.code = "DESIGN_SKILL_UNAVAILABLE";
+    throw error;
+  }
+  const files = Array.isArray(skill.files) ? skill.files.filter(file => typeof file?.content === "string") : [];
+  const main = files.find(file => file.path === "SKILL.md");
+  if (!main?.content?.trim()) {
+    const error = new Error(`Required design skill has no readable SKILL.md: ${DESIGN_SKILL_NAME}`);
+    error.code = "DESIGN_SKILL_UNAVAILABLE";
+    throw error;
+  }
+  markDesignSkillLoaded({ projectId, chatTabId, chatRunId });
+  return [
+    `## Loaded Bingo skill: ${DESIGN_SKILL_NAME}`,
+    "The Bingo host loaded this skill for the current run. Follow it for every canvas mutation.",
+    ...files.map(file => `\n### ${file.path}\n${file.content}`),
+  ].join("\n");
 }
 /** Sync skill overrides from the renderer (localStorage is source of truth). */
 var skillOverrideApplyGen = 0;
@@ -2599,16 +2658,55 @@ async function handleSearchIcons(projectId, args) {
     query: args.query
   });
 }
-var DEFAULT_ICON_LIBRARIES = ["lucide-react", "@phosphor-icons/react", "@heroicons/react/24/outline"];
+function requestedIconLibraries(args) {
+  const raw = args?.library ?? args?.libraries;
+  return Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
+}
+async function iconLibraryRequestIsNoop(projectId, args) {
+  try {
+    const requested = requestedIconLibraries(args);
+    if (requested.length === 0) return false;
+    const settingsRes = await apiFetch$1(`/projects/${projectId}/settings`);
+    if (!settingsRes.ok) return false;
+    const settings = await settingsRes.json().catch(() => ({}));
+    const enabled = Array.isArray(settings.effectiveIconLibraries) ? settings.effectiveIconLibraries : settings.iconLibraries;
+    return Array.isArray(enabled) && requested.every(library => enabled.includes(library));
+  } catch {
+    return false;
+  }
+}
+async function handleGetIconLibraries(projectId) {
+  const settingsRes = await apiFetch$1(`/projects/${projectId}/settings`);
+  if (!settingsRes.ok) return {
+    isError: true,
+    content: [{ type: "text", text: `Failed to inspect icon libraries: ${settingsRes.status}` }],
+    structuredContent: { code: "ICON_LIBRARY_INSPECTION_FAILED", status: settingsRes.status }
+  };
+  const settings = await settingsRes.json().catch(() => ({}));
+  const result = {
+    effectiveIconLibraries: settings.effectiveIconLibraries ?? settings.iconLibraries ?? [],
+    iconLibraries: settings.iconLibraries ?? [],
+    iconLibraryPolicy: settings.iconLibraryPolicy ?? { mode: "auto", disabledLibraries: [] },
+    discovery: settings._iconDiscovery ?? null,
+    configuration: settings._configuration ?? null,
+  };
+  return {
+    content: [{
+      type: "text",
+      text: JSON.stringify(result, null, 2)
+    }],
+    structuredContent: result
+  };
+}
 async function handleSetIconLibrary(projectId, args) {
-  const raw = args.library ?? args.libraries;
-  const requestedLibs = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
+  const requestedLibs = requestedIconLibraries(args);
   if (requestedLibs.length === 0) return {
     isError: true,
     content: [{
       type: "text",
       text: "library is required. Pass an npm package name or subpath import, e.g. lucide-react or @scope/icons-react."
-    }]
+    }],
+    structuredContent: { code: "ICON_LIBRARY_REQUIRED" }
   };
   const invalid = requestedLibs.filter(l => !isLoadableIconLibrary(l));
   if (invalid.length > 0) return {
@@ -2616,27 +2714,38 @@ async function handleSetIconLibrary(projectId, args) {
     content: [{
       type: "text",
       text: `Invalid icon library package specifier: ${invalid.join(", ")}. Use an npm package name or subpath import.`
-    }]
+    }],
+    structuredContent: { code: "ICON_LIBRARY_INVALID", libraries: invalid }
   };
   const settingsRes = await apiFetch$1(`/projects/${projectId}/settings`);
   const settings = settingsRes.ok ? await settingsRes.json().catch(() => ({})) : {};
+  const effectiveLibs = Array.isArray(settings.effectiveIconLibraries) ? settings.effectiveIconLibraries : settings.iconLibraries;
+  if (Array.isArray(effectiveLibs) && requestedLibs.every(library => effectiveLibs.includes(library))) return {
+    content: [{
+      type: "text",
+      text: `Icon libraries already included in the effective project list: ${requestedLibs.join(", ")}. No configuration was changed.`
+    }],
+    structuredContent: { code: "ICON_LIBRARY_ALREADY_EFFECTIVE", changed: false, libraries: requestedLibs }
+  };
   if (settings?._configuration?.initializationRequired) return {
     isError: true,
     content: [{
       type: "text",
       text: "Project configuration storage has not been chosen. Stop and ask the user to open Project Settings → Configuration Storage and choose where to save it, then continue this import. Do not retry set_icon_library until that choice is saved."
-    }]
+    }],
+    structuredContent: {
+      code: "CONFIG_INITIALIZATION_REQUIRED",
+      recoveryAction: "OPEN_PROJECT_SETTINGS_CONFIGURATION_STORAGE",
+      libraries: requestedLibs
+    }
   };
-  const existingSettingsLibs = Array.isArray(settings.preferredIconLibraries) ? settings.preferredIconLibraries : settings.iconLibraries;
-  const existingLibs = Array.isArray(existingSettingsLibs) ? existingSettingsLibs.filter(lib => typeof lib === "string") : [];
-  const libs = Array.from(new Set([...existingLibs, ...requestedLibs]));
   const res = await apiFetch$1(`/projects/${projectId}/settings/icon-libraries`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      iconLibraries: libs
+      additions: requestedLibs
     })
   });
   if (!res.ok) {
@@ -2646,18 +2755,25 @@ async function handleSetIconLibrary(projectId, args) {
       content: [{
         type: "text",
         text: `Failed to set icon library: ${res.status} ${errText.slice(0, 200)}`
-      }]
+      }],
+      structuredContent: { code: "ICON_LIBRARY_UPDATE_FAILED", status: res.status, libraries: requestedLibs }
     };
   }
   mcpEvents.emit("settings_changed", {
     projectId,
     key: "iconLibraries"
   });
+  const updatedRes = await apiFetch$1(`/projects/${projectId}/settings`);
+  const updated = updatedRes.ok ? await updatedRes.json().catch(() => ({})) : {};
+  const effectiveIconLibraries = Array.isArray(updated.effectiveIconLibraries)
+    ? updated.effectiveIconLibraries
+    : Array.isArray(updated.iconLibraries) ? updated.iconLibraries : requestedLibs;
   return {
     content: [{
       type: "text",
-      text: `Icon libraries enabled: ${libs.join(", ")}. Use <i data-icon="X" data-icon-library="${requestedLibs[0]}" /> in canvas JSX.`
-    }]
+      text: `Icon libraries enabled: ${requestedLibs.join(", ")}. Use <i data-icon="X" data-icon-library="${requestedLibs[0]}" /> in canvas JSX.`
+    }],
+    structuredContent: { code: "ICON_LIBRARY_ENABLED", changed: true, libraries: requestedLibs, effectiveIconLibraries }
   };
 }
 var ASSET_MIME_BY_EXT = {
@@ -3863,7 +3979,7 @@ var TOOLS = [{
   }
 }, {
   name: "canvas_create_import_scaffold",
-  description: "Create the design-system import reference page in one call: a claimed root holding a design-system column (header + colour, typography, spacing, icon and component sections, in that order) beside an empty page-recreation column. Returns the claim_id and every element id as JSON. Use this instead of hand-building the layout with canvas_add — it fixes the column widths and section order so imports stay comparable.",
+  description: "Create the design-system import reference page in one call. REQUIRES read_skill(\"bingo-design\") earlier in this session. It creates a claimed root holding a design-system column (header + colour, typography, spacing, icon and component sections, in that order) beside an empty page-recreation column. Returns the claim_id and every element id as JSON. Use this instead of hand-building the layout with canvas_add.",
   inputSchema: {
     type: "object",
     properties: {
@@ -4097,7 +4213,7 @@ Pass local_path + project_path for one file, or files[] (up to 50) for a batch. 
   }
 }, {
   name: "set_icon_library",
-  description: `Enable an icon library for this project so canvas JSX with <i data-icon="X" data-icon-library="Y" /> renders. This appends to the existing icon libraries; it does not remove libraries the user already enabled. Pass an npm package name or subpath import that exports React icon components as named exports. Bundled defaults are available immediately: ${DEFAULT_ICON_LIBRARIES.join(", ")}. For Heroicons, use a subpath such as '@heroicons/react/24/outline' because '@heroicons/react' does not export icons from its root, and use names like ArrowDownCircleIcon. Other packages are loaded dynamically in the editor. Pass a single library name (most common) or an array.`,
+  description: `Ensure an installed icon library is enabled for this project so canvas JSX with <i data-icon="X" data-icon-library="Y" /> renders. Libraries detected from package.json and source imports are available without saving configuration; calling this tool for one of those libraries is a read-only no-op. A manual preference is saved only when needed. For Heroicons, use a subpath such as '@heroicons/react/24/outline'. Pass a single library name or an array.`,
   inputSchema: {
     type: "object",
     properties: {
@@ -4116,6 +4232,10 @@ Pass local_path + project_path for one file, or files[] (up to 50) for a batch. 
     },
     required: ["library"]
   }
+}, {
+  name: "get_icon_libraries",
+  description: "Inspect icon libraries discovered from this project's npm dependencies and source imports, including the effective enabled list, manual preferences, discovery evidence, and configuration state. This tool is read-only.",
+  inputSchema: { type: "object", properties: {} }
 }, {
   name: "scan_project",
   description: "Run a deterministic pre-pass on a local React codebase to extract a structured project map: stack (framework + Tailwind/styling system), tier routing (tailwind/translated), tokens (CSS vars + color scales), fonts, icon pack, candidate components ranked by import frequency, and provider stack. Returns compact JSON (top components per category truncated, totalCounts retained). Use this BEFORE importing components — one cheap call (~50-300ms even on huge monorepos) replaces minutes of grepping.",
@@ -4158,6 +4278,7 @@ var TOOL_HANDLERS = {
   project_copy_file: handleProjectCopyFile,
   take_screenshot: handleScreenshot,
   search_icons: handleSearchIcons,
+  get_icon_libraries: handleGetIconLibraries,
   set_icon_library: handleSetIconLibrary,
   search_components: handleSearchComponents,
   get_theme: handleGetTheme,
@@ -4247,6 +4368,7 @@ async function handleMcpRequest(sessionId, msg, options) {
   } = msg;
   const legacyProjectId = options?.legacyProjectId;
   const legacyChatTabId = options?.legacyChatTabId;
+  const legacyChatRunId = options?.legacyChatRunId;
   switch (method) {
     case "initialize":
       {
@@ -4433,7 +4555,8 @@ async function handleMcpRequest(sessionId, msg, options) {
             if (!result?.isError && isDesignSkillRead(toolName, toolArgs)) markDesignSkillLoaded({
               sessionId,
               projectId: legacyProjectId,
-              chatTabId: legacyChatTabId ?? (legacyProjectId ? resolveChatTabId(legacyProjectId) : void 0)
+              chatTabId: legacyChatTabId ?? (legacyProjectId ? resolveChatTabId(legacyProjectId) : void 0),
+              chatRunId: legacyChatRunId
             });
           }
           return {
@@ -4521,7 +4644,8 @@ async function handleMcpRequest(sessionId, msg, options) {
           if (!hasDesignSkillLoaded({
             sessionId,
             projectId,
-            chatTabId: legacyChatTabId ?? resolveChatTabId(projectId, claimId) ?? resolveChatTabId(projectId)
+            chatTabId: legacyChatTabId ?? resolveChatTabId(projectId, claimId) ?? resolveChatTabId(projectId),
+            chatRunId: legacyChatRunId
           })) {
             mcpEvents.emit("tool_result", {
               projectId,
@@ -4548,7 +4672,8 @@ async function handleMcpRequest(sessionId, msg, options) {
             };
           }
         }
-        if (DESTRUCTIVE_TOOLS.has(toolName)) {
+        const destructiveCall = DESTRUCTIVE_TOOLS.has(toolName) && !(toolName === "set_icon_library" && await iconLibraryRequestIsNoop(projectId, toolArgs));
+        if (destructiveCall) {
           const decision = !legacyProjectId && externalAutoApproveFileEditsProjects.has(projectId) && EXTERNAL_AUTO_APPROVABLE_TOOLS.has(toolName) ? {
             approved: true
           } : await requestToolApproval(projectId, toolName, toolArgs, {
@@ -4738,6 +4863,7 @@ async function startMcpServer() {
       }
       const legacyProjectId = legacyMatch ? decodeURIComponent(legacyMatch[1]) : void 0;
       const legacyChatTabId = url.searchParams.get("chatTab") || void 0;
+      const legacyChatRunId = url.searchParams.get("chatRun") || void 0;
       const sessionId = readMcpSessionHeader(req);
       if (legacyProjectId && !legacyChatTabId) {
         res.writeHead(400, {
@@ -4749,6 +4875,14 @@ async function startMcpServer() {
             code: -32602,
             message: "In-app MCP requires ?chatTab=<chatTabId> on /mcp/<projectId>"
           }
+        }));
+        return;
+      }
+      if (legacyProjectId && !isActiveChatRun(legacyProjectId, legacyChatTabId, legacyChatRunId)) {
+        res.writeHead(409, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          jsonrpc: "2.0",
+          error: { code: -32010, message: "This in-app chat run is no longer active." }
         }));
         return;
       }
@@ -4786,7 +4920,8 @@ async function startMcpServer() {
         } else if (method !== "notifications/initialized") console.log(`[MCP] ${method}`);
         const result = await handleMcpRequest(legacyProjectId ? void 0 : sessionId, parsed, {
           legacyProjectId,
-          legacyChatTabId
+          legacyChatTabId,
+          legacyChatRunId
         });
         const responseHeaders = {};
         if (result.sessionId && !legacyProjectId) responseHeaders["Mcp-Session-Id"] = result.sessionId;
@@ -4856,10 +4991,10 @@ function stopMcpServer() {
   if (current?.listening) current.close();
 }
 /** MCP URL for in-app AI chat — project id in path (pre-bound, no project_list/pick). */
-function getMcpChatUrl(projectId, chatTabId) {
-  if (!chatTabId) throw new Error("getMcpChatUrl requires chatTabId (?chatTab= is mandatory for in-app MCP)");
+function getMcpChatUrl(projectId, chatTabId, chatRunId) {
+  if (!chatTabId || !chatRunId) throw new Error("getMcpChatUrl requires chatTabId and chatRunId for in-app MCP");
   if (!mcpPort) throw new Error("MCP server is not ready");
-  return `http://127.0.0.1:${mcpPort}/mcp/${encodeURIComponent(projectId)}?chatTab=${encodeURIComponent(chatTabId)}`;
+  return `http://127.0.0.1:${mcpPort}/mcp/${encodeURIComponent(projectId)}?chatTab=${encodeURIComponent(chatTabId)}&chatRun=${encodeURIComponent(chatRunId)}`;
 }
 /** MCP URL for external clients (Cursor, etc.) — use project_list / project_pick to bind. */
 function getMcpUrl() {
@@ -4878,4 +5013,4 @@ async function checkMcpHealth() {
   }
 }
 
-export { PERMISSION_PROMPT_TOOL, TOOLS_WITHOUT_BOUND_PROJECT, abandonClaimsForChatTab, abandonClaimsForProject, cancelAllApprovals, cancelApprovalsForChat, cancelApprovalsForProject, checkMcpHealth, clearChatCancelled, enqueueCanvasDrawPreview, ensureMcpServerReady, getMcpChatUrl, getMcpUrl, getProjectAllowedPaths, getProjectThemeSummary, getSystemSkills, isExistingPathAllowed, markChatCancelled, mcpEvents, orphanCanvasOperationsForWebContents, registerMcpChatSession, requestToolApproval, resolveApproval, resolveFolderAccess, seedCoveringReadsFromAttachedElements, setExternalMcpAutoApproveFileEdits, setProjectAllowedPaths, setProjectComponentIndex, setSkillOverrides, startMcpServer, stopMcpServer };
+export { PERMISSION_PROMPT_TOOL, TOOLS_WITHOUT_BOUND_PROJECT, abandonClaimsForChatTab, abandonClaimsForProject, cancelAllApprovals, cancelApprovalsForChat, cancelApprovalsForProject, checkMcpHealth, clearChatCancelled, enqueueCanvasDrawPreview, ensureMcpServerReady, getMcpChatUrl, getMcpUrl, getProjectAllowedPaths, getProjectThemeSummary, getSystemSkills, isExistingPathAllowed, markChatCancelled, mcpEvents, orphanCanvasOperationsForWebContents, prepareInAppDesignSkill, registerMcpChatSession, requestToolApproval, resolveApproval, resolveFolderAccess, seedCoveringReadsFromAttachedElements, setExternalMcpAutoApproveFileEdits, setProjectAllowedPaths, setProjectComponentIndex, setSkillOverrides, startMcpServer, stopMcpServer };
