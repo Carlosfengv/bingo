@@ -6,6 +6,9 @@
  * this is build output with the build's own rewrites undone -- not the
  * author's original file. See luna/RECOVERY.md.
  */
+
+import { useEditorMode } from "../../shared/contexts/EditorModeContext";
+import { measureCanvasWork } from "../../canvas/lib/canvasPerformance";
 import { useBackendOptional } from "../../backends/BackendContext";
 import { isPlanLimitError } from "../../backends/planLimits";
 import { useAssetResolver } from "../../shared/contexts/AssetContext";
@@ -20,7 +23,8 @@ import { css } from "@codemirror/lang-css";
 import { javascript } from "@codemirror/lang-javascript";
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorView as EditorView$1 } from "@codemirror/view";
-import { ensureV2, generateCompleteFile, getById, storeSubtreeToLegacyNested } from "@bingo/compiler";
+import { generateCompleteFile, getById } from "@bingo/compiler";
+import { useVariables } from "../../shared/theme/VariableContext";
 import { ArrowCounterClockwiseIcon, BookOpenIcon, BracketsCurlyIcon, Button, CheckIcon, ClockIcon, CopyIcon, CursorIcon, FloppyDiskIcon, Kbd, PlusIcon, Tabs, TabsList, TabsTrigger, TerminalIcon, Text$4, Tooltip, TooltipContent, TooltipTrigger, XIcon, useIsDark } from "@bingo/ui";
 import { useTranslation } from "@bingo/i18n";
 import { FileTs as c$10 } from "@phosphor-icons/react/dist/icons/FileTs";
@@ -93,11 +97,6 @@ function pickCssFileToEdit(files, currentPath, keepCurrent) {
   if (userCss) return userCss;
   if (keepCurrent && currentPath) return currentPath;
   return DEFAULT_USER_CSS_PATH;
-}
-function formatSelectedElementStoreJson(store, selectedElementId) {
-  if (!selectedElementId) return "// Select an element to inspect its store value";
-  if (!getById(store, selectedElementId)) return "// Element not found in store";
-  return JSON.stringify(storeSubtreeToLegacyNested(store, selectedElementId), null, 2);
 }
 function BottomBar({
   onSaveSuccess,
@@ -180,15 +179,25 @@ function BottomBar({
   const [cssError, setCssError] = (0, import_react.useState)(null);
   const [copiedKind, setCopiedKind] = (0, import_react.useState)(null);
   const assetResolver = useAssetResolver();
-  const selectedSubtreeStore = selectedElementId && getById(store, selectedElementId) ? ensureV2([storeSubtreeToLegacyNested(store, selectedElementId)]) : null;
-  formatSelectedElementStoreJson(store, selectedElementId);
-  const selectedElementCode = !selectedElementId ? t("bottomBar.selectElement") : !selectedSubtreeStore ? t("bottomBar.elementNotFound") : generateCompleteFile({
-    componentName: "NewComponent",
-    store: selectedSubtreeStore,
-    componentIndex,
-    includeReactImport: false,
-    assetResolver
-  });
+  const variables = useVariables();
+  const { mode } = useEditorMode();
+  const hasSelectedElement = !!selectedElementId && !!getById(store, selectedElementId);
+  const buildSelectedElementCode = import_react.useCallback(() => {
+    if (!selectedElementId) return t("bottomBar.selectElement");
+    if (!hasSelectedElement) return t("bottomBar.elementNotFound");
+    return measureCanvasWork("codegen", () => generateCompleteFile({
+      componentName: "NewComponent",
+      store,
+      rootId: selectedElementId,
+      variableLibrary: variables?.library,
+      variablePageModes: store.variableModes ?? variables?.defaultModes,
+      componentIndex,
+      includeReactImport: false,
+      assetResolver
+    }));
+  }, [selectedElementId, hasSelectedElement, store, componentIndex, assetResolver, t, variables?.library, variables?.defaultModes]);
+  const showSelectionCode = mode === "dev" && activeCodeTab === "selection";
+  const selectedElementCode = import_react.useMemo(() => showSelectionCode ? buildSelectedElementCode() : "", [showSelectionCode, buildSelectedElementCode]);
   const selection = useSelectionJsxEditor({
     selectedElementId,
     selectedElementSnippet: selectedElementCode,
@@ -350,8 +359,9 @@ function BottomBar({
     setCursorLine(1);
   }, [activeOpenFile?.path, activeOpenSkill?.name, activeCodeTab]);
   const copySelection = async () => {
-    if (!selectedSubtreeStore) return;
-    await writeToClipboard(selection.draft);
+    if (!hasSelectedElement) return;
+    // Copy remains available while the code pane is hidden. Preserve a dirty draft.
+    await writeToClipboard(selection.dirty ? selection.draft : showSelectionCode ? selectedElementCode : buildSelectedElementCode());
     flashCopied("selection");
   };
   const copySourceFile = async () => {
@@ -369,7 +379,7 @@ function BottomBar({
   useGlobalShortcut("copySelectionAsJsx", e_1 => {
     e_1.preventDefault();
     copyCode();
-  }, !!activeOpenFile || !!selectedSubtreeStore && true);
+  }, !!activeOpenFile || hasSelectedElement && true);
   const refreshCssFiles = (0, import_react.useCallback)(async () => {
     if (!backend || !enableCssEditor) return;
     const files = await backend.listFiles("", ".css");
@@ -594,7 +604,7 @@ function BottomBar({
                   e_7.stopPropagation();
                   closeTerminalTab(t_3.id);
                 }} className="inline-flex size-2.5 items-center justify-center rounded text-ed-muted-foreground opacity-0 group-hover:opacity-100 group-data-[state=active]:opacity-100 hover:bg-ed-muted hover:text-ed-foreground">{<XIcon className="size-2.5" />}</span>}</TabsTrigger>;
-            })}</TabsList>}</Tabs>}{hasTerminal && <WithTooltip label={t("bottomBar.newTerminal")}>{<Button variant="ghost" size="icon-2xs" LeftIcon={PlusIcon} leftIconSize={12} aria-label={t("bottomBar.newTerminal")} className="text-ed-muted-foreground" onClick={addTerminalTab} />}</WithTooltip>}</div>}{<div className="flex shrink-0 items-center gap-2">{!isTerminalActive && <>{activeCodeTab === "selection" && selectedElementId && onReplaceElement && <>{selection.dirty && <Button variant="ghost" size="xs" onMouseDown={e_8 => e_8.preventDefault()} onClick={selection.reset} disabled={readOnly} LeftIcon={ArrowCounterClockwiseIcon} aria-label={t("bottomBar.resetChanges")}>{t("bottomBar.reset")}</Button>}{<WithTooltip label={t("bottomBar.applyToCanvas")}>{<Button variant="outline" size="xs" onMouseDown={e_9 => e_9.preventDefault()} onClick={selection.apply} disabled={readOnly || !selection.dirty} aria-label={t("bottomBar.applyToCanvas")}>{t("bottomBar.apply")} {<Kbd>⌘S</Kbd>}</Button>}</WithTooltip>}</>}{activeOpenFile && onOpenVersionHistory && <Button variant="ghost" size="xs" onClick={onOpenVersionHistory} LeftIcon={ClockIcon} aria-label={t("bottomBar.versionHistory")}>{t("bottomBar.history")}</Button>}{isCssActive && !readOnly && backend && <>{canCreateSelectedCssFile && <WithTooltip label={t("bottomBar.createCssHelp")}>{<Button variant="secondary" size="xs" onClick={handleCreateCssFile} disabled={isSavingCss} LeftIcon={PlusIcon} aria-label={t("bottomBar.createCss")}>{t("bottomBar.createCss")}</Button>}</WithTooltip>}{<WithTooltip label={t("bottomBar.saveCssHelp")}>{<Button variant="default" size="xs" onClick={handleSaveCssFile} disabled={isSavingCss || !selectedCssFileExists || !cssDirty} loading={isSavingCss} LeftIcon={FloppyDiskIcon} aria-label={t("bottomBar.saveCss")}>{isSavingCss ? t("bottomBar.saving") : t("bottomBar.saveCss")}</Button>}</WithTooltip>}</>}{activeOpenFile && canEditSource && <WithTooltip label={t("bottomBar.saveFileHelp")}>{<Button variant="default" size="xs" onClick={() => void handleSaveOpenFile()} disabled={savingFile || !activeFileDirty} loading={savingFile} LeftIcon={FloppyDiskIcon} aria-label={t("bottomBar.saveFile")}>{savingFile ? t("bottomBar.saving") : t("bottomBar.save")}</Button>}</WithTooltip>}{activeOpenSkill && canEditSkill && <WithTooltip label={t("bottomBar.saveSkillHelp")}>{<Button variant="default" size="xs" onClick={() => void handleSaveOpenSkill()} disabled={savingSkill || !activeSkillDirty} loading={savingSkill} LeftIcon={FloppyDiskIcon} aria-label={t("bottomBar.saveSkill")}>{savingSkill ? t("bottomBar.saving") : t("bottomBar.save")}</Button>}</WithTooltip>}</>}{<WithTooltip label={activeOpenFile ? `${t("bottomBar.copySourceFile")} (${GLOBAL_SHORTCUTS.copySelectionAsJsx.keyLabel})` : `${t("bottomBar.copySelection")} (${GLOBAL_SHORTCUTS.copySelectionAsJsx.keyLabel})`}>{<Button variant="secondary" size="xs" disabled={activeOpenFile ? false : !selectedSubtreeStore} onClick={() => void copyCode()} LeftIcon={copiedKind ? CheckIcon : CopyIcon} aria-label={activeOpenFile ? t("bottomBar.copySourceFile") : t("bottomBar.copySelection")}>{copiedKind ? t("bottomBar.copied") : activeOpenFile ? <>{t("bottomBar.copySourceFile")} {<Kbd>{GLOBAL_SHORTCUTS.copySelectionAsJsx.keyLabel}</Kbd>}</> : <>{t("bottomBar.copyCode")} {<Kbd>{GLOBAL_SHORTCUTS.copySelectionAsJsx.keyLabel}</Kbd>}</>}</Button>}</WithTooltip>}</div>}</div>}{isCssActive ? <div className="flex min-h-[22px] items-center gap-1.5 overflow-x-auto border-b border-ed-border bg-ed-background px-3 py-0.5">{cssFiles.length > 0 && <select value={cssFiles.includes(selectedCssPath) ? selectedCssPath : ""} onChange={e_10 => {
+            })}</TabsList>}</Tabs>}{hasTerminal && <WithTooltip label={t("bottomBar.newTerminal")}>{<Button variant="ghost" size="icon-2xs" LeftIcon={PlusIcon} leftIconSize={12} aria-label={t("bottomBar.newTerminal")} className="text-ed-muted-foreground" onClick={addTerminalTab} />}</WithTooltip>}</div>}{<div className="flex shrink-0 items-center gap-2">{!isTerminalActive && <>{activeCodeTab === "selection" && selectedElementId && onReplaceElement && <>{selection.dirty && <Button variant="ghost" size="xs" onMouseDown={e_8 => e_8.preventDefault()} onClick={selection.reset} disabled={readOnly} LeftIcon={ArrowCounterClockwiseIcon} aria-label={t("bottomBar.resetChanges")}>{t("bottomBar.reset")}</Button>}{<WithTooltip label={t("bottomBar.applyToCanvas")}>{<Button variant="outline" size="xs" onMouseDown={e_9 => e_9.preventDefault()} onClick={selection.apply} disabled={readOnly || !selection.dirty} aria-label={t("bottomBar.applyToCanvas")}>{t("bottomBar.apply")} {<Kbd>⌘S</Kbd>}</Button>}</WithTooltip>}</>}{activeOpenFile && onOpenVersionHistory && <Button variant="ghost" size="xs" onClick={onOpenVersionHistory} LeftIcon={ClockIcon} aria-label={t("bottomBar.versionHistory")}>{t("bottomBar.history")}</Button>}{isCssActive && !readOnly && backend && <>{canCreateSelectedCssFile && <WithTooltip label={t("bottomBar.createCssHelp")}>{<Button variant="secondary" size="xs" onClick={handleCreateCssFile} disabled={isSavingCss} LeftIcon={PlusIcon} aria-label={t("bottomBar.createCss")}>{t("bottomBar.createCss")}</Button>}</WithTooltip>}{<WithTooltip label={t("bottomBar.saveCssHelp")}>{<Button variant="default" size="xs" onClick={handleSaveCssFile} disabled={isSavingCss || !selectedCssFileExists || !cssDirty} loading={isSavingCss} LeftIcon={FloppyDiskIcon} aria-label={t("bottomBar.saveCss")}>{isSavingCss ? t("bottomBar.saving") : t("bottomBar.saveCss")}</Button>}</WithTooltip>}</>}{activeOpenFile && canEditSource && <WithTooltip label={t("bottomBar.saveFileHelp")}>{<Button variant="default" size="xs" onClick={() => void handleSaveOpenFile()} disabled={savingFile || !activeFileDirty} loading={savingFile} LeftIcon={FloppyDiskIcon} aria-label={t("bottomBar.saveFile")}>{savingFile ? t("bottomBar.saving") : t("bottomBar.save")}</Button>}</WithTooltip>}{activeOpenSkill && canEditSkill && <WithTooltip label={t("bottomBar.saveSkillHelp")}>{<Button variant="default" size="xs" onClick={() => void handleSaveOpenSkill()} disabled={savingSkill || !activeSkillDirty} loading={savingSkill} LeftIcon={FloppyDiskIcon} aria-label={t("bottomBar.saveSkill")}>{savingSkill ? t("bottomBar.saving") : t("bottomBar.save")}</Button>}</WithTooltip>}</>}{<WithTooltip label={activeOpenFile ? `${t("bottomBar.copySourceFile")} (${GLOBAL_SHORTCUTS.copySelectionAsJsx.keyLabel})` : `${t("bottomBar.copySelection")} (${GLOBAL_SHORTCUTS.copySelectionAsJsx.keyLabel})`}>{<Button variant="secondary" size="xs" disabled={activeOpenFile ? false : !hasSelectedElement} onClick={() => void copyCode()} LeftIcon={copiedKind ? CheckIcon : CopyIcon} aria-label={activeOpenFile ? t("bottomBar.copySourceFile") : t("bottomBar.copySelection")}>{copiedKind ? t("bottomBar.copied") : activeOpenFile ? <>{t("bottomBar.copySourceFile")} {<Kbd>{GLOBAL_SHORTCUTS.copySelectionAsJsx.keyLabel}</Kbd>}</> : <>{t("bottomBar.copyCode")} {<Kbd>{GLOBAL_SHORTCUTS.copySelectionAsJsx.keyLabel}</Kbd>}</>}</Button>}</WithTooltip>}</div>}</div>}{isCssActive ? <div className="flex min-h-[22px] items-center gap-1.5 overflow-x-auto border-b border-ed-border bg-ed-background px-3 py-0.5">{cssFiles.length > 0 && <select value={cssFiles.includes(selectedCssPath) ? selectedCssPath : ""} onChange={e_10 => {
         setSelectedCssPath(e_10.target.value);
         setCssLoadedPath(null);
         setCssDirty(false);
