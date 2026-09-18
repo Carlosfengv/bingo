@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { designStyleSources } from "./projectDesignStyles";
 
 const SKIP_DIRS = new Set([
   "node_modules", ".git", ".bingo", "dist", "build", "out", ".next", "coverage",
@@ -83,7 +84,7 @@ async function currentInputState(root, workspaceRoot, trackedFiles, trackedDirec
     collectFiles(root, (name) => PROJECT_INPUT_EXTENSIONS.has(path.extname(name))),
     collectFiles(workspaceRoot, (name) => CONFIG_NAMES.has(name) || CONFIG_PATTERN.test(name)),
   ]);
-  const files = [...new Set([...trackedFiles, ...projectInputs, ...workspaceConfigs])].sort();
+  const files = [...new Set([...trackedFiles, ...projectInputs, ...workspaceConfigs, ...designStyleSources(root)])].sort();
   const directories = [...new Set([
     ...trackedDirectories,
     ...projectInputs.map((file) => path.dirname(file)),

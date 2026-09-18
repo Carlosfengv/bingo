@@ -2,8 +2,17 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { createRequire } from "node:module";
 import test from "node:test";
 import { compileProjectStyles } from "./projectStylesCompiler";
+
+const requireTest = createRequire(import.meta.url);
+
+async function installFixtureTailwind(root) {
+  await fs.mkdir(path.join(root, "node_modules/@tailwindcss"), { recursive: true });
+  await fs.symlink(path.resolve(path.dirname(requireTest.resolve("@tailwindcss/postcss")), ".."), path.join(root, "node_modules/@tailwindcss/postcss"), "dir");
+  await fs.symlink(path.dirname(requireTest.resolve("tailwindcss/package.json")), path.join(root, "node_modules/tailwindcss"), "dir");
+}
 
 async function fixture(files, run) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bingo-styles-"));
@@ -54,5 +63,33 @@ test("plain projects retain the remote-resource policy", async () => {
   await fixture({ "index.css": '@import "https://example.com/track.css"; .card { background: url("https://example.com/pixel.png"); }' }, async root => {
     const result = await compileProjectStyles({ root, cssFiles: [path.join(root, "index.css")] });
     assert.doesNotMatch(result.css, /example\.com/);
+  });
+});
+
+test("canvas-only spacing compiles with source(none), including new pages and token edits", async () => {
+  const originalCss = '@import "tailwindcss" source(none); @theme { --spacing: 0.5rem; }';
+  await fixture({
+    "index.css": originalCss,
+    ".gitignore": ".bingo/\n",
+    ".bingo/design/pages/first.json": JSON.stringify({ elements: [{ props: { className: "flex gap-16 p-12" } }] }),
+    ".bingo/design/chats/chat.json": '{"text":"p-99"}',
+    ".bingo/design/canvases/old.versions/1.json": '{"className":"gap-99"}',
+  }, async root => {
+    await installFixtureTailwind(root);
+    const compile = () => compileProjectStyles({ root, cssFiles: [path.join(root, "index.css")] });
+    const first = await compile();
+    assert.match(first.css, /\.gap-16\s*\{/);
+    assert.match(first.css, /\.p-12\s*\{/);
+    assert.match(first.css, /--spacing:\s*0.5rem/);
+    assert.doesNotMatch(first.css, /\.(?:p|gap)-99\s*\{/);
+    assert.ok(first.dependencies.includes(path.join(root, ".bingo/design/pages/first.json")));
+    assert.equal(await fs.readFile(path.join(root, "index.css"), "utf8"), originalCss);
+
+    await fs.writeFile(path.join(root, ".bingo/design/pages/second.json"), '{"className":"gap-23 p-17"}');
+    const second = await compile();
+    assert.match(second.css, /\.gap-23\s*\{/);
+    assert.match(second.css, /\.p-17\s*\{/);
+    await fs.writeFile(path.join(root, "index.css"), originalCss.replace("0.5rem", "0.75rem"));
+    assert.match((await compile()).css, /--spacing:\s*0.75rem/);
   });
 });

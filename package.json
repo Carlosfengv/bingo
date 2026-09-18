@@ -16,7 +16,7 @@
     "dist:mac": "pnpm check && node tools/package-mac.mjs",
     "rebuild:source": "node tools/rebuild.mjs",
     "start": "electron-vite preview",
-    "test": "node --import tsx --test src/main/*.test.ts packages/compiler/src/runtime/*.test.ts packages/compiler/src/recovery/*.test.ts"
+    "test": "node --import tsx --test src/main/*.test.ts packages/compiler/src/runtime/*.test.ts packages/compiler/src/recovery/*.test.ts packages/editor/src/shell/utils/*.test.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "*",
@@ -75,6 +75,7 @@
     "@babel/parser": "^7.29.0",
     "@babel/traverse": "^7.29.0",
     "@babel/types": "^7.29.0",
+    "@tailwindcss/postcss": "^4.3.3",
     "@vitejs/plugin-react": "^5.0.0",
     "electron": "39.5.1",
     "electron-builder": "26.15.3",

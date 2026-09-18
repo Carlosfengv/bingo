@@ -403,3 +403,29 @@ test("an explicit rebuild bypasses a valid cache and runs a complete build", asy
     clearProjectBuildCache();
   }
 });
+
+test("new canvas pages trigger an active stylesheet rebuild without recompiling components", async () => {
+  clearProjectBuildCache();
+  const workspace = await createWorkspace();
+  const root = path.join(workspace, "apps/web");
+  const events = [];
+  const sessionId = "canvas-style-session";
+  const unsubscribe = subscribeLocalBuilderEvents(event => events.push(event));
+  try {
+    await connectLocalBuilder({ root, sessionId });
+    await waitForEvent(events, event => event.sessionId === sessionId && event.type === "components:ready");
+    const changedAt = events.length;
+    const page = path.join(root, ".bingo/design/pages/page.json");
+    await fs.mkdir(path.dirname(page), { recursive: true });
+    await fs.writeFile(page, '{"elements":[{"props":{"className":"gap-16 p-12"}}]}');
+    await waitForEvent(events, event => events.indexOf(event) >= changedAt && event.sessionId === sessionId && event.type === "components:updated");
+    const updates = events.slice(changedAt).filter(event => event.sessionId === sessionId);
+    assert.ok(updates.some(event => event.type === "css:ready" && !event.payload.error));
+    assert.ok(updates.some(event => event.type === "modules:build_progress" && event.payload.incremental === true && event.payload.total === 0), JSON.stringify(updates.filter(event => event.type === "modules:build_progress")));
+  } finally {
+    unsubscribe();
+    await disconnectLocalBuilder({ root, sessionId });
+    await fs.rm(workspace, { recursive: true, force: true });
+    clearProjectBuildCache();
+  }
+});

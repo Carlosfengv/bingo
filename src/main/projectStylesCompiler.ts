@@ -3,6 +3,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { parse } from "@babel/parser";
 import { build } from "esbuild";
+import { designStyleSources } from "./projectDesignStyles";
 
 function importedStyles(sourceFiles) {
   const entries = new Set();
@@ -43,7 +44,8 @@ export async function compileProjectStyles({ root, workspaceRoot = root, sourceF
   const imported = importedStyles(sourceFiles);
   const entries = imported.length ? imported : standaloneStyles(cssFiles);
   if (!entries.length) return { css: "", dependencies: [] };
-  const dependencies = new Set(entries);
+  const designSources = designStyleSources(root);
+  const dependencies = new Set([...entries, ...designSources]);
   const requireProject = createRequire(path.join(root, "package.json"));
   let processTailwind;
   try {
@@ -52,6 +54,9 @@ export async function compileProjectStyles({ root, workspaceRoot = root, sourceF
     const postcss = createRequire(adapterPath)("postcss");
     dependencies.add(adapterPath);
     processTailwind = async (css, from) => {
+      // Canvas-only classes must also compile when the project uses source(none)
+      // or ignores .bingo. Keep this addition in memory, leaving project CSS intact.
+      css += designSources.map(file => `\n@source ${JSON.stringify(file.replace(/\\/g, "/"))};`).join("");
       const result = await postcss([adapter({ base: root, optimize: false })]).process(css, { from });
       for (const message of result.messages) if (message.type === "dependency" && message.file) dependencies.add(path.resolve(message.file));
       return result.css;

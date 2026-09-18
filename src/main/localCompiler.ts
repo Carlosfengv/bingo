@@ -17,6 +17,7 @@
 
 import { build } from "esbuild";
 import { compileProjectStyles } from "./projectStylesCompiler";
+import { isDesignStyleSource } from "./projectDesignStyles";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -321,6 +322,7 @@ function buildInputPath(inputPath, workspaceRoot) {
  */
 async function compileProject(root, controls = {}) {
   const allFiles = validateProjectRoot(root).sort();
+  const canonicalRoot = fs.realpathSync(root);
   const workspaceRoot = findWorkspaceRoot(root);
   const previous = controls.previousBuild;
   const changedPaths = [...new Set((controls.changedPaths || []).map((file) => {
@@ -334,6 +336,7 @@ async function compileProject(root, controls = {}) {
   const previousInputs = new Set(Object.values(previous?.entryInputs || {}).flat().map((file) => path.resolve(file)));
   const previousCss = new Set((previous?.cssFiles || []).map((file) => buildInputPath(file, workspaceRoot) || path.resolve(file)));
   const structuralChange = changedPaths.some((file) => {
+    if (isDesignStyleSource(path.relative(root, file)) || isDesignStyleSource(path.relative(canonicalRoot, file))) return false;
     const name = path.basename(file);
     if (/(?:^|\/)(?:package\.json|[jt]sconfig\.json|pnpm-workspace\.yaml|[^/]+\.config\.[cm]?[jt]s)$/.test(file.replace(/\\/g, "/"))) return true;
     if (name === "package-lock.json" || name === "pnpm-lock.yaml" || name === "yarn.lock" || name === "bun.lock" || name === "bun.lockb") return true;
@@ -578,6 +581,7 @@ function rememberSuccessfulBuild(root, compiled) {
 function watchedChangeMatters(filename) {
   if (!filename) return true;
   const name = String(filename);
+  if (isDesignStyleSource(name)) return true;
   const first = name.split(path.sep)[0];
   if (SKIP_DIRS.has(first)) return false;
   return SOURCE_EXT.concat(CSS_EXT).some((extension) => name.endsWith(extension)) ||

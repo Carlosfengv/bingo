@@ -130,6 +130,13 @@ function roundNum(n) {
 var _cssGeneration = 0;
 var _cssListeners = new Set();
 function emitCssGeneration() {
+  // A link can finish loading at the same URL, and inline CSS can change without
+  // changing its length. Invalidate before notifying either external store.
+  _cachedIndex = null;
+  _propertyCache.clear();
+  _propertyCacheBuilt = false;
+  _cssVarMapBuilt = false;
+  _dsTokens = null;
   _cssGeneration++;
   for (const listener of _cssListeners) listener();
 }
@@ -467,6 +474,7 @@ function getScopePriority(cls) {
   return isNeg ? 5 : 4;
 }
 function getClassesForProperty(doc, cssProperty, _indexGeneration) {
+  getClassIndex(doc);
   if (!_propertyCacheBuilt) {
     buildPropertyCache(doc);
     _propertyCacheBuilt = true;
