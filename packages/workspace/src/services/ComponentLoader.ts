@@ -41,6 +41,9 @@ var WebComponentLoader = class extends ComponentCompiler {
     this.moduleErrors = new Map();
     this.moduleCatalog = new Map();
     this.loadedModuleUrls = new Map();
+    this.requestedModulePaths = new Set();
+    this.failedModuleUrls = new Map();
+    this.moduleImports = new Map();
     this.lastComponentIndex = null;
     this.canvasNamesInflight = null;
     this.injectedCssPaths = new Set();
@@ -56,6 +59,9 @@ var WebComponentLoader = class extends ComponentCompiler {
     this.moduleErrors.clear();
     this.moduleCatalog.clear();
     this.loadedModuleUrls.clear();
+    this.requestedModulePaths.clear();
+    this.failedModuleUrls.clear();
+    this.moduleImports.clear();
     this.lastComponentIndex = null;
     this.canvasNamesInflight = null;
     this.injectedCssPaths.clear();
@@ -102,7 +108,7 @@ var WebComponentLoader = class extends ComponentCompiler {
   async ensureModulesForNames(names) {
     const index = this.lastComponentIndex ?? this._componentIndex;
     if (!index) return null;
-    const pathsNeedingImport = [...new Set([...names].map(name => index[name]?.path).filter(path => !!path))].filter(path => !this.moduleRegistry.has(path) || this.moduleErrors.has(path));
+    const pathsNeedingImport = [...new Set([...names].map(name => index[name]?.path).filter(path => !!path))].filter(path => this.needsModuleImport(path));
     if (pathsNeedingImport.length === 0) return null;
     await this.importModulesAtPaths(pathsNeedingImport);
     return this.applyComponentIndex(index);
@@ -119,14 +125,23 @@ var WebComponentLoader = class extends ComponentCompiler {
   async reloadUpdatedModules(modules) {
     const list = Array.isArray(modules) ? modules : [];
     this.cacheModules(list);
-    await this.importModules(list);
+    // Build updates contain the entire catalog, including CSS-only rebuilds
+    // after saving a drawing. Preserve lazy loading for unused components.
+    await this.importModules(list.filter(mod => this.requestedModulePaths.has(mod.path)));
     const index = this.lastComponentIndex ?? this._componentIndex;
     if (!index) return null;
     return this.applyComponentIndex(index);
   }
   async importModulesAtPaths(paths) {
+    for (const path of paths) this.requestedModulePaths.add(path);
     const mods = paths.map(path => this.moduleCatalog.get(path)).filter(mod => !!mod);
     await this.importModules(mods);
+  }
+  needsModuleImport(path) {
+    const mod = this.moduleCatalog.get(path);
+    if (!mod?.codeUrl || mod.error) return false;
+    if (this.failedModuleUrls.get(path) === mod.codeUrl) return false;
+    return this.loadedModuleUrls.get(path) !== mod.codeUrl;
   }
   async importModules(modules) {
     const list = Array.isArray(modules) ? modules : [];
@@ -203,18 +218,32 @@ var WebComponentLoader = class extends ComponentCompiler {
       }
       const loadedUrl = this.loadedModuleUrls.get(mod.path);
       if (this.moduleRegistry.has(mod.path) && !this.moduleErrors.has(mod.path) && loadedUrl === mod.codeUrl) return;
-      try {
-        const exports = await executeCompiledModule(mod.codeUrl);
-        this.moduleRegistry.set(mod.path, exports);
-        this.loadedModuleUrls.set(mod.path, mod.codeUrl);
-        this.moduleErrors.delete(mod.path);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (this.moduleRegistry.has(mod.path)) console.warn(`[ComponentLoader] Reload failed for ${mod.path}, keeping previous module: ${message}`);else {
-          this.moduleErrors.set(mod.path, message);
-          console.warn(`[ComponentLoader] Skipping ${mod.path}: ${message}`);
+      if (this.failedModuleUrls.get(mod.path) === mod.codeUrl) return;
+      const existing = this.moduleImports.get(mod.path);
+      if (existing?.url === mod.codeUrl) return existing.promise;
+      const attempt = { url: mod.codeUrl, promise: null };
+      this.moduleImports.set(mod.path, attempt);
+      attempt.promise = (async () => {
+        try {
+          const exports = await executeCompiledModule(mod.codeUrl);
+          if (this.moduleImports.get(mod.path) !== attempt) return;
+          this.moduleRegistry.set(mod.path, exports);
+          this.loadedModuleUrls.set(mod.path, mod.codeUrl);
+          this.moduleErrors.delete(mod.path);
+          this.failedModuleUrls.delete(mod.path);
+        } catch (err) {
+          if (this.moduleImports.get(mod.path) !== attempt) return;
+          this.failedModuleUrls.set(mod.path, mod.codeUrl);
+          const message = err instanceof Error ? err.message : String(err);
+          if (this.moduleRegistry.has(mod.path)) console.warn(`[ComponentLoader] Reload failed for ${mod.path}, keeping previous module: ${message}`);else {
+            this.moduleErrors.set(mod.path, message);
+            console.warn(`[ComponentLoader] Skipping ${mod.path}: ${message}`);
+          }
+        } finally {
+          if (this.moduleImports.get(mod.path) === attempt) this.moduleImports.delete(mod.path);
         }
-      }
+      })();
+      await attempt.promise;
     }));
   }
   applyComponentIndex(index) {
@@ -302,7 +331,16 @@ var WebComponentLoader = class extends ComponentCompiler {
   * and can evict working bindings when the reload fails.
   */
   async patchComponentIndexAndLoad(patch) {
-    const pathsNeedingImport = this.pathsForIndex(patch).filter(path => !this.moduleRegistry.has(path) || this.moduleErrors.has(path));
+    // Rebind a moved component that is already in use, but do not eagerly
+    // import every missing entry merely because the full index was republished.
+    const pathsInUse = new Set(this.requestedModulePaths);
+    for (const [name, meta] of Object.entries(patch)) {
+      if (this._components?.[name]) {
+        pathsInUse.add(meta.path);
+        this.requestedModulePaths.add(meta.path);
+      }
+    }
+    const pathsNeedingImport = this.pathsForIndex(patch).filter(path => pathsInUse.has(path) && this.needsModuleImport(path));
     if (pathsNeedingImport.length > 0) await this.importModulesAtPaths(pathsNeedingImport);
     return this.patchComponentIndex(patch);
   }
