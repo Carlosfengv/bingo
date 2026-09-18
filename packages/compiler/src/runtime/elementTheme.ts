@@ -1,4 +1,5 @@
 import { validateThemeLibrary } from "./theme";
+import { variableExpression } from "./variables";
 
 function bindingError(code, message) {
   return Object.assign(new Error(message), { code });
@@ -16,9 +17,11 @@ function validateElementThemeMetadata(input) {
     const key = `${binding.target}:${binding.property}`;
     if (seen.has(key)) throw bindingError("THEME_BINDING_DUPLICATE", `Duplicate element theme binding: ${key}`);
     seen.add(key);
-    bindings.push({ target: binding.target, property: binding.property, tokenId: binding.tokenId });
+    if (binding.alpha !== undefined && (typeof binding.alpha !== "number" || !Number.isFinite(binding.alpha) || binding.alpha < 0 || binding.alpha > 1)) throw bindingError("THEME_BINDING_INVALID", "Binding opacity must be between 0 and 1.");
+    bindings.push({ target: binding.target, property: binding.property, tokenId: binding.tokenId, ...(binding.alpha !== undefined ? { alpha: binding.alpha } : {}) });
   }
-  const localCollectionModes = {};
+  if (input.localCollectionModes != null && (typeof input.localCollectionModes !== "object" || Array.isArray(input.localCollectionModes))) throw bindingError("THEME_BINDING_INVALID", "Local collection modes must be a map.");
+  const localCollectionModes = Object.create(null);
   for (const [collectionId, modeId] of Object.entries(input.localCollectionModes || {})) {
     if (!collectionId || typeof modeId !== "string" || !modeId) throw bindingError("THEME_BINDING_INVALID", "Local collection mode is invalid.");
     localCollectionModes[collectionId] = modeId;
@@ -65,7 +68,7 @@ function validateElementThemeBindings(store, libraryInput) {
         diagnostics.push({ code: "THEME_TOKEN_UNKNOWN", elementId, property: binding.property, tokenId: binding.tokenId, message: `Theme token does not exist: ${binding.tokenId}` });
         continue;
       }
-      if (binding.target === "style" && element.styles?.[binding.property] !== `var(--${token.cssName})`) {
+      if (binding.target === "style" && element.styles?.[binding.property] !== `var(--${token.cssName})` && element.styles?.[binding.property] !== variableExpression(token, binding.property, binding.alpha)) {
         diagnostics.push({ code: "THEME_BINDING_VALUE_MISMATCH", elementId, property: binding.property, tokenId: binding.tokenId, message: `Style ${binding.property} no longer uses ${binding.tokenId}.` });
       }
     }

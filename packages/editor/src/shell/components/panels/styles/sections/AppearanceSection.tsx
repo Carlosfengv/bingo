@@ -1,3 +1,4 @@
+import { VariableModeControls } from "../../../../../shared/theme/VariableControls";
 /*
  * Reconstructed from the shipped Bingo bundle by luna/tools/rebuild.mjs.
  * Original module: ../../packages/editor/src/shell/components/panels/styles/sections/AppearanceSection.tsx
@@ -84,6 +85,7 @@ function AppearanceSection({ className } = {}) {
     : translateInspectorText(t, currentOption?.label ?? currentValue);
 
   return <InspectorSection reserveActionRail={true} title="Appearance" action={<VisibilityToggleButton />} className={className}>
+    <div className="mb-3"><VariableModeControls /></div>
     <div className="grid min-w-0 grid-cols-2 gap-2">
       <div className="flex min-w-0 flex-col gap-2">
         <LayoutFieldLabel>Opacity</LayoutFieldLabel>

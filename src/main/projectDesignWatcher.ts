@@ -46,6 +46,7 @@ function watchPortableDesign(root, onChange, options = {}) {
   const watcher = fs.watch(projectRoot, { recursive: true }, (_event, filename) => {
     if (!filename) return schedule();
     const normalized = String(filename).split(path.sep).join("/");
+    options.onFileChange?.(normalized);
     if (normalized === ".bingo" || normalized.startsWith(".bingo/design")) schedule();
   });
 

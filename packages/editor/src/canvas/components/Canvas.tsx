@@ -1,3 +1,4 @@
+import { useVariableRenderStore } from "../../shared/theme/VariableContext";
 /*
  * Reconstructed from the shipped Bingo bundle by luna/tools/rebuild.mjs.
  * Original module: ../../packages/editor/src/canvas/components/Canvas.tsx
@@ -373,6 +374,7 @@ var PanAwarePointerSensor = class extends PointerSensor {
   }
 };
 function CanvasRootRender(t0) {
+  t0 = { ...t0, store: useVariableRenderStore(t0.store) };
   const $ = (0, import_compiler_runtime.c)(6);
   const {
     rootId,

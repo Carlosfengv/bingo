@@ -7,6 +7,7 @@
  * author's original file. See luna/RECOVERY.md.
  */
 import { useClassSuggestions } from "../../../../hooks/useClassSuggestions";
+import { VariableField } from "../../../../../shared/theme/VariableControls";
 import { displayValue } from "../../../../utils/cssValue";
 import { inspectorPropertySupportsAuto } from "../../../../utils/unitValue";
 import { HexDotGlyph } from "../layout/glyphs";
@@ -27,7 +28,10 @@ import * as import_compiler_runtime from "react/compiler-runtime";
 * scrub icon, optional unit suffix, min/max clamping, and a Tailwind-class
 * suggestion affordance (HexDot glyph) on the trailing edge.
 */
-function LayoutValueInput(t0) {
+function LayoutValueInput(props) {
+  return <VariableField property={props.cssProperty}><LayoutValueInputControl {...props} /></VariableField>;
+}
+function LayoutValueInputControl(t0) {
   const $ = (0, import_compiler_runtime.c)(153);
   const {
     icon,

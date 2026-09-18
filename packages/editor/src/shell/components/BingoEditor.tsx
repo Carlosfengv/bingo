@@ -20,7 +20,9 @@ import { stripPropSynthesizedChildren } from "../../canvas/lib/capture/fiber";
 import { stripCanvasInvalidPosition } from "../../canvas/lib/capture/styles";
 import { copyToFigma } from "../../canvas/lib/figmaExport";
 import { isRelativeFlowPosition, positionStylesForParent } from "../../canvas/utils/absolutePositioning";
-import { readCanvasElements } from "../../canvas/utils/canvasPayload";
+import { VariableLibraryProvider, VariableEditorProvider, useVariables } from "../../shared/theme/VariableContext";
+import { VariableManager } from "../../shared/theme/VariableManager";
+import { VariablesButton } from "../../shared/theme/VariableControls";
 import { captureComponentInstance, clearComponentEditSession, editSessionFromElement, findEditRootId$1, findEditSessionsInStore, getComponentEditSession, rendersThroughWebgl, stashComponentEditSession } from "../../canvas/utils/captureComponentInstance";
 import { getElementRect$1 } from "../../canvas/utils/collisionUtils";
 import { getCanvasSpaceRect, isFlowLayoutElement } from "../../canvas/utils/domGeometry";
@@ -158,8 +160,8 @@ function resolveInitialActivePageId(initialPages, projectPath) {
 function buildInitialTabs(initialPages, initialActivePageId, initialElements) {
   if (initialPages && initialPages.length > 0) return initialPages.map(p => {
     const isActive = p.id === initialActivePageId;
-    const normalized = readCanvasElements(p.elements);
-    const hasElements = normalized.length > 0;
+    const normalized = p.elements ?? [];
+    const hasElements = countCanvasElements(normalized) > 0;
     const elements = isActive || hasElements ? normalized : [];
     const store = ensureV2(elements);
     const loaded = isActive || !!hasElements;
@@ -177,7 +179,7 @@ function buildInitialTabs(initialPages, initialActivePageId, initialElements) {
       backgroundToken: p.backgroundToken
     };
   });
-  const elements = readCanvasElements(initialElements);
+  const elements = initialElements ?? [];
   return [{
     id: "canvas-1",
     name: "Page 1",
@@ -532,6 +534,7 @@ var BingoEditorInner = ({
   const [activeCommentId, setActiveCommentId] = (0, import_react.useState)(null);
   const [pendingCommentPosition, setPendingCommentPosition] = (0, import_react.useState)(null);
   const effectiveProjectPath = projectPath;
+  const variableRuntime = useVariables();
   const effectiveAllowedPaths = allowedPaths;
   const effectiveOnAdd = onAddAllowedPath;
   const chatBackend = useBackendOptional();
@@ -1439,7 +1442,7 @@ var BingoEditorInner = ({
       const targetPageId = pageParam && sortedCanvases.some(c_2 => c_2.id === pageParam) ? pageParam : savedPage && sortedCanvases.some(c_1 => c_1.id === savedPage) ? savedPage : sortedCanvases[0].id;
       const canvasTabs = sortedCanvases.map(c_3 => {
         const isActive = c_3.id === targetPageId;
-        const elements = isActive ? readCanvasElements(c_3.elements) : [];
+        const elements = isActive ? c_3.elements ?? [] : [];
         const store_0 = ensureV2(elements);
         return {
           id: c_3.id,
@@ -1495,7 +1498,7 @@ var BingoEditorInner = ({
       } else console.error("[loadAllPages] Failed to create initial page:", created.error);
     } else {
       const result = await loadCanvas("canvas-1");
-      const elements_0 = result.success && result.canvas ? readCanvasElements(result.canvas.elements) : [];
+      const elements_0 = result.success && result.canvas ? result.canvas.elements ?? [] : [];
       setTabs(prev_12 => prev_12.map(tab_9 => tab_9.id === "canvas-1" ? {
         ...tab_9,
         store: ensureV2(elements_0),
@@ -1529,7 +1532,7 @@ var BingoEditorInner = ({
     setIsPageLoading(true);
     const result_0 = await loadCanvas(pageId_1);
     if (loadId !== pageLoadIdRef.current) return;
-    const newElements = result_0.success && result_0.canvas ? readCanvasElements(result_0.canvas.elements) : [];
+    const newElements = result_0.success && result_0.canvas ? result_0.canvas.elements ?? [] : [];
     const newStore = ensureV2(newElements);
     setTabs(prev_13 => prev_13.map(tab_10 => tab_10.canvasId === pageId_1 ? {
       ...tab_10,
@@ -3475,7 +3478,10 @@ var BingoEditorInner = ({
     const targetFilePath = `components/${componentName_5}.tsx`;
     const code = generateCompleteFile({
       componentName: componentName_5,
-      store: ensureV2([JSON.parse(JSON.stringify(elementWithSubtree))]),
+      store: currentStore,
+      rootId: selectedElementId,
+      variableLibrary: variableRuntime?.library,
+      variablePageModes: currentStore.variableModes ?? variableRuntime?.defaultModes,
       componentIndex,
       targetFilePath
     });
@@ -4214,7 +4220,7 @@ var BingoEditorInner = ({
         const ids_6 = selectedElementIds.size > 0 ? selectedElementIds : new Set([targetId_6]);
         onPasteToReplace(ids_6);
       }}>{<span>{t("shell.pasteToReplace")}</span>}{<ContextMenuShortcut>⇧⌘R</ContextMenuShortcut>}</ContextMenuItem>}{targetId_6 && <>{<ContextMenuItem onSelect={async () => {
-          const jsx_1 = generateJSX(ensureV2([storeSubtreeToLegacyNested(currentStore, targetId_6)]));
+          const jsx_1 = generateJSX(currentStore, 0, { rootId: targetId_6, variableLibrary: variableRuntime?.library, variablePageModes: currentStore.variableModes ?? variableRuntime?.defaultModes });
           try {
             await navigator.clipboard.writeText(jsx_1);
             toast.success(t("shell.copiedAsReact"));
@@ -4231,7 +4237,7 @@ var BingoEditorInner = ({
             size: 14
           })}{<span>{t("shell.copyToFigma")}</span>}</ContextMenuItem>}</>}</>;
   };
-  return <>{<Toaster />}{<EditorModeProvider>{<ActiveToolProvider>{<ScrubSessionContext.Provider value={scrubSessionValue}>{<CanvasLayout isElectron={isElectron} chromeHidden={chromeHidden} bottomBarRevealSignal={bottomBarRevealSignal} leftChildren={enableSidebarV2 ? <LeftSidebarV2 className={isElectron ? "electron-sidebar-inset" : void 0} projectName={projectName} projectIconUrl={projectIconUrl} onProjectIconClick={onProjectIconClick} onOpenProjectSettings={onOpenProjectSettings ? () => onOpenProjectSettings("general") : void 0} activeTab={sidebarV2Tab} onActiveTabChange={setSidebarV2Tab} onTabActivate={tab_20 => {
+  return <><VariableEditorProvider store={currentStore} selectedIds={selectedElementIds} readOnly={readOnly || !activeTab?.loaded} onCommit={createOps => { if (!activeTabId || readOnly) return; const ops = createOps(storeRef.current); if (ops.length) setStore(history.pushOperation(activeTabId, storeRef.current, ops)); }}><VariableManager />{<Toaster />}{<EditorModeProvider>{<ActiveToolProvider>{<ScrubSessionContext.Provider value={scrubSessionValue}>{<CanvasLayout isElectron={isElectron} chromeHidden={chromeHidden} bottomBarRevealSignal={bottomBarRevealSignal} leftChildren={enableSidebarV2 ? <LeftSidebarV2 className={isElectron ? "electron-sidebar-inset" : void 0} projectName={projectName} projectIconUrl={projectIconUrl} onProjectIconClick={onProjectIconClick} onOpenProjectSettings={onOpenProjectSettings ? () => onOpenProjectSettings("general") : void 0} activeTab={sidebarV2Tab} onActiveTabChange={setSidebarV2Tab} onTabActivate={tab_20 => {
             if (tab_20 !== "agents") return;
             setArchiveOpen(false);
             setChatHistoryOpen(false);
@@ -4300,7 +4306,7 @@ var BingoEditorInner = ({
                 for (const [claimId_1, ownerChatTabId] of [...claimIdToChatTabIdRef.current]) if (ownerChatTabId === chatTabId_1) claimIdToChatTabIdRef.current.delete(claimId_1);
                 if (changed_0) publishElementLocks();
               }} onSelectElement={handleSelectChatElement} />;
-            }} />}</ChatArchiveView> : void 0} skills={showSkillsTab ? <SkillsPanel overrides={skillOverrides} onOpenSkill={openSkillInBottomBar} onResetSkill={resetSkillOverride} onToggleSkillActive={toggleSkillOverrideActive} /> : void 0} /> : <div className={`flex flex-col h-full overflow-hidden${isElectron ? " electron-sidebar-inset" : ""}`}>{leftHeader && <div className="shrink-0 border-b border-ed-border">{leftHeader}</div>}{<PanelGroup$1 direction="vertical" className="flex-1" autoSaveId="left-pages-panel">{<Panel defaultSize={15} minSize={5} collapsible={true}>{<ScrollArea className="h-full">{<PagesPanel pages={pages} activePageId={activePageId} isPageLoading={isPageLoading} onSelectPage={handleSelectPage} onCreatePage={handleCreatePage} onRenamePage={handleRenamePage} onDeletePage={handleDeletePage} onReorderPages={handleReorderPages} readOnly={readOnly} />}</ScrollArea>}</Panel>}{<PanelResizeHandle className="h-px bg-ed-border cursor-row-resize" />}{<Panel defaultSize={85} minSize={30}>{<Tabs value={leftPanelTab} onValueChange={setLeftPanelTab} className="w-full gap-0 h-full overflow-hidden flex flex-col">{<TabsList ref={leftTabsListRef} className="!w-full p-2 overflow-x-auto overflow-y-hidden scrollbar-hide shrink-0 flex-nowrap" data-horizontal-scroll="" variant="simple">{!readOnly && <TabsTrigger value="chat" className="shrink-0">{t("shell.chat")}</TabsTrigger>}{<TabsTrigger value="layers" className="shrink-0">{t("shell.layers")}</TabsTrigger>}{<TabsTrigger value="insert" className="shrink-0">{t("shell.insert")}</TabsTrigger>}{<TabsTrigger value="assets" className="relative gap-1 shrink-0">{t("shell.assets")}</TabsTrigger>}{<TabsTrigger value="icons" className="shrink-0">{t("shell.icons")}</TabsTrigger>}{showSkillsTab && <TabsTrigger value="skills" className="shrink-0">{t("shell.skills")}</TabsTrigger>}</TabsList>}{<TabsContent value="layers" className="h-full overflow-hidden flex flex-col">{<LayersPanel store={currentStore} selectedElementIds={selectedElementIds} onSelectElement={handleSelectElement} onSelectElements={handleSelectElements} onDragElements={onDragElements} onRenameElement={onRenameElement} onFocusElement={handleFocusElement} searchInputRef={layersSearchRef} renameRequestId={renameRequestId} onRenameRequestHandled={() => setRenameRequestId(null)} suppressMenuCloseFocusRef={suppressMenuCloseFocusRef} onContextMenuRow={id_21 => {
+            }} />}</ChatArchiveView> : void 0} skills={showSkillsTab ? <SkillsPanel overrides={skillOverrides} onOpenSkill={openSkillInBottomBar} onResetSkill={resetSkillOverride} onToggleSkillActive={toggleSkillOverrideActive} /> : void 0} /> : <div className={`flex flex-col h-full overflow-hidden${isElectron ? " electron-sidebar-inset" : ""}`}>{leftHeader && <div className="shrink-0 border-b border-ed-border">{leftHeader}</div>}{<PanelGroup$1 direction="vertical" className="flex-1" autoSaveId="left-pages-panel">{<Panel defaultSize={15} minSize={5} collapsible={true}>{<ScrollArea className="h-full">{<PagesPanel pages={pages} activePageId={activePageId} isPageLoading={isPageLoading} onSelectPage={handleSelectPage} onCreatePage={handleCreatePage} onRenamePage={handleRenamePage} onDeletePage={handleDeletePage} onReorderPages={handleReorderPages} readOnly={readOnly} />}</ScrollArea>}</Panel>}{<PanelResizeHandle className="h-px bg-ed-border cursor-row-resize" />}{<Panel defaultSize={85} minSize={30}>{<Tabs value={leftPanelTab} onValueChange={setLeftPanelTab} className="w-full gap-0 h-full overflow-hidden flex flex-col">{<VariablesButton className="self-start ml-2 mt-1" />}{<TabsList ref={leftTabsListRef} className="!w-full p-2 overflow-x-auto overflow-y-hidden scrollbar-hide shrink-0 flex-nowrap" data-horizontal-scroll="" variant="simple">{!readOnly && <TabsTrigger value="chat" className="shrink-0">{t("shell.chat")}</TabsTrigger>}{<TabsTrigger value="layers" className="shrink-0">{t("shell.layers")}</TabsTrigger>}{<TabsTrigger value="insert" className="shrink-0">{t("shell.insert")}</TabsTrigger>}{<TabsTrigger value="assets" className="relative gap-1 shrink-0">{t("shell.assets")}</TabsTrigger>}{<TabsTrigger value="icons" className="shrink-0">{t("shell.icons")}</TabsTrigger>}{showSkillsTab && <TabsTrigger value="skills" className="shrink-0">{t("shell.skills")}</TabsTrigger>}</TabsList>}{<TabsContent value="layers" className="h-full overflow-hidden flex flex-col">{<LayersPanel store={currentStore} selectedElementIds={selectedElementIds} onSelectElement={handleSelectElement} onSelectElements={handleSelectElements} onDragElements={onDragElements} onRenameElement={onRenameElement} onFocusElement={handleFocusElement} searchInputRef={layersSearchRef} renameRequestId={renameRequestId} onRenameRequestHandled={() => setRenameRequestId(null)} suppressMenuCloseFocusRef={suppressMenuCloseFocusRef} onContextMenuRow={id_21 => {
                       if (!selectedElementIds.has(id_21)) setSelectedElementIds(new Set([id_21]));
                       contextMenuPointRef.current = null;
                     }} renderRowContextMenu={id_22 => renderContextMenuItems(id_22)} readOnly={readOnly} />}</TabsContent>}{<TabsContent value="insert" className="h-full overflow-hidden flex flex-col">{<InsertPanel onAddElement={onAddElement} readOnly={readOnly} isElectron={isElectron} />}</TabsContent>}{<TabsContent value="assets" className="h-full overflow-hidden flex flex-col">{<AssetsPanel onAddElement={onAddElement} onPasteCompositionJsx={readOnly ? void 0 : pasteCompositionJsx} readCompositionFile={readOnly || !chatBackend?.readFileRaw ? void 0 : path_1 => chatBackend.readFileRaw(path_1)} compositionSourceId={effectiveProjectPath} componentIndex={componentIndex} components={components} iconLibraries={iconLibraries} allIconLibraries={allIconLibraries} onEditComponent={openComponentFile} readOnly={readOnly} onAskAI={handleAskAIForStarterComponent} onAskAIForComposition={handleAskAIForComposition} compositionRefreshKey={compositionRefreshKey} onEnsureComponentNames={onEnsureComponentNames} />}</TabsContent>}{<TabsContent value="icons" className="h-full overflow-hidden flex flex-col">{<IconsPanel iconLibraries={iconLibraries} onOpenIconSettings={onOpenProjectSettings ? () => onOpenProjectSettings("icons") : void 0} onAskAI={handleAskAIForIconLibrary} onAddElement={onAddElement} readOnly={readOnly} />}</TabsContent>}{showSkillsTab && <TabsContent value="skills" className="h-full overflow-hidden flex flex-col">{<SkillsPanel overrides={skillOverrides} onOpenSkill={openSkillInBottomBar} onResetSkill={resetSkillOverride} onToggleSkillActive={toggleSkillOverrideActive} />}</TabsContent>}{!readOnly && <TabsContent value="chat" forceMount={true} className="h-full overflow-hidden flex flex-col data-[state=inactive]:hidden!">{<ChatArchiveView open={archiveOpen} onBack={() => setArchiveOpen(false)} backend={chatBackend ?? null} onRestore={handleRestoreChat}>{chatsLoading && chatTabs.length === 0 ? <div className="flex flex-1 items-center justify-center text-sm text-ed-muted-foreground">{t("shell.loadingChats")}</div> : <ChatConversations chats={chatTabs} activeChatId={chatTabs[visibleChatIndex]?.id} renderChat={(chatTab_0, active_2) => <ChatPanel ref={active_2 ? chatPanelRef : void 0} store={currentStore} selectedElementIds={selectedElementIds} componentIndex={mergedComponentIndex} contextPages={tabs.flatMap(tab_23 => tab_23.canvasId ? [{
@@ -4410,7 +4416,7 @@ var BingoEditorInner = ({
                     e_14.preventDefault();
                     suppressMenuCloseFocusRef.current = false;
                   }
-                }}>{renderContextMenuItems(canvasMenuTargetId)}</ContextMenuContent>}</ContextMenu$1>}</div>}{<CreateComponentModal isOpen={showCreateComponentModal} onClose={() => setShowCreateComponentModal(false)} onConfirm={onCreateComponent} />}{showVersionHistory && focusedComponent?.filePath && <VersionHistoryModal componentName={focusedComponent.name} filePath={focusedComponent.filePath} onClose={() => setShowVersionHistory(false)} onRestore={fp => refreshFocusedComponentRef.current(fp)} componentIndex={mergedComponentIndex} compilePreview={compilePreview} />}</CanvasLayout>}{previewOpen && <PreviewWindow store={currentStore} rootIds={getRootIds(currentStore)} startId={selectedElementId ?? void 0} components={components} componentIndex={componentIndex} iconLibraries={iconLibraries} assetResolver={assetResolver} onClose={() => setPreviewOpen(false)} onPopOut={effectiveProjectPath ? () => window.open(`${webBaseUrl ?? ""}/proto/${effectiveProjectPath}${selectedElementId ? `?element=${selectedElementId}` : ""}`, "_blank") : void 0} />}</ScrubSessionContext.Provider>}</ActiveToolProvider>}</EditorModeProvider>}</>;
+                }}>{renderContextMenuItems(canvasMenuTargetId)}</ContextMenuContent>}</ContextMenu$1>}</div>}{<CreateComponentModal isOpen={showCreateComponentModal} onClose={() => setShowCreateComponentModal(false)} onConfirm={onCreateComponent} />}{showVersionHistory && focusedComponent?.filePath && <VersionHistoryModal componentName={focusedComponent.name} filePath={focusedComponent.filePath} onClose={() => setShowVersionHistory(false)} onRestore={fp => refreshFocusedComponentRef.current(fp)} componentIndex={mergedComponentIndex} compilePreview={compilePreview} />}</CanvasLayout>}{previewOpen && <PreviewWindow store={currentStore} rootIds={getRootIds(currentStore)} startId={selectedElementId ?? void 0} components={components} componentIndex={componentIndex} iconLibraries={iconLibraries} assetResolver={assetResolver} onClose={() => setPreviewOpen(false)} onPopOut={effectiveProjectPath ? () => window.open(`${webBaseUrl ?? ""}/proto/${effectiveProjectPath}${selectedElementId ? `?element=${selectedElementId}` : ""}`, "_blank") : void 0} />}</ScrubSessionContext.Provider>}</ActiveToolProvider>}</EditorModeProvider>}</VariableEditorProvider></>;
 };
 var BingoEditor = t0 => {
   const $ = (0, import_compiler_runtime.c)(9);
@@ -4442,7 +4448,7 @@ var BingoEditor = t0 => {
     $[7] = t1;
     $[8] = t2;
   } else t2 = $[8];
-  return t2;
+  return <VariableLibraryProvider key={props.projectPath || "local"} projectPath={props.projectPath}>{t2}</VariableLibraryProvider>;
 };
 function _temp$12() {
   return typeof window === "undefined" ? null : new URLSearchParams(window.location.search);

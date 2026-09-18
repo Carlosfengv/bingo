@@ -1,3 +1,4 @@
+import { VariableModeControls } from "../../../shared/theme/VariableControls";
 /*
  * Reconstructed from the shipped Bingo bundle by luna/tools/rebuild.mjs.
  * Original module: ../../packages/editor/src/shell/components/panels/PagePanel.tsx
@@ -80,7 +81,7 @@ function PagePanel(t0) {
     $[20] = t8;
     $[21] = t9;
   } else t9 = $[21];
-  return t9;
+  return <>{t9}<div className="border-t border-ed-border p-3"><VariableModeControls page /></div></>;
 }
 var PAGE_ROW_HEIGHT = 26;
 var PAGE_ROW_GAP = 2;

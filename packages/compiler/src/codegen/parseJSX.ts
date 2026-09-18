@@ -8,6 +8,7 @@
  */
 import { COMMENTED_STYLES_KEY, parseCommentedStyleComment, serializeCommentedStyles } from "../store/commentedStyles";
 import { storeFromNested } from "../store/ensureV2";
+import { validateElementThemeMetadata } from "../runtime/elementTheme";
 import { sanitizeElementProps } from "../store/sanitize";
 import * as import_lib from "@babel/parser";
 import * as import_lib$3 from "@babel/types";
@@ -174,7 +175,20 @@ function parseJSX(code, iconLibraries, components, defaultIconLibrary, options) 
       }
     };
     walk(ast);
-    return storeFromNested(jsxElements);
+    const result = storeFromNested(jsxElements);
+    for (const [id, element] of result.byId) {
+      const metadata = element.props?.["data-bingo-variables"];
+      if (typeof metadata !== "string") continue;
+      const parsed = JSON.parse(metadata);
+      if (parsed.version !== 1) throw new Error("Unsupported variable binding metadata.");
+      const { ["data-bingo-variables"]: ignored, ...props } = element.props;
+      result.byId.set(id, { ...element, props, ...(parsed.theme ? { theme: validateElementThemeMetadata(parsed.theme) } : {}) });
+      if (result.parentByChild.get(id) === "ROOT" && parsed.pageModes) {
+        const pageModes = validateElementThemeMetadata({ version: 1, localCollectionModes: parsed.pageModes }).localCollectionModes;
+        result.variableModes = { ...result.variableModes, ...pageModes };
+      }
+    }
+    return result;
   } catch (error) {
     if (!options?.silent) console.error("Failed to parse JSX:", error);
     const wrapped = new Error(`Invalid JSX: ${error instanceof Error ? error.message : String(error)}`, { cause: error });

@@ -19,6 +19,7 @@ function affectsTree(op) {
 }
 function cloneSettersOnly(store) {
   return {
+    ...store,
     byId: new Map(store.byId),
     childrenByParent: store.childrenByParent,
     parentByChild: store.parentByChild
@@ -26,6 +27,7 @@ function cloneSettersOnly(store) {
 }
 function cloneFull(store) {
   return {
+    ...store,
     byId: new Map(store.byId),
     childrenByParent: new Map(store.childrenByParent),
     parentByChild: new Map(store.parentByChild)
@@ -33,6 +35,11 @@ function cloneFull(store) {
 }
 function mutate(s, op) {
   switch (op.type) {
+    case "set_variable_modes":
+      s.variableModes = op.modes;
+      return;
+    case "set_theme":
+      return mutateUpdateField(s, op.id, el => ({ ...el, theme: op.theme }));
     case "insert":
       return mutateInsert(s, op);
     case "remove":
@@ -48,6 +55,7 @@ function mutate(s, op) {
       return mutateUpdateField(s, op.id, el => ({
         ...el,
         styles: op.styles,
+        ...(el.theme?.bindings ? { theme: { ...el.theme, bindings: el.theme.bindings.filter(binding => binding.target !== "style" || op.styles?.[binding.property] === el.styles?.[binding.property]) } } : {}),
         ...(op.scaleAnchorTransform !== void 0 ? {
           scaleAnchorTransform: op.scaleAnchorTransform ?? void 0
         } : {}),

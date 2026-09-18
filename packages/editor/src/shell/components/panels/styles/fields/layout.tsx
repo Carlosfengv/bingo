@@ -8,6 +8,7 @@
  */
 import { opacityInputValue } from "../../../../utils/cssValue";
 import { useStyleField, useStyleOps } from "../StyleOpsContext";
+import { VariableField } from "../../../../../shared/theme/VariableControls";
 import { DimensionInput } from "../inputs/DimensionInput";
 import { LayoutMinMaxInput } from "../inputs/LayoutMinMaxInput";
 import { LayoutValueInput } from "../inputs/LayoutValueInput";
@@ -137,7 +138,7 @@ function StyleDimensionInput(t0) {
     $[17] = t7;
     $[18] = t8;
   } else t8 = $[18];
-  return t8;
+  return <VariableField property={property}>{t8}</VariableField>;
 }
 /**
 * Opacity input — same shape as StyleLayoutInput but applies the

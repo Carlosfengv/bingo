@@ -1,3 +1,5 @@
+import { VariableBindingControl } from "../../../../../shared/theme/VariableControls";
+import { useVariableEditor } from "../../../../../shared/theme/VariableContext";
 /*
  * Reconstructed from the shipped Bingo bundle by luna/tools/rebuild.mjs.
  * Original module: ../../packages/editor/src/shell/components/panels/styles/inputs/InlineInput.tsx
@@ -27,6 +29,8 @@ import * as import_compiler_runtime from "react/compiler-runtime";
 * normal-with-suggestions, or plain input.
 */
 function InlineInput(t0) {
+  const variableEditor = useVariableEditor();
+  const variableBound = variableEditor?.ids.some(id => variableEditor.store.byId.get(id)?.theme?.bindings?.some(binding => binding.target === "style" && binding.property === t0.cssProperty));
   const $ = (0, import_compiler_runtime.c)(73);
   const { t } = useTranslation("editor");
   const {
@@ -221,7 +225,7 @@ function InlineInput(t0) {
     $[71] = t22;
     $[72] = t23;
   } else t23 = $[72];
-  return t23;
+  return variableBound ? <div className="flex min-w-0 items-center gap-1">{label && <span className="text-xs text-ed-muted-foreground">{label}</span>}<VariableBindingControl property={cssProperty} /></div> : <div className="flex min-w-0 items-center gap-1"><div className="min-w-0 flex-1">{t23}</div><VariableBindingControl property={cssProperty} compact /></div>;
 }
 
 export { InlineInput };

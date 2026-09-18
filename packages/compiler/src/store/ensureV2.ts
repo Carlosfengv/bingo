@@ -54,6 +54,9 @@ function storeFromNested(nested) {
 }
 function wireToStore(wire) {
   const internal = emptyMutableStore();
+  if (wire.variableModes && typeof wire.variableModes === "object" && !Array.isArray(wire.variableModes)) {
+    internal.variableModes = Object.fromEntries(Object.entries(wire.variableModes).filter(([key, value]) => key && typeof value === "string" && value));
+  }
   for (const [id, element] of Object.entries(wire.byId)) internal.byId.set(id, sanitizeLoadedElement(element));
   internal.childrenByParent.set(ROOT, []);
   for (const [parent, ids] of Object.entries(wire.childrenByParent)) {

@@ -1,3 +1,5 @@
+import { VariableBindingControl } from "../../../../../shared/theme/VariableControls";
+import { useVariableEditor, useResolvedVariableStyle } from "../../../../../shared/theme/VariableContext";
 /*
  * Reconstructed from the shipped Bingo bundle by luna/tools/rebuild.mjs.
  * Original module: ../../packages/editor/src/shell/components/panels/styles/inputs/ColorRow.tsx
@@ -40,7 +42,7 @@ function resolveCssColor(raw, cssProperty) {
 function useColorValue(value, localValue, cssProperty) {
   const $ = (0, import_compiler_runtime.c)(17);
   useIsDark();
-  const t0 = value || localValue;
+  const t0 = useResolvedVariableStyle(cssProperty, value || localValue);
   let t1;
   if ($[0] !== cssProperty || $[1] !== t0) {
     t1 = resolveCssColor(t0, cssProperty);
@@ -501,6 +503,8 @@ function FillRow(t0) {
   return t3;
 }
 function ColorRow(t0) {
+  const variableEditor = useVariableEditor();
+  const variableBound = variableEditor?.ids.some(id => variableEditor.store.byId.get(id)?.theme?.bindings?.some(binding => binding.target === "style" && binding.property === t0.cssProperty));
   const $ = (0, import_compiler_runtime.c)(117);
   const { t } = useTranslation("editor");
   const {
@@ -816,7 +820,7 @@ function ColorRow(t0) {
     $[115] = t22;
     $[116] = t23;
   } else t23 = $[116];
-  return t23;
+  return variableBound ? <div className="flex min-w-0 items-center gap-2">{rowLabel && <span className="text-xs text-ed-foreground-secondary">{rowLabel}</span>}<VariableBindingControl property={cssProperty} /></div> : <div className="flex min-w-0 items-center gap-1"><div className="min-w-0 flex-1">{t23}</div><VariableBindingControl property={cssProperty} compact /></div>;
 }
 
 export { ColorRow };

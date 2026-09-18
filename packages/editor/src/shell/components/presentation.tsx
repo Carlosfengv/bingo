@@ -1,3 +1,4 @@
+import { useVariableRenderStore } from "../../shared/theme/VariableContext";
 /*
  * Reconstructed from the shipped Bingo bundle by luna/tools/rebuild.mjs.
  * Original module: ../../packages/editor/src/shell/components/presentation.tsx
@@ -137,6 +138,7 @@ function useFramePager(t0) {
 * Walks the frame tree via renderElement — expensive, so this stays memoized.
 */
 function useFrameContent(currentId, store, render) {
+  store = useVariableRenderStore(store);
   const $ = (0, import_compiler_runtime.c)(7);
   const {
     components,

@@ -15,6 +15,7 @@ function toWire(store) {
   for (const [parent, ids] of store.childrenByParent) childrenByParent[parent] = [...ids];
   return {
     schemaVersion: 2,
+    ...(store.variableModes ? { variableModes: store.variableModes } : {}),
     byId,
     childrenByParent
   };

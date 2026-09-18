@@ -34,7 +34,9 @@ function mergeScrubOps(prev, curr) {
       newProps: c.newProps
     };else if (c.type === "set_styles" && p.type === "set_styles") result[idx] = {
       ...p,
-      newStyles: c.newStyles
+      newStyles: c.newStyles,
+      oldTheme: p.oldTheme ?? c.oldTheme,
+      newTheme: c.newTheme ?? p.newTheme
     };else if (c.type === "set_position" && p.type === "set_position") result[idx] = {
       ...p,
       newPosition: c.newPosition

@@ -9,6 +9,8 @@
 import { extractComponentDependencies, extractIconDependencies } from "./extractDependencies";
 import { generateIconImports, generateImports } from "./generateImports";
 import { generateJSX } from "./generateJSX";
+import { ensureV2 } from "../store/ensureV2";
+import { storeSubtreeToLegacyNested } from "../store/legacy";
 import * as import_lib$1 from "@babel/generator";
 import * as import_lib$2 from "@babel/traverse";
 
@@ -26,8 +28,9 @@ function generateCompleteFile(options) {
     assetResolver
   } = options;
   const parts = [];
-  const componentDeps = extractComponentDependencies(store);
-  const iconDeps = extractIconDependencies(store);
+  const dependencyStore = options.rootId ? ensureV2([storeSubtreeToLegacyNested(store, options.rootId)]) : store;
+  const componentDeps = extractComponentDependencies(dependencyStore);
+  const iconDeps = extractIconDependencies(dependencyStore);
   const componentImports = generateImports(componentDeps, componentIndex, targetFilePath);
   const iconImports = generateIconImports(iconDeps);
   if (includeReactImport) parts.push("import React from 'react'");
@@ -38,7 +41,10 @@ function generateCompleteFile(options) {
   parts.push("  return (");
   const jsx = generateJSX(store, 2, {
     includeDataElementId,
-    assetResolver
+    assetResolver,
+    variableLibrary: options.variableLibrary,
+    variablePageModes: options.variablePageModes,
+    rootId: options.rootId
   });
   parts.push(jsx);
   parts.push("  )");

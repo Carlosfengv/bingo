@@ -1,3 +1,4 @@
+import { VariablesButton } from "../../shared/theme/VariableControls";
 import { BingoLogo } from "../../assets/BingoLogo";
 import { useTranslation } from "@bingo/i18n";
 import { Button, CaretDownIcon, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, SettingsIcon, SimpleTabs, Tabs, TabsContent, TabsTrigger, Text$4, cn$2 } from "@bingo/ui";
@@ -75,6 +76,7 @@ function LeftSidebarV2({
             if (tab.value === selectedTab) onTabActivate?.(tab.value);
           }}>{t(tab.labelKey)}</TabsTrigger>)}
         </SimpleTabs>
+        <VariablesButton />
       </div>
       <TabsContent value="pages" forceMount className="min-h-0 flex-1 overflow-hidden data-[state=inactive]:hidden!">{pages ?? <PendingTab name={t("navigation.pages")} />}</TabsContent>
       <TabsContent value="assets" className="min-h-0 flex-1 overflow-hidden">{assets ?? <PendingTab name={t("navigation.assets")} />}</TabsContent>

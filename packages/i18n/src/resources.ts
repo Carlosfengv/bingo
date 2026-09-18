@@ -1,3 +1,4 @@
+import { variableCopyEn, variableCopyZh } from "./variables";
 const en = {
   common: {
     actions: {
@@ -161,6 +162,7 @@ const en = {
     },
   },
   editor: {
+    variables: variableCopyEn,
     performance: {
       title: "Canvas performance", nodes: "{{count}} nodes · {{selected}} selected", reset: "Reset", copy: "Copy", copied: "Copied", copyFailed: "Retry copy",
       metric: "Metric", latest: "Latest", count: "Samples", selection: "Selection commit", nextFrame: "Next frame callback", tree: "Root tree build", geometry: "Box measurement", codegen: "Selection JSX",
@@ -971,6 +973,7 @@ const zhCN: LocalizedResource<typeof en> = {
     },
   },
   editor: {
+    variables: variableCopyZh,
     performance: {
       title: "画布性能", nodes: "{{count}} 个节点 · 选中 {{selected}} 个", reset: "重置", copy: "复制", copied: "已复制", copyFailed: "重试复制",
       metric: "指标", latest: "最近", count: "次数", selection: "选中框提交", nextFrame: "下一帧回调", tree: "根元素树构建", geometry: "元素盒测量", codegen: "选中 JSX 生成",

@@ -9,13 +9,20 @@
 import { cloneElementWithNewIds, regenerateTreeIds } from "./elementCloning";
 import { removeScalePivot, scaleResetCanvasOffset } from "./scalePivot";
 import { getTransformScales, hasScaleAnchorTransform } from "./scaleTransform";
-import { applyOps, ensureV2, getById, getChildren$2, getIndex, getParentId, getRootIds, storeSubtreeToLegacyNested } from "@bingo/compiler";
+import { applyOps } from "../../../../compiler/src/store/apply";
+import { ensureV2 } from "../../../../compiler/src/store/ensureV2";
+import { getById, getChildren$2, getIndex, getParentId, getRootIds } from "../../../../compiler/src/store/read";
+import { storeSubtreeToLegacyNested } from "../../../../compiler/src/store/legacy";
 
 /**
 * Apply a single editor operation to a flat Store.
 */
 function applyOperationToStore(store, op) {
   switch (op.type) {
+    case "set_variable_modes":
+      return applyOps(store, [{ type: "set_variable_modes", modes: op.newModes }]);
+    case "set_theme":
+      return applyOps(store, [{ type: "set_theme", id: op.elementId, theme: op.newTheme }]);
     case "insert":
       return applyOps(store, createStoreInsertOps(store, op.element, op.parentId, op.index));
     case "remove":
@@ -44,7 +51,7 @@ function applyOperationToStore(store, op) {
         scaleAnchorTransform: op.newScaleAnchorTransform,
         scalePivot: op.newScalePivot,
         canvasPosition: op.newCanvasPosition
-      }]);
+      }, ...(op.oldTheme !== undefined || op.newTheme !== undefined ? [{ type: "set_theme", id: op.elementId, theme: op.newTheme }] : [])]);
     case "set_props":
       return applyOps(store, [{
         type: "set_props",
@@ -131,6 +138,10 @@ function syncElementTree(target, source) {
 */
 function invertOperation(op) {
   switch (op.type) {
+    case "set_variable_modes":
+      return { ...op, oldModes: op.newModes, newModes: op.oldModes };
+    case "set_theme":
+      return { ...op, oldTheme: op.newTheme, newTheme: op.oldTheme };
     case "insert":
       return {
         type: "remove",
@@ -171,6 +182,8 @@ function invertOperation(op) {
         elementId: op.elementId,
         oldStyles: op.newStyles,
         newStyles: op.oldStyles || {},
+        oldTheme: op.newTheme,
+        newTheme: op.oldTheme,
         oldScaleAnchorTransform: op.newScaleAnchorTransform,
         newScaleAnchorTransform: op.oldScaleAnchorTransform,
         oldScalePivot: op.newScalePivot,
@@ -312,6 +325,10 @@ function createSetStylesOperation(store, elementId, newStyles, scaleAnchorTransf
     oldStyles: element.styles ? {
       ...element.styles
     } : void 0,
+    ...(element.theme?.bindings?.some(binding => binding.target === "style" && newStyles[binding.property] !== element.styles?.[binding.property]) ? {
+      oldTheme: element.theme,
+      newTheme: { ...element.theme, bindings: element.theme.bindings.filter(binding => binding.target !== "style" || newStyles[binding.property] === element.styles?.[binding.property]) }
+    } : {}),
     newStyles,
     ...(canvasPosition ? {
       oldCanvasPosition: element.canvasPosition ?? null,

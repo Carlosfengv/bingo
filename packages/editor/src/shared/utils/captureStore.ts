@@ -83,6 +83,7 @@ function containerForOp(op, store) {
     case "set_props":
     case "set_position":
     case "set_name":
+    case "set_theme":
       targetId = op.elementId;
       break;
     case "insert":
@@ -204,6 +205,7 @@ function squashOperations(ops, store) {
     case "set_props":
     case "set_position":
     case "set_name":
+    case "set_theme":
       if (newIds.has(op.elementId)) continue;
       out.push(op);
       continue;
@@ -435,6 +437,8 @@ function describeOperation(op, store) {
           targetElementId: op.elementId
         };
       }
+    case "set_theme":
+      return { method: "ai", componentName, summary: `Update variable bindings and modes on ${who}${loc}: ${JSON.stringify(op.newTheme)}`, sourceInfo, op, targetElementId: op.elementId };
     case "set_styles":
       {
         const styleDiffs = [];

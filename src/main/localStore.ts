@@ -35,6 +35,7 @@ import {
   writeProjectConfiguration,
 } from "./projectConfiguration";
 import { readPrototypeThemePreference, writePrototypeThemePreference } from "./prototypeThemePreferences";
+import { readProjectVariables, writeProjectVariables } from "./projectVariables";
 import {
   deletePortablePage,
   hasPortableDesign,
@@ -193,6 +194,7 @@ const PROJECT_DISCOVERY_TTL_MS = 5 * 60 * 1000;
 const discoveryRequests = new Map();
 const configurationWatchers = new Map();
 const designWatchers = new Map();
+const variableSources = new Map();
 
 function assertRegisteredProjectRoot(root) {
   if (typeof root !== "string" || !root) throw new Error("A project folder is required.");
@@ -255,7 +257,9 @@ function ensureDesignWatcher(root) {
         ...(status || {}),
         ...(error ? { error } : {}),
       });
-    });
+    }, { onFileChange: filePath => {
+      if (filePath === variableSources.get(projectRoot)) broadcastToEditors("file_changed", { projectId: projectRoot, filePath });
+    } });
     designWatchers.set(projectRoot, watcher);
   } catch {}
 }
@@ -1020,6 +1024,20 @@ const OPS = {
 
   "upload-asset": (root, args, a) => saveAsset(root, a),
   "read-settings": (root) => readSettings(root),
+  "read-variable-library": (root) => {
+    root = assertRegisteredProjectRoot(root);
+    const result = readProjectVariables(root, readEffectiveConfiguration(root, app.getPath("userData")).settings.prototypeTheme);
+    variableSources.set(canonicalPath(root), result.source.replace(/\\/g, "/").replace(/^\.\//, ""));
+    ensureDesignWatcher(root);
+    return result;
+  },
+  "write-variable-library": (root, args, a) => {
+    root = assertRegisteredProjectRoot(root);
+    assertProjectWriteAllowed(root);
+    const result = writeProjectVariables(root, a, readEffectiveConfiguration(root, app.getPath("userData")).settings.prototypeTheme);
+    broadcastToEditors("file_changed", { projectId: root, filePath: result.source });
+    return result;
+  },
   "write-settings": (root, args, a) => writeSettings(root, a.patch || {}, a.expectedRevision),
   "add-icon-libraries": (root, args, a) => addIconLibraries(root, a.libraries || []),
   "read-prototype-theme-preference": (root) => {
@@ -1417,6 +1435,7 @@ function registerHandlers({ prepareProjectRemoval = async () => true } = {}) {
       await projectMemoryStores.get(directory)?.queue;
       designWatchers.get(root)?.close();
       designWatchers.delete(root);
+      variableSources.delete(root);
       if (deleteDesignData) deleteProjectDesignData(root, app.getPath("userData"));
       saveProjects(readRegistry().filter(project => project.id !== projectId));
       chatStores.delete(directory);
@@ -1446,6 +1465,7 @@ function registerHandlers({ prepareProjectRemoval = async () => true } = {}) {
     configurationWatchers.clear();
     for (const watcher of designWatchers.values()) watcher.close();
     designWatchers.clear();
+    variableSources.clear();
   });
 }
 
