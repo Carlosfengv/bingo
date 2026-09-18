@@ -65,8 +65,9 @@ test("renderer canvas_add repairs line-34 adjacent roots and commits the batch o
     assert.equal(result.structuredContent.recovery.stage, "commit");
     assert.equal(result.structuredContent.recovery.attempts.length, 1);
     const ids = getChildren$2(storeRef.current, "parent");
-    assert.deepEqual(ids.map(id => getById(storeRef.current, id)?.tag), ["section", "section"]);
-    assert.deepEqual(getRootIds(storeRef.current), ["parent"]);
+    // Bundled store helpers create arrays in the renderer VM's realm.
+    assert.deepEqual(Array.from(ids, id => getById(storeRef.current, id)?.tag), ["section", "section"]);
+    assert.deepEqual(Array.from(getRootIds(storeRef.current)), ["parent"]);
     assert.equal(history.length, 1);
     assert.equal(history[0].length, 2);
     assert.equal(publications(), 1);
