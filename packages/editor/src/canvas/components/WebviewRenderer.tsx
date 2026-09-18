@@ -7,6 +7,7 @@
  * author's original file. See luna/RECOVERY.md.
  */
 import { useWebviewEditState, webviewEditStore } from "../../shared/state/webviewEditStore";
+import { CanvasSelectionContext } from "../lib/CanvasSelectionContext";
 import { startLog } from "../../shared/utils/captureStore";
 import { ScrubSessionContext } from "../../shared/utils/useScrub";
 import { getCameraScale, subscribeCameraScale } from "../../shell/utils/chatShortcuts";
@@ -504,7 +505,8 @@ function WebviewRenderer({
       runInGuestAsync("(window.__bingoWatchSync ? window.__bingoWatchSync(5000) : Promise.resolve(\"no-watch\"))").finally(() => webviewEditStore.setSyncing(false));
     } else if (unresolved > 0) webviewEditStore.setStatus(t("webview.saveUnresolved", { count: unresolved }));else webviewEditStore.setStatus(aiCount ? t("webview.nothingSavedWithAssistant", { count: aiCount }) : t("webview.nothingSaved"));
   }, [runInGuest, runInGuestAsync, t]);
-  const isSelected = !options.isDragPreview && (options.selectedElementIds?.has(element.id) ?? false);
+  const canvasSelection = import_react.useContext(CanvasSelectionContext);
+  const isSelected = !options.isDragPreview && ((canvasSelection ?? options.selectedElementIds)?.has(element.id) ?? false);
   (0, import_react.useEffect)(() => {
     if (options.isDragPreview) return;
     const {

@@ -6,6 +6,11 @@
  * this is build output with the build's own rewrites undone -- not the
  * author's original file. See luna/RECOVERY.md.
  */
+
+import { useStableCanvasTreeProps } from "../hooks/useStableCanvasTreeProps";
+import { CanvasSelectionContext } from "../lib/CanvasSelectionContext";
+import { CanvasPerformanceToolbar } from "./CanvasPerformanceToolbar";
+import { measureCanvasWork, commitCanvasSelection } from "../lib/canvasPerformance";
 import { isInsertTool, useActiveTool } from "../../shared/contexts/ActiveToolContext";
 import { useAssetResolver } from "../../shared/contexts/AssetContext";
 import { useUploadImage } from "../../shared/hooks/useUploadImage";
@@ -376,7 +381,7 @@ function CanvasRootRender(t0) {
   } = t0;
   let t1;
   if ($[0] !== options || $[1] !== rootId || $[2] !== store) {
-    t1 = renderElement(rootId, store, options);
+    t1 = measureCanvasWork("tree", () => renderElement(rootId, store, options));
     $[0] = options;
     $[1] = rootId;
     $[2] = store;
@@ -394,6 +399,8 @@ function CanvasRootRender(t0) {
 *  received as props. Referencing those callbacks inside Canvas's own `.map()`
 *  taints the map as a render-time ref access (`react-hooks/refs`). */
 function CanvasRootTrees(t0) {
+  const currentSelection = t0.selectedElementIds;
+  t0 = useStableCanvasTreeProps(t0);
   const $ = (0, import_compiler_runtime.c)(41);
   const {
     store,
@@ -416,7 +423,7 @@ function CanvasRootTrees(t0) {
     onActivateTextEditor,
     onDeactivateTextEditor,
     onTextSelectionChange,
-    selectedElementIds,
+    selectedElementIdsRef,
     selectionMode,
     canvasScale,
     onResizeElement,
@@ -436,7 +443,7 @@ function CanvasRootTrees(t0) {
     drilledParentId
   } = t0;
   let t1;
-  if ($[0] !== allowedPaths || $[1] !== assetResolver || $[2] !== canvasScale || $[3] !== commentMode || $[4] !== componentIndex || $[5] !== components || $[6] !== componentsRevision || $[7] !== draggedIds || $[8] !== drilledParentId || $[9] !== editingTextBounds || $[10] !== editingTextId || $[11] !== iconLibraries || $[12] !== interactiveParentIds || $[13] !== interactiveParentIdsRef || $[14] !== onActivateTextEditor || $[15] !== onAddAllowedPath || $[16] !== onAddElement || $[17] !== onDeactivateTextEditor || $[18] !== onEditText || $[19] !== onFixWithAI || $[20] !== onOpenFile || $[21] !== onResizeElement || $[22] !== onSaveToCode || $[23] !== onStartEditTextProp || $[24] !== onStopEditTextProp || $[25] !== onTextSelectionChange || $[26] !== onUpdateElementProps || $[27] !== onViewportPan || $[28] !== onViewportZoom || $[29] !== panMode || $[30] !== readOnly || $[31] !== selectElement || $[32] !== selectedElementIds || $[33] !== selectionMode || $[34] !== selectionModeRef || $[35] !== setEditingTextBounds || $[36] !== store || $[37] !== throttledHoverElement) {
+  if ($[0] !== allowedPaths || $[1] !== assetResolver || $[2] !== canvasScale || $[3] !== commentMode || $[4] !== componentIndex || $[5] !== components || $[6] !== componentsRevision || $[7] !== draggedIds || $[8] !== drilledParentId || $[9] !== editingTextBounds || $[10] !== editingTextId || $[11] !== iconLibraries || $[12] !== interactiveParentIds || $[13] !== interactiveParentIdsRef || $[14] !== onActivateTextEditor || $[15] !== onAddAllowedPath || $[16] !== onAddElement || $[17] !== onDeactivateTextEditor || $[18] !== onEditText || $[19] !== onFixWithAI || $[20] !== onOpenFile || $[21] !== onResizeElement || $[22] !== onSaveToCode || $[23] !== onStartEditTextProp || $[24] !== onStopEditTextProp || $[25] !== onTextSelectionChange || $[26] !== onUpdateElementProps || $[27] !== onViewportPan || $[28] !== onViewportZoom || $[29] !== panMode || $[30] !== readOnly || $[31] !== selectElement || $[32] !== selectedElementIdsRef || $[33] !== selectionMode || $[34] !== selectionModeRef || $[35] !== setEditingTextBounds || $[36] !== store || $[37] !== throttledHoverElement) {
     t1 = getRootIds(store).map(rootId => {
       const el = getById(store, rootId);
       if (!el) return null;
@@ -463,7 +470,7 @@ function CanvasRootTrees(t0) {
         onActivateTextEditor: readOnly ? void 0 : onActivateTextEditor,
         onDeactivateTextEditor: readOnly ? void 0 : onDeactivateTextEditor,
         onTextSelectionChange: readOnly ? void 0 : onTextSelectionChange,
-        selectedElementIds,
+        selectedElementIdsRef,
         selectionMode,
         selectionModeRef,
         canvasScale,
@@ -533,7 +540,7 @@ function CanvasRootTrees(t0) {
     $[29] = panMode;
     $[30] = readOnly;
     $[31] = selectElement;
-    $[32] = selectedElementIds;
+    $[32] = selectedElementIdsRef;
     $[33] = selectionMode;
     $[34] = selectionModeRef;
     $[35] = setEditingTextBounds;
@@ -547,13 +554,13 @@ function CanvasRootTrees(t0) {
     $[39] = t1;
     $[40] = t2;
   } else t2 = $[40];
-  return t2;
+  return <CanvasSelectionContext.Provider value={currentSelection}>{t2}</CanvasSelectionContext.Provider>;
 }
 function _temp3$28() {}
 function _temp2$43() {}
 function _temp$56() {}
 function Canvas(t0) {
-  const $ = (0, import_compiler_runtime.c)(470);
+  const $ = (0, import_compiler_runtime.c)(472);
   const { t } = useTranslation("editor");
   const {
     store,
@@ -1519,6 +1526,9 @@ function Canvas(t0) {
     geomByIdRef,
     geomVersion
   } = useOverlayGeoms(t68);
+  import_react.useLayoutEffect(() => {
+    commitCanvasSelection(selectedElementIds, viewportRef.current);
+  }, [selectedElementIds, geomVersion, viewportRef]);
   let t69;
   if ($[120] !== dragStartAnchor || $[121] !== transformState.positionX || $[122] !== transformState.positionY || $[123] !== zoom) {
     t69 = dragStartAnchor && {
@@ -2667,8 +2677,10 @@ function Canvas(t0) {
     $[425] = t144;
   } else t144 = $[425];
   let t145;
-  if ($[426] !== t101 || $[427] !== t102 || $[428] !== t104 || $[429] !== t105 || $[430] !== t126 || $[431] !== t128 || $[432] !== t129 || $[433] !== t144 || $[434] !== t98 || $[435] !== t99 || $[436] !== viewportRef) {
-    t145 = <div ref={viewportRef} className="flex-1 relative overflow-hidden bg-ed-canvas-background" data-canvas-viewport="" {...t98} {...t99} style={t101} onDragOver={t102} onDragLeave={t103} onDrop={t104} onPointerDown={t105}>{t126}{t127}{t128}{t129}{t144}</div>;
+  if ($[470] !== store.byId.size || $[471] !== selectedElementIds.size || $[426] !== t101 || $[427] !== t102 || $[428] !== t104 || $[429] !== t105 || $[430] !== t126 || $[431] !== t128 || $[432] !== t129 || $[433] !== t144 || $[434] !== t98 || $[435] !== t99 || $[436] !== viewportRef) {
+    t145 = <div ref={viewportRef} className="flex-1 relative overflow-hidden bg-ed-canvas-background" data-canvas-viewport="" {...t98} {...t99} style={t101} onDragOver={t102} onDragLeave={t103} onDrop={t104} onPointerDown={t105}>{t126}{t127}{t128}{t129}{t144}<CanvasPerformanceToolbar viewportRef={viewportRef} nodeCount={store.byId.size} selectedCount={selectedElementIds.size} /></div>;
+    $[470] = store.byId.size;
+    $[471] = selectedElementIds.size;
     $[426] = t101;
     $[427] = t102;
     $[428] = t104;

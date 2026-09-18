@@ -6,6 +6,8 @@
  * this is build output with the build's own rewrites undone -- not the
  * author's original file. See luna/RECOVERY.md.
  */
+
+import { measureCanvasWork } from "../lib/canvasPerformance";
 import { publishHover } from "../../shared/state/hoverChannel";
 import { parseTransformControls, topEdgeOfRotatedBox, withTransformRotation } from "../../shared/utils/transformControls";
 import { hasMultiRootContents, measureVisibleBounds, resolveObservedElements, resolveVisibleElement$1 } from "../../shared/utils/visibleElement";
@@ -213,6 +215,9 @@ function overlayBaseAttr(rect, at) {
   return `${rect.left},${rect.top},${rect.width},${rect.height},${at.scale},${at.positionX},${at.positionY}`;
 }
 function readElementGeom(source, view, walkCache) {
+  return measureCanvasWork("geometry", () => readElementGeomUnmeasured(source, view, walkCache));
+}
+function readElementGeomUnmeasured(source, view, walkCache) {
   function geomFromAabb(aabb) {
     const left = toCanvasX(aabb.left, view);
     const top = toCanvasY(aabb.top, view);
@@ -1849,32 +1854,7 @@ function useOverlayGeoms(t0) {
     t20 = $[50];
   }
   (0, import_react.useLayoutEffect)(t19, t20);
-  let t21;
-  let t22;
-  if ($[51] !== currentMeasureView || $[52] !== selectedElementIds) {
-    t21 = () => {
-      if (selectedElementIds.size === 0) return;
-      let changed_1 = false;
-      for (const id_9 of selectedElementIds) {
-        if (!syncResolved(id_9)) continue;
-        const tracked_7 = elementByIdRef.current.get(id_9);
-        if (!tracked_7) continue;
-        const oneView_1 = currentMeasureView();
-        if (oneView_1) geomByIdRef.current.set(id_9, readElementGeom(tracked_7, oneView_1));
-        changed_1 = true;
-      }
-      if (changed_1) scheduleGeomBump();
-    };
-    t22 = [selectedElementIds, syncResolved, scheduleGeomBump, currentMeasureView];
-    $[51] = currentMeasureView;
-    $[52] = selectedElementIds;
-    $[53] = t21;
-    $[54] = t22;
-  } else {
-    t21 = $[53];
-    t22 = $[54];
-  }
-  (0, import_react.useEffect)(t21, t22);
+  // Selection geometry is refreshed once in the layout effect above.
   let t23;
   if ($[55] !== geomVersion) {
     t23 = {

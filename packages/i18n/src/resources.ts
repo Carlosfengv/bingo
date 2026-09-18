@@ -161,6 +161,13 @@ const en = {
     },
   },
   editor: {
+    performance: {
+      title: "Canvas performance", nodes: "{{count}} nodes · {{selected}} selected", reset: "Reset", copy: "Copy", copied: "Copied", copyFailed: "Retry copy",
+      metric: "Metric", latest: "Latest", count: "Samples", selection: "Selection commit", nextFrame: "Next frame callback", tree: "Root tree build", geometry: "Box measurement", codegen: "Selection JSX",
+      frames: "Page frames: {{fps}} FPS · >32ms: {{slow}} / interval",
+      help: "Click to change selection. Commit is DOM-ready; next frame is not actual presentation time. P95 uses the last 120 samples. Updates every 0.5s; collapse to stop.",
+    },
+
     navigation: {
       pages: "Pages",
       assets: "Assets",
@@ -964,6 +971,13 @@ const zhCN: LocalizedResource<typeof en> = {
     },
   },
   editor: {
+    performance: {
+      title: "画布性能", nodes: "{{count}} 个节点 · 选中 {{selected}} 个", reset: "重置", copy: "复制", copied: "已复制", copyFailed: "重试复制",
+      metric: "指标", latest: "最近", count: "次数", selection: "选中框提交", nextFrame: "下一帧回调", tree: "根元素树构建", geometry: "元素盒测量", codegen: "选中 JSX 生成",
+      frames: "页面帧率：{{fps}} FPS · 超过 32ms：{{slow}} 次 / 采样周期",
+      help: "点击切换选中项后采样。提交表示 DOM 就绪，下一帧不代表实际呈现时间。P95 取最近 120 次；每 0.5 秒刷新，折叠后停止采集。",
+    },
+
     navigation: {
       pages: "页面",
       assets: "资源",

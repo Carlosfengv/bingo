@@ -476,7 +476,7 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
       "data-text-element": "true",
       onDoubleClick: e => {
         const ownerId = resolveTextOwner(store, element.id);
-        if (!(options.selectedElementIds?.has(ownerId) ?? false)) return;
+        if (!((options.selectedElementIdsRef?.current ?? options.selectedElementIds)?.has(ownerId) ?? false)) return;
         e.stopPropagation();
         if (options.onStartEditText) {
           const rect = e.currentTarget.getBoundingClientRect();
