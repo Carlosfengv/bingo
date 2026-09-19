@@ -1,3 +1,4 @@
+import { acquireProjectRender } from "../../shared/lib/projectActivity";
 /*
  * Reconstructed from the shipped Bingo bundle by luna/tools/rebuild.mjs.
  * Original module: ../../packages/editor/src/shell/hooks/useCanvasToolHandler.ts
@@ -354,6 +355,7 @@ function useCanvasToolHandler(deps) {
         return current.tabs.find(tab => tab.id === tabId)?.store;
       };
       const dropPreviewsOnTab = (_tabId, store) => store;
+      const releaseRender = acquireProjectRender();
       try {
         if (operation === "preview_drop") {
           drawPreviewsRef.current.clear();
@@ -1504,7 +1506,7 @@ function useCanvasToolHandler(deps) {
             }
           } : {})
         });
-      }
+      } finally { releaseRender(); }
     });
     return () => {
       unsub();

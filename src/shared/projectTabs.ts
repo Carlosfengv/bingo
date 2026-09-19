@@ -1,4 +1,5 @@
 export const PROJECT_TITLEBAR_HEIGHT = 40;
+export type ProjectActivityState = { active: boolean; windowVisible: boolean; revision: number };
 export type ProjectTabStatus = "idle" | "loading" | "running" | "attention" | "error";
 export type ProjectTabFailure = {
   kind: "renderer" | "load";

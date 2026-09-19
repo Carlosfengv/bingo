@@ -48,8 +48,10 @@ export class ProjectWindowTabs {
   tabs: Tab[] = [];
   activeId: string | null = null;
   revision = 0;
+  activityRevision = 0;
   sessionId: string;
   closingWindow = false;
+  private sessionClosing = false;
   allowWindowClose = false;
   constructor(public win: BrowserWindow, private options: {
     preload: string;
@@ -62,6 +64,7 @@ export class ProjectWindowTabs {
     win.on("resize", () => this.layout());
     win.on("enter-full-screen", () => this.layout());
     win.on("leave-full-screen", () => this.layout());
+    for (const event of ["show", "hide", "minimize", "restore"] as const) win.on(event, () => this.publishActivity());
     win.webContents.on("did-finish-load", () => this.publish());
     win.on("close", event => {
       if (this.allowWindowClose || this.tabs.length === 0) return;
@@ -94,8 +97,22 @@ export class ProjectWindowTabs {
     if (this.win.isDestroyed()) return;
     this.revision++;
     this.win.webContents.send("project-tabs:changed", this.snapshot());
-    savedWindows.set(this.sessionId, { id: this.sessionId, projectIds: this.tabs.map(tab => tab.id), activeId: this.activeId });
-    saveSession();
+    if (!this.sessionClosing) {
+      savedWindows.set(this.sessionId, { id: this.sessionId, projectIds: this.tabs.map(tab => tab.id), activeId: this.activeId });
+      saveSession();
+    }
+  }
+  activity(id: string) {
+    return { active: this.activeId === id, windowVisible: this.win.isVisible() && !this.win.isMinimized(), revision: this.activityRevision };
+  }
+  publishActivity(tabs = this.tabs) {
+    this.activityRevision++;
+    for (const tab of tabs) {
+      if (!tab.failed && !tab.view.webContents.isDestroyed()) tab.view.webContents.send("project-tabs:activity-changed", this.activity(tab.id));
+    }
+  }
+  async reportSessionFailure(error) {
+    await dialog.showMessageBox(this.win, { type: "error", message: tNative("tabs.sessionSaveFailed"), detail: String(error?.message || error) });
   }
   layout() {
     if (this.win.isDestroyed()) return;
@@ -107,10 +124,17 @@ export class ProjectWindowTabs {
   }
   activate(id: string | null, focus = true) {
     if (id !== null && !this.tabs.some(tab => tab.id === id)) return;
+    const selected = this.tabs.find(tab => tab.id === id);
+    if (this.activeId === id) {
+      if (focus) (selected && !selected.failed ? selected.view.webContents : this.win.webContents).focus();
+      return;
+    }
+    const previous = this.tabs.find(tab => tab.id === this.activeId);
     this.activeId = id;
     if (id) windowProjectMap.set(this.win.id, id); else windowProjectMap.delete(this.win.id);
-    this.layout();
-    const selected = this.tabs.find(tab => tab.id === id);
+    if (previous) previous.view.setVisible(false);
+    if (selected) selected.view.setVisible(!selected.failed);
+    this.publishActivity([previous, selected].filter(Boolean) as Tab[]);
     if (focus) (selected && !selected.failed ? selected.view.webContents : this.win.webContents).focus();
     this.publish();
   }
@@ -151,6 +175,9 @@ export class ProjectWindowTabs {
     const id = tab.id;
     registerProjectRenderer(this.win, view.webContents, id, () => this.activate(id));
     this.win.contentView.addChildView(view);
+    const [width, height] = this.win.getContentSize();
+    view.setBounds({ x: 0, y: PROJECT_TITLEBAR_HEIGHT, width, height: Math.max(0, height - PROJECT_TITLEBAR_HEIGHT) });
+    view.setVisible(tab.id === this.activeId && !tab.failed);
     this.options.configure(view.webContents);
     view.webContents.on("before-input-event", (event, input) => this.shortcut(event, input));
     view.webContents.on("render-process-gone", (_event, details) => {
@@ -214,6 +241,10 @@ export class ProjectWindowTabs {
     const view = this.createView();
     this.attachView(tab, view);
     this.loadTab(tab, view);
+    // A replacement of the active renderer still needs a fresh activity revision.
+    this.layout();
+    this.publishActivity([tab]);
+    this.publish();
     this.activate(id);
     return true;
   }
@@ -336,6 +367,11 @@ export function registerProjectTabsIPC() {
     return controller;
   };
   ipcMain.handle("project-tabs:get", event => controllerFor(event).snapshot());
+  ipcMain.handle("project-tabs:activity-get", event => {
+    const id = projectForWebContents(event.sender);
+    if (!id) throw new Error("Only project renderers can read their activity.");
+    return controllerFor(event, false).activity(id);
+  });
   ipcMain.handle("project-tabs:open", (event, args) => controllerFor(event).open(args?.projectId));
   ipcMain.handle("project-tabs:activate", (event, args) => controllerFor(event).activate(args?.projectId ?? null, args?.focus !== false));
   ipcMain.handle("project-tabs:reload", (event, args) => controllerFor(event).reload(args?.projectId));
@@ -354,12 +390,14 @@ export function registerProjectTabsIPC() {
     const controller = controllerFor(event, false);
     const tab = controller.tabs.find(tab => tab.id === projectId);
     if (!tab) return;
+    const before = JSON.stringify({ ready: tab.ready, failed: tab.failed, name: tab.name, failure: tab.failure, activity: [...tab.activity] });
     if (args?.ready === true) { tab.ready = true; tab.failed = false; tab.failure = undefined; }
     if (typeof args?.name === "string" && args.name.trim()) tab.name = args.name.slice(0, 160);
     if (typeof args?.source === "string" && ["idle", "loading", "running", "attention", "error"].includes(args?.status)) {
       if (args.status === "idle") tab.activity.delete(args.source);
       else tab.activity.set(args.source.slice(0, 160), args.status);
     }
-    controller.publish();
+    const after = JSON.stringify({ ready: tab.ready, failed: tab.failed, name: tab.name, failure: tab.failure, activity: [...tab.activity] });
+    if (before !== after) controller.publish();
   });
 }

@@ -16,6 +16,7 @@ import { captureElementImage } from "../../shared/utils/captureElementImage";
 import { useChatScroll } from "../hooks/useChatScroll";
 import { BINGO_COMMANDS, buildConnectionPrompt, connectionDisplayName, fetchSlashCommands, filterSlashCommands } from "../hooks/useClaudeContext";
 import { useLocalAgents } from "../hooks/useLocalAgents";
+import { useBackgroundVisualCommit } from "../hooks/useBackgroundVisualCommit";
 import { isClaudeSetUp, useClaudeStatus } from "../hooks/useClaudeStatus";
 import { useContextMentions } from "../hooks/useContextMentions";
 import { CHAT_ATTACHMENT_ACCEPT, getDroppedAttachments, readPromptAttachment } from "../utils/chatAttachments";
@@ -1561,12 +1562,13 @@ var ChatPanelContent = (0, import_react.forwardRef)(function ChatPanel({
   const streamingContentRef = (0, import_react.useRef)("");
   const persistedAssistantMessageIdRef = (0, import_react.useRef)(null);
   const [activityTimeline, _setActivityTimeline] = (0, import_react.useState)([]);
+  const commitActivityTimeline = useBackgroundVisualCommit(_setActivityTimeline);
   const activityTimelineRef = (0, import_react.useRef)([]);
   const setActivityTimeline = (0, import_react.useCallback)(val => {
     const next = typeof val === "function" ? val(activityTimelineRef.current) : val;
     activityTimelineRef.current = next;
-    _setActivityTimeline(next);
-  }, []);
+    commitActivityTimeline(next, next.length === 0);
+  }, [commitActivityTimeline]);
   const thinkingOffsetRef = (0, import_react.useRef)(0);
   const [streamingScreenshots, _setStreamingScreenshots] = (0, import_react.useState)([]);
   const streamingScreenshotsRef = (0, import_react.useRef)([]);

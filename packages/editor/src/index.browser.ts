@@ -1,3 +1,4 @@
+export { ProjectActivityProvider, acquireProjectRender, waitForProjectRenderReady } from "./shared/lib/projectActivity";
 /*
  * Reconstructed barrel: the original was tree-shaken out of the bundle,
  * since a module that only re-exports emits no code. Rebuilt from the

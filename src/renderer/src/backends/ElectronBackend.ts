@@ -1,3 +1,4 @@
+import { acquireProjectRender, waitForProjectRenderReady } from "@bingo/editor";
 /*
  * Reconstructed from the shipped Bingo bundle by luna/tools/rebuild.mjs.
  * Original module: src/renderer/src/backends/ElectronBackend.ts
@@ -154,7 +155,9 @@ function createElectronBackend(projectId, options = {}) {
           finished = true;
         } else if (event.type === "screenshot_request") {
           const captureScreenshot = async () => {
+            const releaseRender = acquireProjectRender();
             try {
+              await waitForProjectRenderReady();
               const elementId = event.elementId;
               let el = null;
               if (elementId) {
@@ -217,7 +220,7 @@ function createElectronBackend(projectId, options = {}) {
                 requestId: event.requestId,
                 dataUrl: null
               });
-            }
+            } finally { releaseRender(); }
           };
           captureScreenshot();
         } else if (event.type === "folder_access_needed") queue.push({

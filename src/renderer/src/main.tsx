@@ -10,7 +10,7 @@ import "./presentationBridge";
 import { App } from "./App";
 import { queryClient } from "@bingo/workspace";
 import { createInteropJsxRuntime } from "@bingo/compiler";
-import { captureElementImage, resolveCaptureElement } from "@bingo/editor";
+import { captureElementImage, resolveCaptureElement, acquireProjectRender, waitForProjectRenderReady } from "@bingo/editor";
 import { appI18n, changeLanguage, I18nextProvider, initializeI18n, normalizeSupportedLocale } from "@bingo/i18n";
 import { QueryClientProvider } from "@tanstack/react-query";
 import * as import_react from "react";
@@ -104,7 +104,9 @@ function nativeCaptureRect(el) {
   };
 }
 if (window.api?.on) window.api.on("screenshot_request_mcp", async event => {
+  const releaseRender = acquireProjectRender();
   try {
+    await waitForProjectRenderReady();
     let el = null;
     if (event.elementId) {
       el = document.querySelector(`[data-element-id="${event.elementId}"]`);
@@ -176,5 +178,5 @@ if (window.api?.on) window.api.on("screenshot_request_mcp", async event => {
       requestId: event.requestId,
       dataUrl: null
     });
-  }
+  } finally { releaseRender(); }
 });

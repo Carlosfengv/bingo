@@ -1,3 +1,4 @@
+import { isProjectVisualActive, isProjectForegroundActive, subscribeProjectActivity } from "../../shared/lib/projectActivity";
 /*
  * Reconstructed from the shipped Bingo bundle by luna/tools/rebuild.mjs.
  * Original module: ../../packages/editor/src/shell/components/BingoEditor.tsx
@@ -1221,6 +1222,7 @@ var BingoEditorInner = ({
     lateRefitRef.current = null;
   };
   const lateRefitTick = startedAt => {
+    if (!isProjectVisualActive()) return;
     if (!lateRefitRef.current) return cancelLateRefit();
     if (performance.now() - startedAt > LATE_REFIT_WINDOW_MS) return cancelLateRefit();
     const viewport_0 = viewportRef.current?.getBoundingClientRect();
@@ -1239,7 +1241,7 @@ var BingoEditorInner = ({
     cancelLateRefit();
   };
   const armLateRefit = () => {
-    if (!lateRefitRef.current || lateRefitTimerRef.current) return;
+    if (!isProjectVisualActive() || !lateRefitRef.current || lateRefitTimerRef.current) return;
     const startedAt_0 = performance.now();
     lateRefitUnsubRef.current = subscribeUserCameraGesture(() => cancelLateRefit());
     lateRefitTimerRef.current = setInterval(() => lateRefitTick(startedAt_0), LATE_REFIT_POLL_MS);
@@ -1311,15 +1313,25 @@ var BingoEditorInner = ({
     };
     fitFrameRef.current = requestAnimationFrame(measureAndFit);
   });
-  (0, import_react.useEffect)(() => {
+  // Activity must not subscribe the entire editor tree to synchronous React renders.
+  const syncCameraActivity = (0, import_react.useEffectEvent)(() => {
+    if (!isProjectVisualActive()) {
+      if (lateRefitTimerRef.current) clearInterval(lateRefitTimerRef.current);
+      lateRefitTimerRef.current = null;
+      lateRefitUnsubRef.current?.();
+      lateRefitUnsubRef.current = null;
+    } else armLateRefit();
     if (cameraReadyTabId === activeTabId) return;
+    if (!isProjectVisualActive()) { cancelPendingFit(); return; }
     if (protoMode) return;
     if (elementParam) return;
     if (activeTabId === "canvas-1" && !pagesReady) return;
     if (fitInFlightTabIdRef.current === activeTabId) return;
     if (!tabs.find(t_2 => t_2.id === activeTabId)?.loaded) return;
     resolveCameraForTab(activeTabId);
-  }, [tabs, activeTabId, cameraReadyTabId, elementParam, pagesReady, protoMode]);
+  });
+  (0, import_react.useEffect)(() => subscribeProjectActivity(syncCameraActivity), []);
+  (0, import_react.useEffect)(() => { syncCameraActivity(); }, [tabs, activeTabId, cameraReadyTabId, elementParam, pagesReady, protoMode]);
   (0, import_react.useEffect)(() => () => {
     if (fitFrameRef.current !== null) cancelAnimationFrame(fitFrameRef.current);
     if (lateRefitTimerRef.current) clearInterval(lateRefitTimerRef.current);
@@ -1894,10 +1906,16 @@ var BingoEditorInner = ({
   const followedChatId = chatTabs[visibleChatIndex]?.id;
   const followingAi = followAi && !!followedChatId && runningChatIds.has(followedChatId);
   (0, import_react.useEffect)(() => {
-    if (!followingAi) return;
-    fitToFollowAi();
-    const intervalId = window.setInterval(fitToFollowAi, FOLLOW_AI_TICK_MS);
-    return () => window.clearInterval(intervalId);
+    let intervalId = null;
+    const update = () => {
+      const active = followingAi && isProjectForegroundActive();
+      if (active && intervalId === null) {
+        fitToFollowAi();
+        intervalId = window.setInterval(fitToFollowAi, FOLLOW_AI_TICK_MS);
+      } else if (!active && intervalId !== null) { window.clearInterval(intervalId); intervalId = null; }
+    };
+    const off = subscribeProjectActivity(update); update();
+    return () => { off(); if (intervalId !== null) window.clearInterval(intervalId); };
   }, [followingAi, followedChatId]);
   const handleFocusLastChatResult = chatId_4 => {
     persistFollowAi(false);
@@ -3681,6 +3699,7 @@ var BingoEditorInner = ({
   const lastPreviewAtRef = (0, import_react.useRef)(0);
   const capturingPreviewRef = (0, import_react.useRef)(false);
   const previewTimerRef = (0, import_react.useRef)(null);
+  const pendingPreviewRef = (0, import_react.useRef)(null);
   const saveSnapshotRef = (0, import_react.useRef)(null);
   const saveErrorRef = (0, import_react.useRef)(null);
   const canvasSaveQueue = (0, import_react.useMemo)(() => createVersionedSaveQueue({
@@ -3691,9 +3710,13 @@ var BingoEditorInner = ({
     onError: error => saveErrorRef.current?.(error)
   }), []);
   const schedulePreview = (canvasId, version) => {
+    pendingPreviewRef.current = { canvasId, version };
     if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    if (!isProjectForegroundActive()) return;
     previewTimerRef.current = setTimeout(async () => {
       previewTimerRef.current = null;
+      if (!isProjectForegroundActive()) return;
+      pendingPreviewRef.current = null;
       const current = () => canvasSaveQueue.isCurrent(canvasId, version)
         && activeTabIdRef.current === canvasId && !canvasSaveQueue.hasPending();
       if (!current() || capturingPreviewRef.current || Date.now() - lastPreviewAtRef.current < 3e5) return;
@@ -3710,6 +3733,16 @@ var BingoEditorInner = ({
       finally { capturingPreviewRef.current = false; }
     }, 1000);
   };
+  const syncPreviewActivity = (0, import_react.useEffectEvent)(() => {
+    if (!isProjectForegroundActive()) {
+      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+      previewTimerRef.current = null;
+    } else if (pendingPreviewRef.current) {
+      const { canvasId, version } = pendingPreviewRef.current;
+      schedulePreview(canvasId, version);
+    }
+  });
+  (0, import_react.useEffect)(() => subscribeProjectActivity(syncPreviewActivity), []);
   const persistCanvasSnapshot = async (canvasId, snapshot, version) => {
     const { store, name, tabId, revision, backgroundColor, backgroundToken } = snapshot;
     // Serialization is intentionally inside the scheduled task, not in an
@@ -4362,7 +4395,7 @@ var BingoEditorInner = ({
                 setPendingElementToCenter(elementId);
               }} store={currentStore} enableCssEditor={enableCssEditor} componentIndex={componentIndex} components={components} iconLibraries={iconLibraries} onReplaceElement={onReplaceElement} onPreviewElement={onPreviewElement} onClearPreview={onClearPreview} />}>{canvasAlert}{activeTab && <div className="h-full relative">{(!activeTab.loaded || canvasCameraPending) && <div className="absolute inset-0 flex items-center justify-center z-10">{<div className="flex flex-col items-center gap-2 text-ed-muted-foreground">{<div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />}</div>}</div>}{<ContextMenu$1 onOpenChange={open => {
                 if (!open) setCanvasMenuTargetId(null);
-              }}>{<ContextMenuTrigger asChild={true} onContextMenu={handleCanvasContextMenu}>{<div style={{
+              }}>{<ContextMenuTrigger asChild={true} onContextMenu={handleCanvasContextMenu}>{<div data-project-canvas-ready={!!activeTab.loaded && !canvasCameraPending} style={{
                     display: "contents",
                     visibility: canvasCameraPending ? "hidden" : void 0
                   }}>{<Canvas key={`canvas-${activeTab.id}-${transformKey}`} store={previewStore ?? activeTab.store} backgroundColor={activeTab.backgroundColor} setStore={setStore} selectedElementIds={selectedElementIds} onSelectElement={handleSelectElement} onResizeElement={onResizeElement} onEditText={onEditText} editingTextId={editingTextId} onStartEditText={id_23 => setEditingTextId(id_23)} onStopEditText={() => setEditingTextId(null)} onActivateTextEditor={api => {

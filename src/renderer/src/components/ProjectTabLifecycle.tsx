@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useTranslation } from "@bingo/i18n";
+import { ProjectActivityProvider } from "@bingo/editor";
 
 /** The editor adds its pending saves to this synchronous collection event. */
 export function ProjectTabLifecycle({ children }) {
@@ -21,8 +22,8 @@ export function ProjectTabLifecycle({ children }) {
     window.api.send("project-tabs:status", { ready: true });
     return () => { offClose(); offResume(); };
   }, []);
-  return <div className="project-tab-editor">
+  return <ProjectActivityProvider><div className="project-tab-editor">
     <div className="project-tab-editor-content" inert={preparing || undefined}>{children}</div>
     {preparing && <div className="project-tab-saving" role="status">{t("tabs.saving")}</div>}
-  </div>;
+  </div></ProjectActivityProvider>;
 }

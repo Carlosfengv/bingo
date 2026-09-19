@@ -1,4 +1,5 @@
 import { memo, useEffect, useState } from "react";
+import { useProjectVisualActivity } from "../../shared/lib/projectActivity";
 import { useTranslation } from "@bingo/i18n";
 import { beginCanvasSelection, getCanvasPerformance, resetCanvasPerformance, setCanvasPerformanceEnabled } from "../lib/canvasPerformance";
 
@@ -8,12 +9,13 @@ const stop = (event) => event.stopPropagation();
 export const CanvasPerformanceToolbar = memo(function CanvasPerformanceToolbar({ viewportRef, nodeCount, selectedCount }) {
   const { t } = useTranslation("editor");
   const [open, setOpen] = useState(false);
+  const visualActive = useProjectVisualActivity();
   const [snapshot, setSnapshot] = useState(getCanvasPerformance);
   const [frames, setFrames] = useState<{ fps: number; slow: number } | null>(null);
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
   useEffect(() => {
-    if (!open) return;
+    if (!open || !visualActive) return;
     setCanvasPerformanceEnabled(true);
     setSnapshot(getCanvasPerformance());
     setFrames(null);
@@ -56,7 +58,7 @@ export const CanvasPerformanceToolbar = memo(function CanvasPerformanceToolbar({
       clearInterval(timer);
       setCanvasPerformanceEnabled(false);
     };
-  }, [open, viewportRef]);
+  }, [open, visualActive, viewportRef]);
   const reset = () => {
     resetCanvasPerformance();
     setSnapshot(getCanvasPerformance());

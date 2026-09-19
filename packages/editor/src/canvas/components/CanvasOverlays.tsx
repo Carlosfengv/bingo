@@ -1,3 +1,4 @@
+import { isProjectVisualActive, subscribeProjectActivity } from "../../shared/lib/projectActivity";
 /*
  * Reconstructed from the shipped Bingo bundle by luna/tools/rebuild.mjs.
  * Original module: ../../packages/editor/src/canvas/components/CanvasOverlays.tsx
@@ -1461,7 +1462,7 @@ function useOverlayGeoms(t0) {
   const geomRafRef = (0, import_react.useRef)(null);
   let t3;
   if ($[2] !== canvasRef) {
-    t3 = () => readMeasureView(getCamera(), document.querySelector("[data-overlay-container]") ?? canvasRef?.current ?? null);
+    t3 = () => isProjectVisualActive() ? readMeasureView(getCamera(), document.querySelector("[data-overlay-container]") ?? canvasRef?.current ?? null) : null;
     $[2] = canvasRef;
     $[3] = t3;
   } else t3 = $[3];
@@ -1479,6 +1480,7 @@ function useOverlayGeoms(t0) {
   if ($[6] === Symbol.for("react.memo_cache_sentinel")) {
     t5 = t6 => {
       if (t6 === void 0 ? false : t6) geomRecomputePendingRef.current = true;
+      if (!isProjectVisualActive()) { geomRecomputePendingRef.current = true; return; }
       if (geomRafRef.current !== null) return;
       geomRafRef.current = requestAnimationFrame(() => {
         geomRafRef.current = null;
@@ -1492,6 +1494,16 @@ function useOverlayGeoms(t0) {
     $[6] = t5;
   } else t5 = $[6];
   const scheduleGeomBump = t5;
+  // Keep the DOM index/observers alive. Rebuilding thousands of registrations
+  // on each activation costs more than the work that background gating saves.
+  import_react.useEffect(() => subscribeProjectActivity(() => {
+    if (!isProjectVisualActive()) {
+      if (geomRafRef.current !== null) {
+        cancelAnimationFrame(geomRafRef.current); geomRafRef.current = null;
+        geomRecomputePendingRef.current = true;
+      }
+    } else if (geomRecomputePendingRef.current) scheduleGeomBump(true);
+  }), [scheduleGeomBump]);
   const resizeObserverRef = (0, import_react.useRef)(null);
   let t6;
   if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
@@ -1583,7 +1595,7 @@ function useOverlayGeoms(t0) {
       const resizeObserver = new ResizeObserver(entries => {
         if (isResizingNow()) return;
         const view_0 = currentMeasureView();
-        if (!view_0) return;
+        if (!view_0) { geomRecomputePendingRef.current = true; return; }
         let changed = false;
         for (const entry of entries) {
           if (entry.target === canvas || entry.target === overlayContainer) {
@@ -1637,6 +1649,7 @@ function useOverlayGeoms(t0) {
         }
         const oneView = currentMeasureView();
         if (oneView) geomByIdRef.current.set(id_3, readElementGeom(tracked_3, oneView));
+        else geomRecomputePendingRef.current = true;
       };
       const untrackIfCurrent = (id_4, el_0) => {
         const tracked_4 = elementByIdRef.current.get(id_4);
@@ -1784,6 +1797,7 @@ function useOverlayGeoms(t0) {
   let t15;
   if ($[33] !== dragActive || $[34] !== recomputeAllGeoms || $[35] !== resizeActive) {
     t15 = () => {
+      if (!isProjectVisualActive()) { geomRecomputePendingRef.current = true; return; }
       if (dragActive) return;
       if (rotateDrag) return;
       if (resizeActive) return;
