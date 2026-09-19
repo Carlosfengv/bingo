@@ -1,14 +1,16 @@
 import * as React from "react";
-import { emptyVariableLibrary, bindElementVariable, detachElementVariable, findElementVariableBinding, resolveCollectionModes, resolveVariableValues, setElementVariableMode, prepareVariableStore, validateVariableLibrary, literalForProperty } from "../../../../compiler/src/runtime/variables";
+import { emptyVariableLibrary, bindElementVariable, detachElementVariable, findElementVariableBinding, resolveCollectionModes, resolveVariableValues, setElementVariableMode, sameCollectionModes, prepareVariableStore, validateVariableLibrary, literalForProperty, variableModesSignature } from "../../../../compiler/src/runtime/variables";
 import { createSetStylesOperation } from "../utils/operations";
 
 export const VariableLibraryContext = React.createContext<any>(null);
+const VariableSnapshotContext = React.createContext<any>(null);
 export const VariableEditorContext = React.createContext<any>(null);
 export const useVariables = () => React.useContext(VariableLibraryContext);
+export const useVariableSnapshot = () => React.useContext(VariableSnapshotContext);
 export const useVariableEditor = () => React.useContext(VariableEditorContext);
 
 export function useResolvedVariableStyle(property, fallback) {
-  const variables = useVariables();
+  const variables = useVariableSnapshot();
   const editor = useVariableEditor();
   if (!editor?.ids.length || !variables) return fallback;
   const element = editor.store.byId.get(editor.ids[0]);
@@ -38,7 +40,18 @@ export function VariableLibraryProvider({ projectPath, children }) {
     if (!root || !window.api?.invoke) return Promise.reject(new Error("Open a project to edit variables."));
     return window.api.invoke("bingo:store", { op, root, ...args });
   }, [root]);
-  const accept = React.useCallback(next => { snapshotRef.current = next; setSnapshot(next); }, []);
+  const accept = React.useCallback(next => {
+    const previous = snapshotRef.current;
+    if (previous.defaultModes && next.defaultModes && sameCollectionModes(previous.defaultModes, next.defaultModes)) {
+      next = { ...next, defaultModes: previous.defaultModes };
+    }
+    // Reloads often return fresh metadata objects for an unchanged revision.
+    // Preserve the snapshot so focus/save notifications do not invalidate consumers.
+    if (previous.library === next.library
+      && JSON.stringify({ ...previous, library: null }) === JSON.stringify({ ...next, library: null })) return;
+    snapshotRef.current = next;
+    setSnapshot(next);
+  }, []);
   const reload = React.useCallback(async () => {
     if (busy.current || reading.current) { reloadQueued.current = true; return; }
     reading.current = true;
@@ -48,6 +61,7 @@ export function VariableLibraryProvider({ projectPath, children }) {
       if (request !== generation.current || busy.current) return;
       if (!next?.library) throw new Error("Could not read project variables.");
       if (snapshotRef.current.revision !== next.revision) { undo.current = []; redo.current = []; }
+      else next = { ...next, library: snapshotRef.current.library };
       accept(next); setError(""); setStatus("ready");
     } catch (error) { if (request === generation.current) { setError(error.message); setStatus("error"); } }
     finally {
@@ -81,6 +95,7 @@ export function VariableLibraryProvider({ projectPath, children }) {
   }, [reload, scheduleReload, root]);
   const write = React.useCallback(async (library, historyAction = "edit") => {
     if (busy.current || !snapshotRef.current.source) return false;
+    if (historyAction === "edit" && JSON.stringify(library) === JSON.stringify(snapshotRef.current.library)) return true;
     try { validateVariableLibrary(library); } catch (error) { setError(error.message); return false; }
     busy.current = true; generation.current++;
     const before = snapshotRef.current;
@@ -110,32 +125,38 @@ export function VariableLibraryProvider({ projectPath, children }) {
     redo: () => redo.current.length ? write(redo.current.at(-1), "redo") : Promise.resolve(false),
     canUndo: undo.current.length > 0, canRedo: redo.current.length > 0,
   }), [snapshot, status, error, reload, managerOpen, focusTokenId, write]);
-  return <VariableLibraryContext.Provider value={value}>{children}</VariableLibraryContext.Provider>;
+  const renderSnapshot = React.useMemo(() => ({ library: snapshot.library, defaultModes: snapshot.defaultModes }), [snapshot.library, snapshot.defaultModes]);
+  return <VariableLibraryContext.Provider value={value}><VariableSnapshotContext.Provider value={renderSnapshot}>{children}</VariableSnapshotContext.Provider></VariableLibraryContext.Provider>;
 }
 
 export function VariableEditorProvider({ store, selectedIds, onCommit, readOnly, children }) {
-  const variables = useVariables();
-  const ids = Array.from(selectedIds || []) as string[];
+  const variables = useVariableSnapshot();
+  const ids = React.useMemo(() => Array.from(selectedIds || []) as string[], [selectedIds]);
   const pageModes = store.variableModes ?? variables?.defaultModes ?? {};
-  const resolve = (id: string | null) => {
+  const resolvedById = React.useMemo(() => new Map<string | null, any>(), [store, variables?.library, pageModes]);
+  const resolveModes = React.useCallback((id: string | null) => resolveCollectionModes(store, id, variables.library, pageModes), [store, variables.library, pageModes]);
+  const resolve = React.useCallback((id: string | null) => {
+    const cached = resolvedById.get(id);
+    if (cached) return cached;
     const resolved = resolveCollectionModes(store, id, variables.library, pageModes);
-    return { ...resolved, ...resolveVariableValues(variables.library, resolved.modes) };
-  };
-  const changeElements = (transform) => {
+    const value = { ...resolved, ...resolveVariableValues(variables.library, resolved.modes) };
+    resolvedById.set(id, value);
+    return value;
+  }, [store, variables.library, pageModes, resolvedById]);
+  const changeElements = React.useCallback((transform) => {
     if (readOnly) return;
     onCommit(current => ids.flatMap(id => {
       const old = current.byId.get(id); if (!old) return [];
       const next = transform(old, current);
-      if (JSON.stringify(old) === JSON.stringify(next)) return [];
+      if (old === next || JSON.stringify(old) === JSON.stringify(next)) return [];
       const ops: any[] = [];
       if (next.styles !== old.styles) ops.push(createSetStylesOperation(current, id, next.styles));
       ops.push({ type: "set_theme", elementId: id, oldTheme: old.theme, newTheme: next.theme });
       return ops.filter(Boolean);
     }));
-  };
-  const value = {
-    store, ids, readOnly, pageModes, resolve,
-    resolveModes: id => resolveCollectionModes(store, id, variables.library, pageModes),
+  }, [readOnly, onCommit, ids]);
+  const value = React.useMemo(() => ({
+    store, ids, readOnly, pageModes, resolve, resolveModes,
     bindingFor: (id, property) => findElementVariableBinding(store.byId.get(id), variables.library, property),
     setMode: (collectionId, modeId, page = false) => {
       if (readOnly) return;
@@ -143,6 +164,8 @@ export function VariableEditorProvider({ store, selectedIds, onCommit, readOnly,
       onCommit(current => {
         const modes = { ...(current.variableModes ?? variables.defaultModes) };
         if (modeId === null) delete modes[collectionId]; else modes[collectionId] = modeId;
+        if (current.variableModes && sameCollectionModes(current.variableModes, modes)) return [];
+        if (!current.variableModes && modeId === null && !Object.hasOwn(variables.defaultModes || {}, collectionId)) return [];
         return [{ type: "set_variable_modes", oldModes: current.variableModes, newModes: modes }];
       });
     },
@@ -151,13 +174,13 @@ export function VariableEditorProvider({ store, selectedIds, onCommit, readOnly,
       const { modes } = resolveCollectionModes(current, element.id, variables.library, current.variableModes ?? variables.defaultModes);
       return detachElementVariable(element, variables.library, property, resolveVariableValues(variables.library, modes).values);
     }),
-  };
+  }), [store, ids, readOnly, pageModes, resolve, resolveModes, variables.library, variables.defaultModes, onCommit, changeElements]);
   return <VariableEditorContext.Provider value={value}>{children}</VariableEditorContext.Provider>;
 }
 
 const renderCache = new WeakMap<object, { library: object; signature: string; store: any }>();
 export function useVariableRenderStore(store) {
-  const variables = useVariables();
+  const variables = useVariableSnapshot();
   if (!variables?.library.tokens.length) return store;
   const modes = store.variableModes ?? variables.defaultModes;
   const signature = JSON.stringify(modes);

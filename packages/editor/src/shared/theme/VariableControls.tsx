@@ -2,7 +2,7 @@ import * as React from "react";
 import { useTranslation } from "@bingo/i18n";
 import { AddVariableIcon, Popover, PopoverContent, PopoverTrigger } from "@bingo/ui";
 import { canBindVariable, variableTypeForProperty } from "../../../../compiler/src/runtime/variables";
-import { useVariables, useVariableEditor } from "./VariableContext";
+import { useVariables, useVariableEditor, useVariableSnapshot } from "./VariableContext";
 
 export const variableInputClass = "h-7 min-w-0 rounded-md border border-ed-border bg-ed-background px-2 text-xs text-ed-foreground outline-none focus-visible:ring-2 focus-visible:ring-ed-canvas-selection";
 export const variableButtonClass = "inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md px-2 text-xs text-ed-foreground hover:bg-ed-muted disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ed-canvas-selection";
@@ -66,21 +66,21 @@ export function VariableBindingControl({ property, compact = false }) {
   const token = variables.library.tokens.find(token => token.id === binding?.tokenId);
   const values = binding ? editor.ids.map(id => editor.resolve(id).values[binding.tokenId]) : [];
   const valuesMixed = new Set(values).size > 1;
-  const resolved = editor.resolve(editor.ids[0]);
-  const candidates = variables.library.tokens.filter(token => canBindVariable(token, property) && (!collectionId || token.collectionId === collectionId) && (token.name || token.id).toLowerCase().includes(query.toLowerCase()));
+  const resolved = open ? editor.resolve(editor.ids[0]) : null;
+  const candidates = open ? variables.library.tokens.filter(token => canBindVariable(token, property) && (!collectionId || token.collectionId === collectionId) && (token.name || token.id).toLowerCase().includes(query.toLowerCase())) : [];
   const label = mixed ? t("variables.mixed") : token?.name || token?.id || t(binding ? "variables.unavailable" : "variables.bind");
   return <Popover open={open} onOpenChange={setOpen} modal={false}>
     <PopoverTrigger asChild><button type="button" aria-label={`${t("variables.bind")} · ${property}`} title={valuesMixed ? t("variables.resolvedMixed") : label} disabled={editor.readOnly} style={compact ? { width: 24, height: 24, padding: 4 } : { maxWidth: "100%" }} className={`${variableButtonClass} ${compact ? "!size-6 !p-1" : "max-w-full justify-start border border-ed-border"}`} data-variable-property={property}>
       <AddVariableIcon className="size-3.5 shrink-0" />{!compact && <span className="truncate">{label}</span>}
     </button></PopoverTrigger>
-    <PopoverContent align="end" style={{ width: 288 }} className="w-72 overflow-hidden border-ed-border bg-ed-popover p-0 text-ed-foreground" data-text-edit-safe="true">
+    {open && <PopoverContent align="end" style={{ width: 288 }} className="w-72 overflow-hidden border-ed-border bg-ed-popover p-0 text-ed-foreground" data-text-edit-safe="true">
       <div className="flex flex-col gap-2 border-b border-ed-border p-2">
         <input aria-label={t("variables.search")} placeholder={t("variables.search")} className={variableInputClass} value={query} onChange={event => setQuery(event.target.value)} />
         <select aria-label={t("variables.collection")} className={variableInputClass} value={collectionId} onChange={event => setCollectionId(event.target.value)}><option value="">{t("variables.all")}</option>{variables.library.collections.map(collection => <option key={collection.id} value={collection.id}>{collection.name || collection.id}</option>)}</select>
       </div>
       <div className="max-h-64 overflow-y-auto p-1" role="listbox" aria-label={t("variables.title")}>
         {candidates.map(candidate => {
-          const value = resolved.values[candidate.id];
+          const value = resolved?.values[candidate.id];
           return <button type="button" role="option" aria-selected={!mixed && candidate.id === token?.id} key={candidate.id} disabled={value === undefined} onClick={() => { editor.bind(property, candidate.id); setOpen(false); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs hover:bg-ed-muted disabled:opacity-40">
             {candidate.type === "color" ? <span className="size-4 shrink-0 rounded-sm border border-ed-border" style={{ backgroundColor: value }} /> : <span className="w-4 text-center text-ed-muted-foreground">#</span>}
             <span className="min-w-0 flex-1 truncate">{candidate.name || candidate.id}</span><span className="max-w-20 truncate text-[10px] text-ed-muted-foreground">{value === undefined ? t("variables.unavailable") : String(value)}</span>
@@ -93,12 +93,12 @@ export function VariableBindingControl({ property, compact = false }) {
         {bindings.some(Boolean) && <button type="button" disabled={bindings.some((binding, index) => binding && editor.resolve(editor.ids[index]).values[binding.tokenId] === undefined)} className={`${variableButtonClass} justify-start`} onClick={() => { editor.detach(property); setOpen(false); }}>{t("variables.detach")}</button>}
         <button type="button" className={`${variableButtonClass} justify-start`} onClick={() => { variables.openManager(token?.id); setOpen(false); }}>{t(token ? "variables.edit" : "variables.manage")}</button>
       </div>
-    </PopoverContent>
+    </PopoverContent>}
   </Popover>;
 }
 
 export function VariableLayerBadge({ element }) {
-  const variables = useVariables();
+  const variables = useVariableSnapshot();
   if (!variables) return null;
   const entries = Object.entries(element.theme?.localCollectionModes || {});
   if (!entries.length) return null;

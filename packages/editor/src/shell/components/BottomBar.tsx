@@ -24,12 +24,12 @@ import { javascript } from "@codemirror/lang-javascript";
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorView as EditorView$1 } from "@codemirror/view";
 import { generateCompleteFile, getById } from "@bingo/compiler";
-import { useVariables } from "../../shared/theme/VariableContext";
+import { useVariableSnapshot } from "../../shared/theme/VariableContext";
 import { ArrowCounterClockwiseIcon, BookOpenIcon, BracketsCurlyIcon, Button, CheckIcon, ClockIcon, CopyIcon, CursorIcon, FloppyDiskIcon, Kbd, PlusIcon, Tabs, TabsList, TabsTrigger, TerminalIcon, Text$4, Tooltip, TooltipContent, TooltipTrigger, XIcon, useIsDark } from "@bingo/ui";
 import { useTranslation } from "@bingo/i18n";
 import { FileTs as c$10 } from "@phosphor-icons/react/dist/icons/FileTs";
 import { githubDark, githubLight } from "@uiw/codemirror-theme-github";
-import { default as ReactCodeMirror } from "@uiw/react-codemirror";
+import { RetainedCodeEditor } from "./RetainedCodeEditor";
 import * as import_react from "react";
 import * as import_compiler_runtime from "react/compiler-runtime";
 import * as import_jsx_runtime from "react/jsx-runtime";
@@ -37,6 +37,7 @@ import * as import_jsx_runtime from "react/jsx-runtime";
 var STORE_DEBUG_ENABLED = false;
 var PROJECT_CSS_ENTRY_CANDIDATES = ["app/globals.css", "src/app/globals.css", "src/globals.css", "styles/globals.css", "src/index.css", "src/styles.css"];
 var DEFAULT_USER_CSS_PATH = "styles.css";
+const CODE_EDITOR_SETUP = { lineNumbers: true, highlightActiveLineGutter: false, highlightActiveLine: false, foldGutter: false };
 function WithTooltip(t0) {
   const $ = (0, import_compiler_runtime.c)(7);
   const {
@@ -179,8 +180,8 @@ function BottomBar({
   const [cssError, setCssError] = (0, import_react.useState)(null);
   const [copiedKind, setCopiedKind] = (0, import_react.useState)(null);
   const assetResolver = useAssetResolver();
-  const variables = useVariables();
-  const { mode } = useEditorMode();
+  const variables = useVariableSnapshot();
+  const { mode, setMode } = useEditorMode();
   const hasSelectedElement = !!selectedElementId && !!getById(store, selectedElementId);
   const buildSelectedElementCode = import_react.useCallback(() => {
     if (!selectedElementId) return t("bottomBar.selectElement");
@@ -553,7 +554,7 @@ function BottomBar({
     message: t("bottomBar.previewPaused")
   } : null;
   (0, import_react.useEffect)(() => {
-    if (pendingScrollLineRef.current == null || !activeOpenFile) return;
+    if (mode !== "dev" || isTerminalActive || pendingScrollLineRef.current == null || !activeOpenFile) return;
     const line_0 = pendingScrollLineRef.current;
     const t_2 = setTimeout(() => {
       const view = cmRef.current?.view;
@@ -571,7 +572,7 @@ function BottomBar({
       pendingScrollLineRef.current = null;
     }, 60);
     return () => clearTimeout(t_2);
-  }, [activeSurface.value, activeCodeTab, activeOpenFile, activateFile?.n]);
+  }, [mode, isTerminalActive, activeSurface.value, activeCodeTab, activeOpenFile, activateFile?.n]);
   const tabsScrollRef = (0, import_react.useRef)(null);
   (0, import_react.useEffect)(() => {
     const container = tabsScrollRef.current;
@@ -612,19 +613,14 @@ function BottomBar({
         if (!selectedCssPath.trim()) setSelectedCssPath(DEFAULT_USER_CSS_PATH);
       }} placeholder={DEFAULT_USER_CSS_PATH} className="h-5 w-[220px] rounded border border-ed-border bg-ed-background px-1.5 text-[10px] font-mono text-ed-foreground placeholder:text-ed-muted-foreground" />}</div> : activeOpenSkill ? <div className="flex min-h-[22px] items-center gap-1.5 overflow-x-auto border-b border-ed-border bg-ed-background px-3 py-0.5">{<Text$4 size="xs" className="font-mono text-ed-muted-foreground">{activeOpenSkill.name}/SKILL.md</Text$4>}</div> : !isTerminalActive && breadcrumbItems.length > 0 && <EditorFileBreadcrumb items={breadcrumbItems} />}{!isTerminalActive && status && <EditorStatusBar status={status} />}{<div className="flex-1 min-h-0 overflow-hidden" style={isTerminalActive ? {
       display: "none"
-    } : void 0}>{isLoadingCss && isCssActive ? <div className="flex items-center justify-center h-full">{<Text$4 size="sm" className="text-ed-muted-foreground">{t("bottomBar.loadingCss")}</Text$4>}</div> : <ReactCodeMirror ref={cmRef} value={activeSurface.value} height="100%" className={`${CODE_EDITOR_CLASS} h-full`} extensions={editorExtensions} editable={activeSurface.editable} onChange={activeSurface.onChange} onBlur={() => {
+    } : void 0}>{isLoadingCss && isCssActive ? <div className="flex items-center justify-center h-full">{<Text$4 size="sm" className="text-ed-muted-foreground">{t("bottomBar.loadingCss")}</Text$4>}</div> : <RetainedCodeEditor active={mode === "dev" && !isTerminalActive} editorRef={cmRef} value={activeSurface.value} height="100%" className={`${CODE_EDITOR_CLASS} h-full`} extensions={editorExtensions} editable={activeSurface.editable} onChange={activeSurface.onChange} onBlur={() => {
         if (activeSurface.commitOnBlur) activeSurface.commit?.();
       }} onKeyDown={event_0 => {
         if (!(event_0.metaKey || event_0.ctrlKey) || event_0.key.toLowerCase() !== "s") return;
         if (!activeSurface.commit) return;
         event_0.preventDefault();
         activeSurface.commit();
-      }} basicSetup={{
-        lineNumbers: true,
-        highlightActiveLineGutter: false,
-        highlightActiveLine: false,
-        foldGutter: false
-      }} />}</div>}{hasTerminal && terminalTabs.length > 0 && <div className="relative flex-1 overflow-hidden" style={isTerminalActive ? void 0 : {
+      }} basicSetup={CODE_EDITOR_SETUP} />}</div>}{hasTerminal && terminalTabs.length > 0 && <div className="relative flex-1 overflow-hidden" style={isTerminalActive ? void 0 : {
       display: "none"
     }}>{terminalTabs.map(t_4 => {
         const isActive = activeCodeTab === t_4.id;

@@ -9,6 +9,8 @@
 import { parseTailwindClass } from "../../shared/utils/tailwindScale";
 import { getClassIndex } from "./classIndex";
 import { getCascadeBatch } from "./computedStyles";
+import { createComputedStyleCache } from "./computedStyleCache";
+import { useVariableSnapshot } from "../../shared/theme/VariableContext";
 import * as import_react from "react";
 import * as import_compiler_runtime from "react/compiler-runtime";
 
@@ -196,7 +198,7 @@ function buildClassCascade(selectedElementId, className, index) {
     pendingClasses: pending
   };
 }
-function usePropertyResolution(selectedElementId, elementStyles, isMultiSelect, className) {
+function usePropertyResolution(selectedElementId, elementStyles, isMultiSelect, className, storeRevision) {
   const $ = (0, import_compiler_runtime.c)(35);
   const classIndex = (0, import_react.useSyncExternalStore)(subscribeProjectCss, getProjectClassIndex, getServerClassIndex);
   let t0;
@@ -212,63 +214,30 @@ function usePropertyResolution(selectedElementId, elementStyles, isMultiSelect, 
     cascadeByClass,
     pendingClasses
   } = t0;
-  let t1;
-  if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = {};
-    $[4] = t1;
-  } else t1 = $[4];
-  const [computed, setComputed] = (0, import_react.useState)(t1);
-  let t2;
-  if ($[5] !== computed || $[6] !== selectedElementId) {
-    t2 = selectedElementId ? computed : {};
-    $[5] = computed;
-    $[6] = selectedElementId;
-    $[7] = t2;
-  } else t2 = $[7];
-  const computedStyles = t2;
-  let t3;
-  if ($[8] !== elementStyles) {
-    t3 = JSON.stringify(elementStyles || {});
-    $[8] = elementStyles;
-    $[9] = t3;
-  } else t3 = $[9];
-  const stylesJson = t3;
-  let t4;
-  if ($[10] !== selectedElementId) {
-    t4 = () => {
-      if (!selectedElementId) return;
-      const rafId = requestAnimationFrame(() => {
-        const el = getActualDomElement(selectedElementId);
-        if (!el) {
-          const editable = document.querySelector("[data-canvas-content] .ProseMirror");
-          const color = editable ? window.getComputedStyle(editable).color : "";
-          if (color) setComputed(prev => ({
-            ...prev,
-            color
-          }));
-          return;
-        }
-        const cs = window.getComputedStyle(el);
-        const comp = {};
-        for (const prop of DESIGN_PROPERTIES) comp[prop] = cs[prop] ?? "";
-        setComputed(comp);
-      });
-      return () => cancelAnimationFrame(rafId);
-    };
-    $[10] = selectedElementId;
-    $[11] = t4;
-  } else t4 = $[11];
-  let t5;
-  if ($[12] !== classIndex || $[13] !== className || $[14] !== isMultiSelect || $[15] !== selectedElementId || $[16] !== stylesJson) {
-    t5 = [selectedElementId, stylesJson, isMultiSelect, className, classIndex];
-    $[12] = classIndex;
-    $[13] = className;
-    $[14] = isMultiSelect;
-    $[15] = selectedElementId;
-    $[16] = stylesJson;
-    $[17] = t5;
-  } else t5 = $[17];
-  (0, import_react.useEffect)(t4, t5);
+  const snapshots = import_react.useMemo(createComputedStyleCache, []);
+  const [, refreshComputed] = import_react.useReducer(value => value + 1, 0);
+  const variables = useVariableSnapshot();
+  const computedStyles = snapshots.get(selectedElementId);
+  const stylesJson = import_react.useMemo(() => JSON.stringify(elementStyles || {}), [elementStyles]);
+  import_react.useEffect(() => {
+    if (!selectedElementId) return;
+    const rafId = requestAnimationFrame(() => {
+      const el = getActualDomElement(selectedElementId);
+      if (!el) {
+        const editable = document.querySelector("[data-canvas-content] .ProseMirror");
+        const color = editable ? window.getComputedStyle(editable).color : "";
+        if (color && snapshots.publish(selectedElementId, { ...snapshots.get(selectedElementId), color })) refreshComputed();
+        return;
+      }
+      const cs = window.getComputedStyle(el);
+      const next: Record<string, string> = {};
+      for (const prop of DESIGN_PROPERTIES) next[prop] = cs[prop] ?? "";
+      // Revalidate after DOM commit, but don't rebroadcast the entire inspector
+      // when a previously selected element still has the same computed values.
+      if (snapshots.publish(selectedElementId, next)) refreshComputed();
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [selectedElementId, stylesJson, isMultiSelect, className, classIndex, storeRevision, variables, snapshots]);
   let t6;
   if ($[18] !== elementStyles) {
     t6 = elementStyles || {};

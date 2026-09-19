@@ -1,3 +1,4 @@
+import { createLayerRowsIndex, searchLayerRows, selectedLayerRanges, isInsideLayerSelection } from "../../utils/layerRows";
 import { VariableLayerBadge } from "../../../shared/theme/VariableControls";
 /*
  * Reconstructed from the shipped Bingo bundle by luna/tools/rebuild.mjs.
@@ -9,6 +10,7 @@ import { VariableLayerBadge } from "../../../shared/theme/VariableControls";
  */
 import { publishHover, subscribeHover } from "../../../shared/state/hoverChannel";
 import { hasAncestorIn, resolveLayerTreeDrop } from "../../../shared/utils/dropPlan";
+import { useLayerRowWidths } from "../../hooks/useLayerRowWidths";
 import { useScrolledHeader } from "../../hooks/useScrolledHeader";
 import { SidebarSectionHeader } from "../SidebarSectionHeader";
 import { LayerIcon } from "./LayerIcon";
@@ -50,63 +52,6 @@ var LAYER_LIST_TOP_PADDING = 0;
 var LAYER_LIST_BOTTOM_PADDING = 8;
 /** Sticky parents keep the same inset as the list's horizontal padding. */
 var LAYER_STICKY_INSET = 8;
-/**
-* Pre-order visible rows: children of a collapsed parent are omitted.
-* `subtreeEnd` is written after descendants so drop-after can sit under the
-* whole expanded wrap, matching the recursive list's wrap box.
-*/
-function flattenVisibleLayerRows(store, collapsedIds, selectedIds) {
-  const rows = [];
-  const walk = (id, depth, insideSelected) => {
-    const element = getById(store, id);
-    if (!element) return;
-    const isSelected = selectedIds.has(id);
-    const index = rows.length;
-    const row = {
-      id,
-      depth,
-      isInherited: !isSelected && insideSelected,
-      wrapsSelection: isSelected && !insideSelected,
-      subtreeEnd: index + 1
-    };
-    rows.push(row);
-    const childIds = getChildren$2(store, id);
-    if (hasChildren$1(element) && childIds.length > 0 && !collapsedIds.has(id)) {
-      const nextInside = isSelected || insideSelected;
-      for (const childId of childIds) walk(childId, depth + 1, nextInside);
-    }
-    row.subtreeEnd = rows.length;
-  };
-  for (const id of getRootIds(store)) walk(id, 0, false);
-  return rows;
-}
-/** Search results are already a flat list; each selected row is its own shell. */
-function flattenSearchLayerRows(resultRows, selectedIds) {
-  return resultRows.map((result, index) => ({
-    id: result.id,
-    depth: result.depth,
-    isInherited: false,
-    wrapsSelection: selectedIds.has(result.id),
-    subtreeEnd: index + 1
-  }));
-}
-/** Outermost selected subtrees as contiguous index ranges. */
-function selectionShells(rows) {
-  const shells = [];
-  for (let i = 0; i < rows.length; i++) {
-    if (!rows[i].wrapsSelection) continue;
-    shells.push({
-      start: i,
-      end: rows[i].subtreeEnd
-    });
-  }
-  return shells;
-}
-function layerRowIndexById(rows) {
-  const map = new Map();
-  for (let i = 0; i < rows.length; i++) map.set(rows[i].id, i);
-  return map;
-}
 /**
 * Indent per tree level. Rows and the drop indicator share this value so their
 * geometry cannot drift.
@@ -217,39 +162,7 @@ function VirtualizedLayerRows({
     virtualizerRef.current = virtualizer;
   });
   const virtualItems = virtualizer.getVirtualItems();
-  const rangeKey = virtualItems.map(item => item.key).join("\0");
-  const resetKeyRef = (0, import_react.useRef)(minWidthResetKey);
-  const rowContentWidths = (0, import_react.useRef)(new Map());
-  const [minWidth, setMinWidth] = (0, import_react.useState)(0);
-  if (resetKeyRef.current !== minWidthResetKey) {
-    resetKeyRef.current = minWidthResetKey;
-    rowContentWidths.current.clear();
-    setMinWidth(0);
-  }
-  (0, import_react.useLayoutEffect)(() => {
-    const list = listRef.current;
-    if (!list) return;
-    const rows = [...list.querySelectorAll("[data-layer-id]")];
-    const measure = () => {
-      for (const row of rows) {
-        const style = getComputedStyle(row);
-        const children = [...row.children];
-        let width = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + (parseFloat(style.columnGap) || 0) * Math.max(0, children.length - 1);
-        for (const child of children) {
-          const childStyle = getComputedStyle(child);
-          width += Math.max(child.getBoundingClientRect().width, child.scrollWidth);
-          if (!child.classList.contains("ml-auto")) width += parseFloat(childStyle.marginLeft) || 0;
-          width += parseFloat(childStyle.marginRight) || 0;
-        }
-        rowContentWidths.current.set(row.dataset.layerId, Math.ceil(width));
-      }
-      setMinWidth(Math.max(0, ...rowContentWidths.current.values()));
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    for (const row_0 of rows) for (const child_0 of row_0.children) observer.observe(child_0);
-    return () => observer.disconnect();
-  }, [listRef, rangeKey, minWidthResetKey, renderRow]);
+  const minWidth = useLayerRowWidths(listRef, minWidthResetKey);
   return <div ref={listRef} data-layer-list="" className="relative min-w-full" style={{
     height: virtualizer.getTotalSize(),
     minWidth: minWidth || void 0
@@ -273,7 +186,7 @@ function VirtualizedLayerRows({
     })}{dropLine}</div>;
 }
 function LayersPanel(t0) {
-  const $ = (0, import_compiler_runtime.c)(176);
+  const $ = (0, import_compiler_runtime.c)(177);
   const {
     store,
     selectedElementIds,
@@ -967,42 +880,17 @@ function LayersPanel(t0) {
     $[83] = t39;
   } else t39 = $[83];
   const handleListDragLeave = t39;
-  let filtering;
-  let matches;
-  let searchResult;
-  let t40;
-  let visibleRows;
-  if ($[84] !== collapsedIds || $[85] !== searchQuery || $[86] !== selectedElementIds || $[87] !== store) {
-    const searchIndex = createLayerSearchIndex();
-    let t41;
-    if ($[93] !== searchQuery) {
-      t41 = searchQuery.trim();
-      $[93] = searchQuery;
-      $[94] = t41;
-    } else t41 = $[94];
-    filtering = t41.length > 0;
-    searchResult = searchIndex.search(store, searchQuery);
-    matches = searchResult?.matches ?? [];
-    const resultRows = matches.length ? withTextParents(store, matches) : [];
-    visibleRows = filtering ? flattenSearchLayerRows(resultRows, selectedElementIds) : flattenVisibleLayerRows(store, collapsedIds, selectedElementIds);
-    t40 = layerRowIndexById(visibleRows);
-    $[84] = collapsedIds;
-    $[85] = searchQuery;
-    $[86] = selectedElementIds;
-    $[87] = store;
-    $[88] = filtering;
-    $[89] = matches;
-    $[90] = searchResult;
-    $[91] = t40;
-    $[92] = visibleRows;
-  } else {
-    filtering = $[88];
-    matches = $[89];
-    searchResult = $[90];
-    t40 = $[91];
-    visibleRows = $[92];
-  }
-  const indexById = t40;
+  const searchIndex = import_react.useMemo(createLayerSearchIndex, []);
+  const rowIndex = import_react.useMemo(createLayerRowsIndex, []);
+  const filtering = searchQuery.trim().length > 0;
+  const searchResult = import_react.useMemo(() => searchIndex.search(store, searchQuery), [searchIndex, store, searchQuery]);
+  const matches = searchResult?.matches ?? [];
+  const rowModel = import_react.useMemo(() => filtering
+    ? searchLayerRows(withTextParents(store, searchResult?.matches ?? []))
+    : rowIndex.get(store, collapsedIds), [filtering, searchResult, store, collapsedIds, rowIndex]);
+  const visibleRows = rowModel.rows;
+  const indexById = rowModel.indexById;
+  const { shells, stickyParents } = import_react.useMemo(() => selectedLayerRanges(rowModel, selectedElementIds), [rowModel, selectedElementIds]);
   let t41;
   if ($[95] !== collapsedIds || $[96] !== indexById || $[97] !== visibleRows) {
     t41 = () => {
@@ -1016,23 +904,6 @@ function LayersPanel(t0) {
     $[98] = t41;
   } else t41 = $[98];
   (0, import_react.useLayoutEffect)(t41);
-  let t42;
-  if ($[99] !== visibleRows) {
-    t42 = selectionShells(visibleRows);
-    $[99] = visibleRows;
-    $[100] = t42;
-  } else t42 = $[100];
-  const shells = t42;
-  let stickyParents;
-  if ($[101] !== selectedElementIds || $[102] !== visibleRows) {
-    stickyParents = new Map();
-    visibleRows.forEach((row_4, index_3) => {
-      if (selectedElementIds.has(row_4.id) && row_4.subtreeEnd > index_3 + 1) stickyParents.set(index_3, row_4.subtreeEnd);
-    });
-    $[101] = selectedElementIds;
-    $[102] = visibleRows;
-    $[103] = stickyParents;
-  } else stickyParents = $[103];
   let pinnedIndexes;
   if ($[104] !== indexById || $[105] !== openMenuId || $[106] !== renamingId) {
     pinnedIndexes = [];
@@ -1064,7 +935,7 @@ function LayersPanel(t0) {
     $[107] = pinnedIndexes;
   } else pinnedIndexes = $[107];
   let t43;
-  if ($[114] !== collapsedIds || $[115] !== dragIds || $[116] !== filtering || $[117] !== handleDragStart || $[118] !== handleRenameComplete || $[119] !== handleRenameKeyDown || $[120] !== handleStartRename || $[121] !== onContextMenuRow || $[122] !== onFocusElement || $[123] !== onSelectElement || $[124] !== onSelectElements || $[125] !== openMenuId || $[126] !== renameDraft || $[127] !== renamingId || $[128] !== renderRowContextMenu || $[129] !== searchQuery || $[130] !== selectedElementIds || $[131] !== store || $[132] !== suppressMenuCloseFocusRef || $[133] !== visibleRows) {
+  if ($[114] !== collapsedIds || $[115] !== dragIds || $[116] !== filtering || $[117] !== handleDragStart || $[118] !== handleRenameComplete || $[119] !== handleRenameKeyDown || $[120] !== handleStartRename || $[121] !== onContextMenuRow || $[122] !== onFocusElement || $[123] !== onSelectElement || $[124] !== onSelectElements || $[125] !== openMenuId || $[126] !== renameDraft || $[127] !== renamingId || $[128] !== renderRowContextMenu || $[129] !== searchQuery || $[130] !== selectedElementIds || $[131] !== store || $[132] !== suppressMenuCloseFocusRef || $[133] !== visibleRows || $[176] !== shells) {
     t43 = index_4 => {
       const row_5 = visibleRows[index_4];
       if (!row_5) return null;
@@ -1072,7 +943,7 @@ function LayersPanel(t0) {
       if (!element_5) return null;
       const childIds = getChildren$2(store, row_5.id);
       const isSelected = selectedElementIds.has(element_5.id);
-      const isInherited = row_5.isInherited;
+      const isInherited = !isSelected && isInsideLayerSelection(index_4, shells);
       const isCollapsed = collapsedIds.has(element_5.id);
       const currentlyHasChildren = hasChildren$1(element_5) && childIds.length > 0;
       const isDragging = dragIds?.has(element_5.id) ?? false;
@@ -1142,6 +1013,7 @@ function LayersPanel(t0) {
     $[131] = store;
     $[132] = suppressMenuCloseFocusRef;
     $[133] = visibleRows;
+    $[176] = shells;
     $[134] = t43;
   } else t43 = $[134];
   const renderLayerRow = t43;
@@ -1191,7 +1063,7 @@ function LayersPanel(t0) {
   } else t49 = $[154];
   let t50;
   if ($[155] !== dragIds || $[156] !== filtering || $[157] !== noMatches || $[158] !== pinnedIndexes || $[159] !== renderLayerRow || $[160] !== scrollElement || $[161] !== shells || $[162] !== stickyParents || $[163] !== visibleRows) {
-    t50 = noMatches ? <div className="flex items-center justify-center h-32">{<Text$4 size="3xs" variant="tertiary">{t("layers.noMatches")}</Text$4>}</div> : visibleRows.length > 0 ? <div className="w-max min-w-full px-2">{<VirtualizedLayerRows count={visibleRows.length} getItemKey={i_2 => visibleRows[i_2]?.id ?? String(i_2)} scrollElement={scrollElement} pinnedIndexes={pinnedIndexes} overscan={dragIds ? 24 : 8} listRef={dropListRef} virtualizerRef={virtualizerRef} minWidthResetKey={`${filtering}:${visibleRows.length}:${visibleRows[0]?.id ?? ""}:${visibleRows[visibleRows.length - 1]?.id ?? ""}`} shells={shells} stickyParents={stickyParents} renderRow={renderLayerRow} dropLine={<div ref={dropLineRef} className="absolute left-0 right-0 z-20 h-0.5 -translate-y-1/2 rounded-full pointer-events-none opacity-0" style={{
+    t50 = noMatches ? <div className="flex items-center justify-center h-32">{<Text$4 size="3xs" variant="tertiary">{t("layers.noMatches")}</Text$4>}</div> : visibleRows.length > 0 ? <div className="w-max min-w-full px-2">{<VirtualizedLayerRows count={visibleRows.length} getItemKey={i_2 => visibleRows[i_2]?.id ?? String(i_2)} scrollElement={scrollElement} pinnedIndexes={pinnedIndexes} overscan={dragIds ? 24 : 8} listRef={dropListRef} virtualizerRef={virtualizerRef} minWidthResetKey={visibleRows} shells={shells} stickyParents={stickyParents} renderRow={renderLayerRow} dropLine={<div ref={dropLineRef} className="absolute left-0 right-0 z-20 h-0.5 -translate-y-1/2 rounded-full pointer-events-none opacity-0" style={{
         marginRight: DROP_LINE_RIGHT_INSET,
         backgroundColor: "var(--ed-canvas-selection)"
       }} />} />}</div> : null;

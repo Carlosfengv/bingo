@@ -504,7 +504,7 @@ function FillRow(t0) {
 }
 function ColorRow(t0) {
   const variableEditor = useVariableEditor();
-  const variableBound = variableEditor?.ids.some(id => variableEditor.store.byId.get(id)?.theme?.bindings?.some(binding => binding.target === "style" && binding.property === t0.cssProperty));
+  const variableBound = variableEditor?.ids.some(id => variableEditor.bindingFor(id, t0.cssProperty));
   const $ = (0, import_compiler_runtime.c)(117);
   const { t } = useTranslation("editor");
   const {

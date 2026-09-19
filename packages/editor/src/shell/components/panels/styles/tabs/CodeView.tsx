@@ -36,7 +36,7 @@ function CodeView(t0) {
   } = t0;
   const isMultiSelect = selectedElements && selectedElements.length > 1;
   const elementClassName = element?.props?.className;
-  const resolution = usePropertyResolution(selectedElementId, element?.styles, !!isMultiSelect, elementClassName);
+  const resolution = usePropertyResolution(selectedElementId, element?.styles, !!isMultiSelect, elementClassName, store);
   let selectedIds;
   let subtreeIds;
   if ($[0] !== isMultiSelect || $[1] !== selectedElementId || $[2] !== selectedElements || $[3] !== store) {

@@ -5,7 +5,7 @@ import { toWire } from "../store/wire";
 import { applyOps } from "../store/apply";
 import { generateJSX } from "../codegen/generateJSX";
 import { parseJSX } from "../codegen/parseJSX";
-import { bindElementVariable, detachElementVariable, findElementVariableBinding, prepareVariableStore, resolveCollectionModes, resolveVariableValues, setElementVariableMode, validateVariableLibrary, variableExpression } from "./variables";
+import { bindElementVariable, detachElementVariable, findElementVariableBinding, prepareVariableStore, resolveCollectionModes, resolveVariableValues, setElementVariableMode, sameCollectionModes, validateVariableLibrary, variableExpression } from "./variables";
 import { applyOperationsToStore, createSetStylesOperation, invertOperations } from "../../../editor/src/shared/utils/operations";
 
 export const variableFixture = {
@@ -24,6 +24,20 @@ function fixture() {
   const root = { id: "root", type: "html", tag: "div", children: [{ id: "card", type: "html", tag: "div", children: [{ id: "text", type: "html", tag: "span" }] }] };
   return ensureV2([root, { id: "second", type: "html", tag: "div" }]);
 }
+test("unchanged modes retain identity while an explicit override of an inherited value remains an edit", () => {
+  const element = fixture().byId.get("root");
+  assert.equal(setElementVariableMode(element, variableFixture, "colors", null), element);
+  const explicit = setElementVariableMode(element, variableFixture, "colors", "light");
+  assert.notEqual(explicit, element);
+  assert.equal(setElementVariableMode(explicit, variableFixture, "colors", "light"), explicit);
+  const cleared = setElementVariableMode(explicit, variableFixture, "colors", null);
+  assert.notEqual(cleared, explicit);
+  assert.equal(setElementVariableMode(cleared, variableFixture, "colors", null), cleared);
+  assert.throws(() => setElementVariableMode(element, variableFixture, "missing", null), /mode is no longer available/);
+  assert.equal(sameCollectionModes({ colors: "light", density: "compact" }, { density: "compact", colors: "light" }), true);
+  assert.equal(sameCollectionModes({}, { colors: "light" }), false);
+  assert.equal(sameCollectionModes({ colors: "dark" }, { colors: "light" }), false);
+});
 test("each collection inherits independently, Auto clears only the chosen override", () => {
   let store = fixture(); store.variableModes = { colors: "light", density: "compact" };
   store.byId.set("root", setElementVariableMode(store.byId.get("root"), variableFixture, "colors", "dark"));

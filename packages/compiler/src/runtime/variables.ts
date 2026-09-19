@@ -173,17 +173,17 @@ export function resolveCollectionModes(store: any, elementId: string | null, lib
   return { modes, sources };
 }
 
-export function resolveVariableValues(library: VariableLibrary, modes: CollectionModes) {
-  const tokens = new Map(library.tokens.map(token => [token.id, token]));
+function resolveVariableValuesUncached(library: VariableLibrary, modes: CollectionModes) {
+  const index = libraryIndex(library);
   const values: Record<string, any> = {};
   const visiting = new Set<string>();
   const diagnostics: { tokenId: string; message: string }[] = [];
   const resolve = (id: string): any => {
     if (Object.prototype.hasOwnProperty.call(values, id)) return values[id];
     if (visiting.has(id)) throw variableError("VARIABLE_ALIAS_CYCLE", `Circular alias: ${id}`);
-    const token = tokens.get(id);
+    const token = index.tokenById.get(id);
     if (!token) throw variableError("VARIABLE_MISSING", `Missing variable: ${id}`);
-    const collection = library.collections.find(item => item.id === token.collectionId);
+    const collection = index.collectionById.get(token.collectionId);
     const value = token.valuesByMode?.[modes[token.collectionId] || collection?.defaultModeId || ""];
     if (!value) throw variableError("VARIABLE_VALUE_MISSING", `Missing mode value: ${token.name || id}`);
     visiting.add(id);
@@ -195,6 +195,12 @@ export function resolveVariableValues(library: VariableLibrary, modes: Collectio
   };
   library.tokens.forEach(token => { try { resolve(token.id); } catch (error) { diagnostics.push({ tokenId: token.id, message: error.message }); } });
   return { values, diagnostics };
+}
+
+export function resolveVariableValues(library: VariableLibrary, modes: CollectionModes) {
+  const index = libraryIndex(library);
+  const signature = variableModesSignature(library, modes);
+  return index.resolvedByModes.get(signature) || cacheSet(index.resolvedByModes, signature, resolveVariableValuesUncached(library, modes));
 }
 
 export function variableDeclarations(library: VariableLibrary, values: Record<string, any>) {
@@ -211,9 +217,17 @@ export function variableDeclarations(library: VariableLibrary, values: Record<st
 export function setElementVariableMode(element: any, library: VariableLibrary, collectionId: string, modeId: string | null) {
   const collection = library.collections.find(item => item.id === collectionId);
   if (!collection || (modeId !== null && !collection.modes.some(mode => mode.id === modeId))) throw variableError("VARIABLE_MODE_INVALID", "This mode is no longer available.");
+  const previous = element.theme?.localCollectionModes;
+  if (modeId === null ? !Object.hasOwn(previous || {}, collectionId) : previous?.[collectionId] === modeId) return element;
   const localCollectionModes = { ...element.theme?.localCollectionModes };
   if (modeId === null) delete localCollectionModes[collectionId]; else localCollectionModes[collectionId] = modeId;
   return { ...element, theme: { ...element.theme, version: 1, localCollectionModes } };
+}
+
+export function sameCollectionModes(before: CollectionModes, after: CollectionModes) {
+  if (before === after) return true;
+  const keys = Object.keys(before);
+  return keys.length === Object.keys(after).length && keys.every(key => Object.hasOwn(after, key) && before[key] === after[key]);
 }
 export function bindElementVariable(element: any, library: VariableLibrary, property: string, tokenId: string, alpha = 1) {
   const token = library.tokens.find(item => item.id === tokenId);

@@ -30,7 +30,7 @@ import * as import_compiler_runtime from "react/compiler-runtime";
 */
 function InlineInput(t0) {
   const variableEditor = useVariableEditor();
-  const variableBound = variableEditor?.ids.some(id => variableEditor.store.byId.get(id)?.theme?.bindings?.some(binding => binding.target === "style" && binding.property === t0.cssProperty));
+  const variableBound = variableEditor?.ids.some(id => variableEditor.bindingFor(id, t0.cssProperty));
   const $ = (0, import_compiler_runtime.c)(73);
   const { t } = useTranslation("editor");
   const {

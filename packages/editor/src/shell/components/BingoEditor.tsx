@@ -20,7 +20,7 @@ import { stripPropSynthesizedChildren } from "../../canvas/lib/capture/fiber";
 import { stripCanvasInvalidPosition } from "../../canvas/lib/capture/styles";
 import { copyToFigma } from "../../canvas/lib/figmaExport";
 import { isRelativeFlowPosition, positionStylesForParent } from "../../canvas/utils/absolutePositioning";
-import { VariableLibraryProvider, VariableEditorProvider, useVariables } from "../../shared/theme/VariableContext";
+import { VariableLibraryProvider, VariableEditorProvider, useVariableSnapshot } from "../../shared/theme/VariableContext";
 import { VariableManager } from "../../shared/theme/VariableManager";
 import { VariablesButton } from "../../shared/theme/VariableControls";
 import { captureComponentInstance, clearComponentEditSession, editSessionFromElement, findEditRootId$1, findEditSessionsInStore, getComponentEditSession, rendersThroughWebgl, stashComponentEditSession } from "../../canvas/utils/captureComponentInstance";
@@ -412,7 +412,13 @@ var BingoEditorInner = ({
   const elementParam = searchParams?.get("element") ?? null;
   const pageParam = searchParams?.get("page") ?? null;
   const commentParam = searchParams?.get("comment") ?? null;
-  const [selectedElementIds, setSelectedElementIds] = (0, import_react.useState)(new Set());
+  const [selectedElementIds, setSelectionState] = (0, import_react.useState)(new Set());
+  const setSelectedElementIds = import_react.useCallback(update => {
+    setSelectionState(previous => {
+      const next = typeof update === "function" ? update(previous) : update;
+      return sameSelection(previous, next) ? previous : next;
+    });
+  }, []);
   const [pendingElementToCenter, setPendingElementToCenter] = (0, import_react.useState)(null);
   const [pendingChatWorkTarget, setPendingChatWorkTarget] = (0, import_react.useState)(null);
   const [chatTabs, setChatTabs] = (0, import_react.useState)([]);
@@ -535,7 +541,7 @@ var BingoEditorInner = ({
   const [activeCommentId, setActiveCommentId] = (0, import_react.useState)(null);
   const [pendingCommentPosition, setPendingCommentPosition] = (0, import_react.useState)(null);
   const effectiveProjectPath = projectPath;
-  const variableRuntime = useVariables();
+  const variableRuntime = useVariableSnapshot();
   const effectiveAllowedPaths = allowedPaths;
   const effectiveOnAdd = onAddAllowedPath;
   const chatBackend = useBackendOptional();
@@ -1967,6 +1973,7 @@ var BingoEditorInner = ({
   };
   const setStore = updater => {
     const nextStore = typeof updater === "function" ? updater(storeRef.current) : updater;
+    if (nextStore === storeRef.current) return;
     storeRef.current = nextStore;
     bumpCanvasContentRevision(activeTabId);
     setTabs(prev_22 => prev_22.map(tab_16 => {

@@ -253,7 +253,7 @@ function DesignTab(t0) {
     get: resolveGet,
     computed,
     pendingClasses
-  } = usePropertyResolution(selectedElementId, element?.styles, !!isMultiSelect, elementClassName);
+  } = usePropertyResolution(selectedElementId, element?.styles, !!isMultiSelect, elementClassName, store);
   const styles = element?.styles || {};
   const rawStyles = rawElement?.styles || {};
   const getMergedStyle = prop => {
