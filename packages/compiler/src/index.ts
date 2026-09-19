@@ -58,3 +58,5 @@ export { ROOT, canAcceptChild, hasChildren$1 } from "./store/types";
 export { CANVAS_EXECUTION_STATES, CANVAS_OBSERVATION_STATES, CANVAS_OPERATION_ERROR_CODES, CANVAS_OPERATION_PROTOCOL_VERSION, CANVAS_PERSISTENCE_STATES, isCanvasOperationStatus } from "./protocol/canvasOperation";
 export { toWire } from "./store/wire";
 export { emitScopedThemeCss, normalizeThemeSelection, resolveThemeSelection, resolveThemeTokens, validateThemeManifest } from "./runtime/theme";
+export { findComponentCandidates } from "./codegen/componentSemantics";
+export { lintCanvasDesign } from "./codegen/canvasDesignLint";

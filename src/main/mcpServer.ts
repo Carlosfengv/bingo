@@ -17,6 +17,8 @@ import { getProjectAccessContext, getProjectAllowedPaths, grantProjectPath, setP
 import { findWindowForProject, getFocusedProjectId, getOpenProjectIds } from "./windowManager";
 import { CANVAS_OPERATION_PROTOCOL_VERSION, buildMcpServerInstructions, ensureV2, extractPartialCanvasDrawArgs, extractPartialMcpToolName, formatComponentSearchLine, getRootIds, hashAllElementSubtreesFrom, inspectLocalCopyBuffer, isCanvasDrawToolName, isLoadableIconLibrary, jsxContainsTruncationStub, loadSystemSkills, normalizeProjectCopyFileArgs, scanProject } from "@bingo/compiler";
 import { systemSkillsPath } from "./systemSkillsPath";
+import { collectProjectTheme, formatProjectThemeSummary } from "./projectThemeSummary";
+import { findComponentCandidates } from "@bingo/compiler";
 import * as child_process from "child_process";
 import * as crypto$1 from "crypto";
 import * as electron from "electron";
@@ -1076,55 +1078,14 @@ async function tryReadProjectFile(projectId, filePath) {
     return null;
   }
 }
-/** Extract CSS custom property definitions from CSS content */
-function extractCssVariables(css) {
-  const vars = {};
-  const re = /--([a-zA-Z0-9-]+)\s*:\s*([^;]+)/g;
-  let match;
-  while ((match = re.exec(css)) !== null) vars[match[1]] = match[2].trim();
-  return vars;
-}
-/**
-* Tailwind v4 `@theme` namespaces and the utilities each one generates. An
-* imported design system writes tokens like `--color-surface`, so matching only
-* shadcn's `--primary`/`--card` names reports "no theme" for the very design
-* system the import just created — and the model falls back to inline styles.
-* Order matters: `font-size-` must be tested before `font-`.
-*/
-var THEME_NAMESPACES = [[/^color-/, "--color-<name> → bg-<name>, text-<name>, border-<name>"], [/^text-/, "--text-<name> → text-<name> (font size)"], [/^font-weight-/, "--font-weight-<name> → font-<name>"], [/^font-/, "--font-<name> → font-<name> (font family)"], [/^radius-/, "--radius-<name> → rounded-<name>"], [/^spacing-/, "--spacing-<name> → p-<name>, m-<name>, gap-<name>"], [/^shadow-/, "--shadow-<name> → shadow-<name>"], [/^tracking-/, "--tracking-<name> → tracking-<name>"], [/^leading-/, "--leading-<name> → leading-<name>"], [/^breakpoint-/, "--breakpoint-<name> → <name>: responsive variants"]];
-/**
-* Variables outside a `@theme` namespace generate no utility at all. They are
-* still usable, but only through v4's variable shorthand — `text-(length:--x)`
-* is `text-[length:var(--x)]`, where `length:` disambiguates font-size from
-* color. Reporting these as if they minted `text-<name>` sends the model
-* chasing classes that never compile.
-*/
-var NON_NAMESPACED_HINT = "--<name> (outside a @theme namespace) → no generated utility; reference it as bg-(--<name>), or text-(length:--<name>) for a size";
-var SHADCN_THEME_RE = /^(background|foreground|card|popover|primary|secondary|muted|accent|destructive|border|input|ring|radius|sidebar|chart)/;
-/**
-* Discover theme info from project files (globals.css, tailwind.config).
-* Returns a short summary string for the system prompt, or empty string.
-*/
+/** Preserve source scopes/imports and report discovery gaps instead of inventing utilities. */
 async function getProjectThemeSummary(projectId) {
   try {
     const filePaths = (await getFileMetadata(projectId)).map(f => f.path);
-    const cssPath = ["app/globals.css", "src/app/globals.css", "styles/globals.css", "src/styles/globals.css", "src/index.css", "src/styles.css", "globals.css"].find(c => filePaths.includes(c)) || filePaths.find(p => p.endsWith(".css") && p.includes("global")) || filePaths.find(p => p.endsWith(".css") && p.includes("index"));
-    if (!cssPath) return "";
-    const cssContent = await tryReadProjectFile(projectId, cssPath);
-    if (!cssContent) return "";
-    const vars = extractCssVariables(cssContent);
-    if (Object.keys(vars).length === 0) return "";
-    const themeVars = Object.entries(vars).filter(([name]) => THEME_NAMESPACES.some(([re]) => re.test(name)) || SHADCN_THEME_RE.test(name));
-    if (themeVars.length === 0) return "";
-    const hints = THEME_NAMESPACES.filter(([re]) => themeVars.some(([name]) => re.test(name))).map(([, hint]) => `  ${hint}`);
-    if (themeVars.some(([name]) => SHADCN_THEME_RE.test(name))) hints.push("  --<name> (shadcn style) → bg-<name>, text-<name> (e.g. --primary → bg-primary)");
-    if (themeVars.some(([name]) => !THEME_NAMESPACES.some(([re]) => re.test(name)))) hints.push(`  ${NON_NAMESPACED_HINT}`);
-    const lines = [`## Project Theme (from ${cssPath})`, "These are the project's actual token values. Prefer the generated utility", "classes below over inline styles or raw hex codes on canvas:", ...hints, ""];
-    for (const [name, value] of themeVars) lines.push(`  --${name}: ${value}`);
-    return "\n" + lines.join("\n");
+    return formatProjectThemeSummary(await collectProjectTheme(filePaths, file => tryReadProjectFile(projectId, file)));
   } catch (err) {
     console.warn("[MCP] Theme discovery failed:", err);
-    return "";
+    return "Project theme discovery failed. Inspect source CSS and configuration before styling; this is not evidence of an empty theme.";
   }
 }
 var DEFAULT_READ_LIMIT = 2e3;
@@ -2238,16 +2199,15 @@ async function handleSearchComponents(projectId, args) {
   if (!index || Object.keys(index).length === 0) return {
     content: [{
       type: "text",
-      text: "No components found. Use project_glob(\"components/**/*.tsx\") to discover component files."
+      text: "No indexed components are available. This is not proof that the source has no components. Inspect actual project source directories (including ui/), exports and registration state with targeted project_glob/project_read before writing substitutes."
     }]
   };
   const query = (args.query || "").toLowerCase().trim();
-  const entries = Object.entries(index);
-  const matched = query ? entries.filter(([name, info]) => name.toLowerCase().includes(query) || info.path.toLowerCase().includes(query)) : entries;
+  const matched = findComponentCandidates(index, query);
   if (matched.length === 0) return {
     content: [{
       type: "text",
-      text: `No components matching "${args.query}". Try a broader search or use project_glob to find files.`
+      text: `No indexed candidates for "${args.query}". Try source synonyms and targeted project_glob/project_grep; check registration before concluding that a component is absent.`
     }]
   };
   const grouped = new Map();
@@ -2257,7 +2217,7 @@ async function handleSearchComponents(projectId, args) {
     if (!grouped.has(dir)) grouped.set(dir, []);
     grouped.get(dir).push(line);
   }
-  const lines = [`${matched.length} components${query ? ` matching "${args.query}"` : ""}:\n`];
+  const lines = [`${matched.length} component candidates${query ? ` for "${args.query}"` : ""}. Name/synonym matches do not prove API compatibility; read source props and existing compositions before use.\n`];
   for (const [dir, items] of grouped) {
     lines.push(`${dir}/`);
     lines.push(...items);
@@ -2300,7 +2260,7 @@ async function handleGetDesignContext(projectId, _args) {
   const index = projectComponentIndex.get(projectId) ?? {};
   const componentEntries = Object.entries(index);
   const shownComponents = componentEntries.slice(0, 80).map(([name, info]) => formatComponentSearchLine(name, info.path, info.props));
-  const componentSummary = shownComponents.length > 0 ? `${componentEntries.length} registered components:\n${shownComponents.join("\n")}${componentEntries.length > shownComponents.length ? `\n... (${componentEntries.length - shownComponents.length} more; use targeted search_components)` : ""}` : "No registered project components.";
+  const componentSummary = shownComponents.length > 0 ? `${shownComponents.length}/${componentEntries.length} indexed components shown (source coverage not guaranteed). Inspect source/compositions for semantic purpose, compound children and API details:\n${shownComponents.join("\n")}${componentEntries.length > shownComponents.length ? `\n... (${componentEntries.length - shownComponents.length} more; use targeted search_components)` : ""}` : "Component index empty or unavailable. Inspect source directories and registration state; this does not establish an empty project.";
   const pages = textFromToolResult(pagesResult) || "Canvas page information unavailable.";
   return {
     content: [{
@@ -3731,7 +3691,7 @@ var TOOLS = [{
   }
 }, {
   name: "search_components",
-  description: "Search available project components by name. Returns names, paths, prop types (with required/examples when known), and a short usage hint for variant/size unions. Use before drafting UI — never invent raw <button>/<input> when Button/Input exist. Call with no query to list all components.",
+  description: "Search indexed project components by name/path and common semantic synonyms (e.g. badge/pill/chip, input/text field). Returns candidates, paths and known props. Confirm API compatibility from source/compositions. An empty index or search miss does not prove source absence; inspect source directories and registration. Call with no query to list indexed components.",
   inputSchema: {
     type: "object",
     properties: {

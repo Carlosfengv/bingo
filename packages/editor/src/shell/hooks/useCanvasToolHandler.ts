@@ -8,7 +8,7 @@
  */
 import { applyOperationsToStore, createInsertOperation, createRemoveOperation, createReplaceOperation } from "../../shared/utils/operations";
 import { CanvasRevisionConflictError, appendCanvasCandidateOperation, commitCanvasCandidate, createCanvasCommitCandidate } from "./canvasOperationCommit";
-import { parseCanvasJsx } from "@bingo/compiler";
+import { lintCanvasDesign, parseCanvasJsx } from "@bingo/compiler";
 import { UNKNOWN_ROOT_WIDTH, nextRootPlacement } from "./nextRootPlacement";
 import { isDrawPreviewId, occupiedRootBoxes, rootOccupancyBox } from "./rootBoxes";
 import { CANVAS_OPERATION_PROTOCOL_VERSION, ancestorChainMatchesQuery, applyJsxStringEdit, ensureV2, generateJSX, generateJSXWithinBudget, getById, getChildren$2, getDescendantIds, getIndex, getParentId, getRootIds, hashAllElementSubtreesFrom, hashElementSubtreeFrom, isDescendant, jsxContainsTruncationStub, lintNewlyIntroducedRawHtmlControls, lintRawHtmlControls, matchElementGrep, normalizeUpdateSubtree, storeSubtreeToLegacyNested, summarizeSubtreeChange, walk } from "@bingo/compiler";
@@ -214,7 +214,16 @@ function useCanvasToolHandler(deps) {
       let expectedRevisionForResult = null;
       let committedRevisionForResult = null;
       let jsxRecovery = null;
+      let designDiagnostics = [];
       const respond = result => {
+        if (designDiagnostics.length) {
+          result = { ...result, structuredContent: { ...result?.structuredContent, designDiagnostics: designDiagnostics.slice(0, 40), designDiagnosticsTotal: designDiagnostics.length } };
+          if (!result.isError) result.content = [...(result.content ?? []), {
+            type: "text",
+            text: "Design review (write applied; inspect these candidates in the changed region):\n" + designDiagnostics.slice(0, 12).map(issue => `${issue.code}: ${issue.message}`).join("\n")
+              + (designDiagnostics.length > 12 ? `\n${designDiagnostics.length - 12} additional issues; inspect the region's JSX.` : "")
+          }];
+        }
         if (jsxRecovery && jsxRecovery.status !== "unchanged") {
           const recovery = jsxRecovery.status === "recovered"
             ? { ...jsxRecovery, status: result?.isError ? "failed" : "recovered", stage: "commit" }
@@ -316,8 +325,15 @@ function useCanvasToolHandler(deps) {
         claimIdToChatTabIdRef: claimIdToChatTabIdRef_0,
         setElementLocksVersion: setElementLocksVersion_0
       } = latestDeps();
-      const parseCanvasInput = (jsx, canvasOperation, forceNewIds = false) => {
+      const parseCanvasInput = (jsx, canvasOperation, forceNewIds = false, beforeJsx = undefined) => {
         try {
+          designDiagnostics = lintCanvasDesign(jsx, componentIndex, beforeJsx);
+          const invalid = designDiagnostics.find(issue => issue.severity === "error");
+          if (invalid) {
+            const error: any = new Error(invalid.message);
+            error.code = invalid.code;
+            throw error;
+          }
           const parsed = parseCanvasJsx(jsx, iconLibraries, componentIndex, undefined, { operation: canvasOperation, forceNewIds });
           jsxRecovery = parsed.recovery;
           return parsed.store;
@@ -1229,7 +1245,7 @@ function useCanvasToolHandler(deps) {
             });
             return;
           }
-          const parsed_2 = parseCanvasInput(edited.content, "canvas_edit");
+          const parsed_2 = parseCanvasInput(edited.content, "canvas_edit", false, currentJsx);
           const parsedRootIds_1 = getRootIds(parsed_2);
           if (parsedRootIds_1.length === 0) {
             respond({
