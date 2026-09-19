@@ -3103,26 +3103,23 @@ async function handleCreateImportScaffold(projectId, args, chatTabId, sessionId)
     };
     if (parentId) addArgs.parent_id = parentId;
     if (claimId) addArgs.claim_id = claimId;
-    const result = await sendCanvasOperation(projectId, "add_to_canvas", withCanvasOperationSource(withChatTabId(addArgs, chatTabId), sessionId));
+    const result = await handleCanvasAdd(projectId, addArgs, chatTabId, sessionId);
     if (result?.isError) throw new Error(textFromToolResult(result) || "canvas add failed");
     const id = createdElementIdsFromResult(result)[0];
     if (!id) throw new Error("canvas add returned no element id");
     return id;
   };
   try {
-    const rootId = await addOne("<div className=\"flex gap-16 p-12 bg-background text-foreground\"></div>");
-    const claimResult = await handleCanvasClaim(projectId, {
-      element_id: rootId
-    }, chatTabId);
-    if (claimResult?.isError) return {
-      isError: true,
-      content: [{
-        type: "text",
-        text: `Scaffold root was added (${rootId}) but could not be claimed: ${textFromToolResult(claimResult)}`
-      }]
-    };
-    const claimId = parseClaimIdFromResult(claimResult);
-    if (claimId) markClaimMutated(claimId);
+    // Creation already knows the authored subtree. Claim atomically through the same
+    // path as canvas_add(claim_new), rather than failing the read-before-claim guard.
+    const rootResult = await handleCanvasAdd(projectId, {
+      jsx: "<div className=\"flex gap-16 p-12 bg-background text-foreground\"></div>",
+      claim_new: true
+    }, chatTabId, sessionId);
+    if (rootResult?.isError) return rootResult;
+    const rootId = createdElementIdsFromResult(rootResult)[0];
+    const claimId = rootResult.structuredContent?.operation?.claimId ?? parseClaimIdFromResult(rootResult);
+    if (!rootId || !claimId) throw new Error("Scaffold root creation did not return its element and claim ids.");
     const designColumnId = await addOne("<div data-section=\"design-system\" className=\"flex flex-col gap-12 w-[1200px] min-h-[3200px]\"></div>", rootId, claimId);
     const pageColumnId = await addOne("<div data-section=\"page-recreation\" className=\"flex flex-col gap-8 w-[1400px] min-h-[3200px]\"></div>", rootId, claimId);
     await addOne(tagline ? `<header className="flex flex-col gap-2"><h1 className="text-4xl font-semibold">${escapeJsxText(title)}</h1><p className="text-base opacity-70">${escapeJsxText(tagline)}</p></header>` : `<header className="flex flex-col gap-2"><h1 className="text-4xl font-semibold">${escapeJsxText(title)}</h1></header>`, designColumnId, claimId);
@@ -3862,7 +3859,7 @@ var TOOLS = [{
   }
 }, {
   name: "canvas_edit",
-  description: "Surgically edit an element by string replace on its JSX (like local_edit / project_edit). REQUIRES read_skill(\"bingo-design\"). Prefer this over canvas_update for additive changes (e.g. insert a column cell). old_string must be unique unless replace_all. Claim the element or an ancestor first. Preserves identity for untouched nodes.",
+  description: "Surgically edit an element by string replace on its JSX (like local_edit / project_edit). For plain text leaves, replace literal text directly without adding JSX wrappers. REQUIRES read_skill(\"bingo-design\"). Prefer this over canvas_update for additive changes (e.g. insert a column cell). old_string must be unique unless replace_all. Claim the element or an ancestor first. Preserves identity for untouched nodes.",
   inputSchema: {
     type: "object",
     properties: {

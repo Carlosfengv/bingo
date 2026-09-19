@@ -6,7 +6,7 @@
  * this is build output with the build's own rewrites undone -- not the
  * author's original file. See luna/RECOVERY.md.
  */
-import { applyOperationsToStore, createInsertOperation, createRemoveOperation, createReplaceOperation } from "../../shared/utils/operations";
+import { applyOperationsToStore, createInsertOperation, createRemoveOperation, createReplaceOperation, createSetTextOperation } from "../../shared/utils/operations";
 import { CanvasRevisionConflictError, appendCanvasCandidateOperation, commitCanvasCandidate, createCanvasCommitCandidate } from "./canvasOperationCommit";
 import { lintCanvasDesign, parseCanvasJsx } from "@bingo/compiler";
 import { collectRenderDiagnostics } from "../../canvas/utils/renderDiagnostics";
@@ -1231,7 +1231,29 @@ function useCanvasToolHandler(deps) {
             return;
           }
           const previousNested = storeSubtreeToLegacyNested(found_6.store, elementId_2);
+          // Plain text has no JSX root. Update its content directly so a copy edit
+          // cannot turn a text leaf into an HTML wrapper or replace its identity.
+          const flatText = previousNested.type === "text" && !previousNested.children?.length;
+          const hasTextWrapper = previousNested.className || previousNested.theme || Object.keys(previousNested.styles ?? {}).length > 0;
+          if (flatText && (!hasTextWrapper || (previousNested.text ?? "").includes(oldString))) {
+            const editedText = applyJsxStringEdit(previousNested.text ?? "", oldString, newString, !!args.replace_all);
+            if (editedText.error || editedText.content === void 0) {
+              respond({ isError: true, content: [{ type: "text", text: editedText.error || "Edit failed" }] });
+              return;
+            }
+            const targetStore = resolveActiveStore(found_6.tabId, currentActiveTabId, storeRef, currentTabs, found_6.store);
+            resolvedCanvasId = currentTabs.find(tab => tab.id === found_6.tabId)?.canvasId ?? null;
+            expectedRevisionForResult = getCanvasRevision?.(found_6.tabId) ?? 0;
+            const textOp = createSetTextOperation(targetStore, elementId_2, { text: editedText.content });
+            if (textOp) {
+              applyStoreUpdate(found_6.tabId, currentActiveTabId, history.pushOperation(found_6.tabId, targetStore, textOp), setStore, storeRef, setTabStoreById);
+              committedRevisionForResult = getCanvasRevision?.(found_6.tabId) ?? expectedRevisionForResult + 1;
+            }
+            respond({ content: [{ type: "text", text: `Edited text element ${elementId_2} (${editedText.replacements ?? 1} replacement(s)). Change summary: preserved=1, added=0, removed=0` }] });
+            return;
+          }
           const currentJsx = generateJSX(ensureV2([previousNested]), 0, {
+            purpose: "exchange",
             includeDataElementId: true
           });
           const edited = applyJsxStringEdit(currentJsx, oldString, newString, !!args.replace_all);

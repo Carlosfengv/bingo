@@ -167,7 +167,7 @@ function applyJsxStringEdit(content, oldString, newString, replaceAll) {
     error: `old_string is not unique in element JSX (found at lines ${content.slice(0, firstIdx).split("\n").length} and ${content.slice(0, secondIdx).split("\n").length}). Include more surrounding context to make it unique, or use replace_all to replace all occurrences.`
   };
   return {
-    content: content.replace(oldString, newString),
+    content: content.replace(oldString, () => newString),
     replacements: 1
   };
 }
