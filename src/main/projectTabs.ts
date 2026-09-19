@@ -2,7 +2,9 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, WebContentsView } from "elec
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { projectEntry, resolveRegisteredProjectRoot } from "./localStore";
+import { projectEntry, resolveRegisteredProjectRoot, releaseProjectVariableCache } from "./localStore";
+import { ProjectTabSessionStore } from "./projectTabSessionStore";
+import { drainTerminalsForQuit } from "./terminal";
 import { tNative } from "./localization";
 import { adjacentProjectAfterClose, PROJECT_TITLEBAR_HEIGHT, restoreProjectWindows } from "../shared/projectTabs";
 import type { ProjectTabFailure, ProjectTabStatus, SavedProjectWindow } from "../shared/projectTabs";
@@ -19,14 +21,10 @@ const savedWindows = new Map<string, SavedProjectWindow>();
 let quitting = false;
 let registered = false;
 const sessionFile = () => path.join(app.getPath("userData"), "project-tabs.json");
+const sessionStore = new ProjectTabSessionStore(sessionFile);
 
 function saveSession() {
-  try {
-    fs.mkdirSync(path.dirname(sessionFile()), { recursive: true });
-    const temporary = `${sessionFile()}.tmp`;
-    fs.writeFileSync(temporary, JSON.stringify([...savedWindows.values()]), { mode: 0o600 });
-    fs.renameSync(temporary, sessionFile());
-  } catch (error) { console.warn("[ProjectTabs] Could not save window session:", error); }
+  sessionStore.set([...savedWindows.values()]);
 }
 export function readSavedProjectWindows() {
   let value;
@@ -67,11 +65,24 @@ export class ProjectWindowTabs {
     for (const event of ["show", "hide", "minimize", "restore"] as const) win.on(event, () => this.publishActivity());
     win.webContents.on("did-finish-load", () => this.publish());
     win.on("close", event => {
-      if (this.allowWindowClose || this.tabs.length === 0) return;
+      if (this.allowWindowClose) return;
       event.preventDefault();
       if (this.closingWindow || quitting) return;
       this.closingWindow = true;
-      void this.prepareWindowClose().then(ok => {
+      void this.prepareWindowClose().then(async ok => {
+        if (ok) {
+          this.sessionClosing = true;
+          const previous = savedWindows.get(this.sessionId);
+          if (controllers.size > 1) savedWindows.delete(this.sessionId);
+          saveSession();
+          try { await sessionStore.flush(); }
+          catch (error) {
+            this.sessionClosing = false;
+            if (previous) savedWindows.set(this.sessionId, previous);
+            saveSession(); this.resumePreparedTabs(); ok = false;
+            await this.reportSessionFailure(error);
+          }
+        }
         this.closingWindow = false;
         if (ok && !win.isDestroyed()) { this.allowWindowClose = true; win.close(); }
       }).catch(error => { this.closingWindow = false; console.error(error); });
@@ -307,10 +318,14 @@ export class ProjectWindowTabs {
     this.tabs = this.tabs.filter(entry => entry !== tab);
     this.dispose(tab);
     this.activate(next);
+    this.publish();
+    try { await sessionStore.flush(); }
+    catch (error) { await this.reportSessionFailure(error); throw error; }
     return true;
   }
   dispose(tab: Tab) {
     this.disposeView(tab, tab.view);
+    releaseProjectVariableCache(tab.id);
   }
   disposeView(tab: Tab, view: WebContentsView) {
     const contentsId = view.webContents.id;
@@ -346,6 +361,18 @@ export async function prepareProjectTabsForQuit() {
   try {
     for (const controller of controllers.values()) {
       if (controller.closingWindow || !(await controller.prepareWindowClose())) return false;
+    }
+    try { await sessionStore.flush(); }
+    catch (error) {
+      const controller = controllers.values().next().value;
+      if (controller) await controller.reportSessionFailure(error);
+      return false;
+    }
+    try { await drainTerminalsForQuit(); }
+    catch (error) {
+      const controller = controllers.values().next().value;
+      if (controller) await dialog.showMessageBox(controller.win, { type: "error", message: tNative("tabs.terminalCloseFailed"), detail: String(error?.message || error) });
+      return false;
     }
     for (const controller of controllers.values()) controller.allowWindowClose = true;
     prepared = true;

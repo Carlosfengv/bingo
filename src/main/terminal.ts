@@ -31,6 +31,8 @@ function ensureSpawnHelperExecutable() {
   } catch {}
 }
 var sessions = new Map();
+const pendingExits = new Set<{ pty: any; exited: Promise<void> }>();
+let quitting = false;
 var nextId = 1;
 function makeSessionId() {
   return `term-${Date.now().toString(36)}-${nextId++}`;
@@ -72,6 +74,23 @@ function disposeTerminalsForWindow(winId) {
 function disposeTerminalsForRenderer(contentsId) {
   for (const [id, session] of sessions) if (session.senderId === contentsId) disposeSession(id);
 }
+/** Let node-pty deliver its native exit callbacks before Electron tears down V8. */
+async function drainTerminalsForQuit(timeoutMs = 3000) {
+  quitting = true;
+  for (const id of sessions.keys()) disposeSession(id);
+  let forceTimer, deadline;
+  try {
+    forceTimer = setTimeout(() => {
+      for (const { pty } of pendingExits) try { pty.kill("SIGKILL"); } catch {}
+    }, timeoutMs / 2);
+    await Promise.race([
+      Promise.all([...pendingExits].map(entry => entry.exited)),
+      new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error("Terminal processes have not finished closing. Please try quitting again.")), timeoutMs); }),
+    ]);
+    await new Promise(resolve => setImmediate(resolve));
+  } catch (error) { quitting = false; throw error; }
+  finally { clearTimeout(forceTimer); clearTimeout(deadline); }
+}
 function sendToRenderer(sender, channel, payload) {
   if (sender.isDestroyed()) return false;
   try {
@@ -83,6 +102,7 @@ function sendToRenderer(sender, channel, payload) {
 }
 function registerTerminalIPC() {
   electron.ipcMain.handle("terminal:create", (event, args) => {
+    if (quitting) return { ok: false, error: "Application is quitting" };
     const win = windowForWebContents(event.sender);
     if (!win) return {
       ok: false,
@@ -119,6 +139,9 @@ function registerTerminalIPC() {
       winId: win.id,
       senderId: event.sender.id
     });
+    let finishExit: () => void;
+    const pending = { pty: proc, exited: new Promise<void>(resolve => { finishExit = resolve; }) };
+    pendingExits.add(pending);
     proc.onData(data => {
       if (!sendToRenderer(sender, "terminal:data", {
         id,
@@ -128,6 +151,8 @@ function registerTerminalIPC() {
     proc.onExit(({
       exitCode
     }) => {
+      pendingExits.delete(pending);
+      finishExit();
       sendToRenderer(sender, "terminal:exit", {
         id,
         exitCode
@@ -161,4 +186,4 @@ function registerTerminalIPC() {
   });
 }
 
-export { disposeTerminalsForWindow, disposeTerminalsForRenderer, registerTerminalIPC };
+export { disposeTerminalsForWindow, disposeTerminalsForRenderer, drainTerminalsForQuit, registerTerminalIPC };

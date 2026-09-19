@@ -759,6 +759,8 @@ const en = {
       closeRunning: "Close “{{name}}” and stop its tasks?",
       closeRunningDetail: "This project has a running task or an approval waiting. Closing the tab will stop it.",
       stopAndClose: "Stop and close", saveFailed: "Couldn't save the project. The tab is still open.",
+      sessionSaveFailed: "Couldn't save the list of open projects. The next launch may restore the previous session.",
+      terminalCloseFailed: "Terminal processes are still closing. Please try quitting again.",
       saveFailedDetail: "Wait for the project to finish loading, check its save status, and try again.",
     },
     menu: {
@@ -1575,6 +1577,8 @@ const zhCN: LocalizedResource<typeof en> = {
       closeRunning: "关闭「{{name}}」并停止任务？",
       closeRunningDetail: "这个项目有任务正在运行或等待确认。关闭标签页会停止该任务。",
       stopAndClose: "停止并关闭", saveFailed: "项目未能保存，标签页已保留。",
+      sessionSaveFailed: "未能保存已打开的项目列表，下次启动可能恢复之前的会话。",
+      terminalCloseFailed: "终端进程尚未结束，请稍后重试退出。",
       saveFailedDetail: "请等待项目加载完成，检查保存状态后再试。",
     },
     menu: {
