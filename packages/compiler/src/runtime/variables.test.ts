@@ -5,7 +5,7 @@ import { toWire } from "../store/wire";
 import { applyOps } from "../store/apply";
 import { generateJSX } from "../codegen/generateJSX";
 import { parseJSX } from "../codegen/parseJSX";
-import { bindElementVariable, detachElementVariable, findElementVariableBinding, prepareVariableStore, resolveCollectionModes, resolveVariableValues, setElementVariableMode, sameCollectionModes, validateVariableLibrary, variableExpression } from "./variables";
+import { bindElementVariable, detachElementVariable, findElementVariableBinding, isPaintOnlyVariableModeChange, prepareVariableStore, resolveCollectionModes, resolveVariableValues, setElementVariableMode, sameCollectionModes, validateVariableLibrary, variableExpression } from "./variables";
 import { applyOperationsToStore, createSetStylesOperation, invertOperations } from "../../../editor/src/shared/utils/operations";
 
 export const variableFixture = {
@@ -37,6 +37,20 @@ test("prepared variable scopes reuse unchanged nodes across edits, page modes an
   assert.equal(page.byId.get("root").styles["--surface-page"], "#111827");
   const library = structuredClone(variableFixture); library.tokens[0].valuesByMode.light.value = "#aabbcc";
   assert.equal(prepareVariableStore(before, library).byId.get("root").styles["--surface-page"], "#aabbcc");
+});
+test("source colors require complete stylesheet evidence; layout and unknown consumers still invalidate", () => {
+  const library = structuredClone(variableFixture);
+  library.tokens[0].sourceRef = { kind: "css" };
+  const before = fixture();
+  before.byId.set("text", { ...before.byId.get("text"), props: { className: "paint" }, styles: { color: "var(--surface-page)" } });
+  const after = { ...before, byId: new Map(before.byId).set("root", setElementVariableMode(before.byId.get("root"), library, "colors", "dark")) };
+  const safe = () => ({ complete: true, conditions: [], declarations: [{ property: "color", value: "var(--surface-page)" }] });
+  assert.equal(isPaintOnlyVariableModeChange(before, after, library), false);
+  assert.equal(isPaintOnlyVariableModeChange(before, after, library, {}, {}, safe), true);
+  assert.equal(isPaintOnlyVariableModeChange(before, after, library, {}, {}, () => ({ ...safe(), complete: false })), false);
+  assert.equal(isPaintOnlyVariableModeChange(before, after, library, {}, {}, () => ({ ...safe(), declarations: [{ property: "height", value: "var(--surface-page)" }] })), false);
+  const density = { ...before, byId: new Map(before.byId).set("root", setElementVariableMode(before.byId.get("root"), library, "density", "compact")) };
+  assert.equal(isPaintOnlyVariableModeChange(before, density, library, {}, {}, safe), false);
 });
 test("unchanged modes retain identity while an explicit override of an inherited value remains an edit", () => {
   const element = fixture().byId.get("root");
@@ -141,6 +155,25 @@ test("components retain declarations as a portal compatibility bridge", () => {
   const prepared = prepareVariableStore(store, variableFixture, { colors: "dark", density: "compact" });
   assert.equal(prepared.byId.get("dialog").styles["--surface-page"], "#111827");
   assert.equal(prepared.byId.get("dialog").styles["--space-gap"], "8");
+});
+test("geometry can be retained only for proven managed color mode changes", () => {
+  const colors = structuredClone(variableFixture);
+  colors.tokens = colors.tokens.filter(token => token.id === "bg");
+  colors.collections = colors.collections.filter(collection => collection.id === "colors");
+  const before = fixture();
+  const byId = new Map(before.byId);
+  byId.set("root", setElementVariableMode(byId.get("root"), colors, "colors", "dark"));
+  const after = { ...before, byId };
+  assert.equal(isPaintOnlyVariableModeChange(before, after, colors), true);
+  const withClass = { ...after, byId: new Map(after.byId) };
+  withClass.byId.set("text", { ...withClass.byId.get("text"), props: { className: "uses-theme" } });
+  assert.equal(isPaintOnlyVariableModeChange(before, withClass, colors), false);
+  const sourceColors = structuredClone(colors);
+  sourceColors.tokens[0].sourceRef = { kind: "css" };
+  assert.equal(isPaintOnlyVariableModeChange(before, after, sourceColors), false);
+  const numberById = new Map(before.byId);
+  numberById.set("root", setElementVariableMode(numberById.get("root"), variableFixture, "density", "compact"));
+  assert.equal(isPaintOnlyVariableModeChange(before, { ...before, byId: numberById }, variableFixture), false);
 });
 test("page modes survive ordinary edits, save/reload, and undo/redo", () => {
   const store = fixture();

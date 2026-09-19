@@ -1432,13 +1432,16 @@ function AiLockOverlays({
 }
 function useOverlayGeoms(t0) {
   const $ = (0, import_compiler_runtime.c)(57);
+  const variableGeometryRef = import_react.useRef(t0.variableGeometry);
+  import_react.useLayoutEffect(() => { variableGeometryRef.current = t0.variableGeometry; }, [t0.variableGeometry]);
   const {
     canvasRef,
     store,
     selectedElementIds,
     componentsRevision,
     isDragging,
-    isResizing
+    isResizing,
+    variableGeometryVersion
   } = t0;
   const dragActive = isDragging ?? false;
   const resizeActive = isResizing ?? false;
@@ -1541,12 +1544,13 @@ function useOverlayGeoms(t0) {
   const syncResolved = t8;
   let t9;
   if ($[10] !== currentMeasureView) {
-    t9 = () => {
+    t9 = (roots?: ReadonlySet<string>) => {
       const view = currentMeasureView();
       if (!view) return;
       const walkCache = new Map();
       for (const id_0 of Array.from(elementByIdRef.current.keys())) {
         if (!elementByIdRef.current.has(id_0)) continue;
+        if (roots && !roots.has(elementByIdRef.current.get(id_0).element.closest("[data-canvas-root-id]")?.getAttribute("data-canvas-root-id"))) continue;
         if (!syncResolved(id_0)) continue;
         const live = elementByIdRef.current.get(id_0);
         if (!live) continue;
@@ -1786,7 +1790,7 @@ function useOverlayGeoms(t0) {
       if (geomRafRef.current !== null) cancelAnimationFrame(geomRafRef.current);
       geomRafRef.current = requestAnimationFrame(() => {
         geomRafRef.current = null;
-        recomputeAllGeoms();
+        recomputeAllGeoms(variableGeometryRef.current?.takeRoots());
         setGeomVersion(_temp4$27);
       });
       return () => {
@@ -1802,13 +1806,13 @@ function useOverlayGeoms(t0) {
     $[36] = t15;
   } else t15 = $[36];
   let t16;
-  if ($[37] !== componentsRevision || $[38] !== dragActive || $[39] !== recomputeAllGeoms || $[40] !== resizeActive || $[41] !== store) {
-    t16 = [store, componentsRevision, dragActive, resizeActive, recomputeAllGeoms];
+  if ($[37] !== componentsRevision || $[38] !== dragActive || $[39] !== recomputeAllGeoms || $[40] !== resizeActive || $[41] !== variableGeometryVersion) {
+    t16 = [variableGeometryVersion, componentsRevision, dragActive, resizeActive, recomputeAllGeoms];
     $[37] = componentsRevision;
     $[38] = dragActive;
     $[39] = recomputeAllGeoms;
     $[40] = resizeActive;
-    $[41] = store;
+    $[41] = variableGeometryVersion;
     $[42] = t16;
   } else t16 = $[42];
   (0, import_react.useEffect)(t15, t16);

@@ -1,7 +1,10 @@
 import * as React from "react";
-import { emptyVariableLibrary, bindElementVariable, detachElementVariable, findElementVariableBinding, resolveCollectionModes, resolveVariableValues, setElementVariableMode, sameCollectionModes, prepareVariableStore, validateVariableLibrary, literalForProperty, variableModesSignature } from "../../../../compiler/src/runtime/variables";
+import { emptyVariableLibrary, bindElementVariable, detachElementVariable, findElementVariableBinding, isPaintOnlyVariableModeChange, resolveCollectionModes, resolveVariableValues, setElementVariableMode, sameCollectionModes, prepareVariableStore, validateVariableLibrary, literalForProperty, variableModesSignature } from "../../../../compiler/src/runtime/variables";
 import { createSetStylesOperation } from "../utils/operations";
 import { measureCanvasWork } from "../../canvas/lib/canvasPerformance";
+import { readCssVariableUsage } from "../../canvas/utils/cssVariableUsage";
+import { collectVariableConsumers, createVariableConsumerResolver } from "../../../../compiler/src/runtime/variableConsumers";
+import { variableModeChangedRootIds } from "../../../../compiler/src/runtime/variables";
 
 export const VariableLibraryContext = React.createContext<any>(null);
 const VariableSnapshotContext = React.createContext<any>(null);
@@ -179,15 +182,90 @@ export function VariableEditorProvider({ store, selectedIds, onCommit, readOnly,
   return <VariableEditorContext.Provider value={value}>{children}</VariableEditorContext.Provider>;
 }
 
-const renderCache = new WeakMap<object, { library: object; signature: string; store: any }>();
-export function useVariableRenderStore(store) {
+const renderCache = new WeakMap<object, { library: object; variants: Map<string, any> }>();
+const emptyCollectionModes = {};
+export function useVariableGeometryVersion(store, componentsRevision = 0, components = emptyCollectionModes, componentIndex = emptyCollectionModes) {
   const variables = useVariableSnapshot();
+  const pendingRoots = React.useRef<Set<string> | null>(null);
+  const takeRoots = React.useCallback(() => {
+    const roots = pendingRoots.current;
+    pendingRoots.current = new Set();
+    return roots ?? undefined;
+  }, []);
+  const defaultModes = variables?.defaultModes ?? emptyCollectionModes;
+  const [cssRevision, setCssRevision] = React.useState(0);
+  const [fontRevision, setFontRevision] = React.useState(0);
+  React.useEffect(() => {
+    const cssUpdated = () => setCssRevision(value => value + 1);
+    const fontsUpdated = (event: FontFaceSetLoadEvent) => {
+      if (event.fontfaces.some(font => font.status === "loaded")) setFontRevision(value => value + 1);
+    };
+    window.addEventListener("bingo-css-updated", cssUpdated);
+    document.fonts?.addEventListener("loadingdone", fontsUpdated);
+    return () => {
+      window.removeEventListener("bingo-css-updated", cssUpdated);
+      document.fonts?.removeEventListener("loadingdone", fontsUpdated);
+    };
+  }, []);
+  const state = React.useRef<{ store: any; library: any; defaultModes: any; version: number; componentsRevision: number; components: any; componentIndex: any; sheets: string[]; cssRevision: number; fontRevision: number } | null>(null);
+  const cssUsageRef = React.useRef<ReturnType<typeof readCssVariableUsage> | undefined>(undefined);
+  if (!state.current) {
+    cssUsageRef.current = readCssVariableUsage(document);
+    state.current = { store, library: variables?.library, defaultModes, componentsRevision, components, componentIndex, cssRevision, fontRevision, sheets: cssUsageRef.current.sheets, version: 0 };
+  }
+  else if (state.current.store !== store || state.current.library !== variables?.library || state.current.defaultModes !== defaultModes || state.current.componentsRevision !== componentsRevision || state.current.components !== components || state.current.componentIndex !== componentIndex || state.current.cssRevision !== cssRevision || state.current.fontRevision !== fontRevision) {
+    const usage = readCssVariableUsage(document);
+    cssUsageRef.current = usage;
+    const stylesUnchanged = usage.complete && state.current.sheets.length === usage.sheets.length
+      && usage.sheets.every((text, index) => text === state.current!.sheets[index]);
+    const runtimeUpdated = state.current.componentsRevision !== componentsRevision || state.current.components !== components || state.current.componentIndex !== componentIndex;
+    const hasChangedRuntime = runtimeUpdated && [...store.byId.values()].some((element: any) =>
+      ["capture", "webview"].includes(element.type) || element.props?.["data-component"] === "CapturedPage"
+      || element.type === "component" && (state.current!.components[element.componentName] !== components[element.componentName]
+        || JSON.stringify(state.current!.componentIndex[element.componentName]) !== JSON.stringify(componentIndex[element.componentName])));
+    const libraryUnchanged = state.current.library === variables?.library && state.current.defaultModes === defaultModes;
+    const paintOnly = stylesUnchanged && !hasChangedRuntime && libraryUnchanged && state.current.fontRevision === fontRevision && (state.current.store === store
+      || variables?.library?.tokens.length && isPaintOnlyVariableModeChange(state.current.store, store, variables.library,
+        state.current.store.variableModes ?? defaultModes, store.variableModes ?? defaultModes, () => usage));
+    if (!paintOnly) {
+      const roots = stylesUnchanged && !hasChangedRuntime && libraryUnchanged && state.current.fontRevision === fontRevision
+        && variables?.library && collectVariableConsumers(store, variables.library, usage)
+        ? variableModeChangedRootIds(state.current.store, store, state.current.store.variableModes ?? defaultModes, store.variableModes ?? defaultModes)
+        : undefined;
+      if (!roots) pendingRoots.current = null;
+      else if (pendingRoots.current) for (const root of roots) pendingRoots.current.add(root);
+    }
+    state.current = { store, library: variables?.library, defaultModes, componentsRevision, components, componentIndex, cssRevision, fontRevision, sheets: usage.sheets, version: state.current.version + (paintOnly ? 0 : 1) };
+  }
+  const version = state.current.version;
+  const styles = cssUsageRef.current;
+  return React.useMemo(() => ({ version, takeRoots, styles }), [version, takeRoots, styles]);
+}
+export function useVariableRenderStore(store, restrictToConsumers = false, styleUsage?: ReturnType<typeof readCssVariableUsage>) {
+  const variables = useVariableSnapshot();
+  const resolveConsumers = React.useMemo(createVariableConsumerResolver, []);
+  const [cssRevision, refreshCss] = React.useReducer(value => value + 1, 0);
+  React.useEffect(() => {
+    if (!restrictToConsumers || styleUsage) return;
+    window.addEventListener("bingo-css-updated", refreshCss);
+    return () => window.removeEventListener("bingo-css-updated", refreshCss);
+  }, [restrictToConsumers, !!styleUsage]);
+  const usedCssNames = React.useMemo(() => restrictToConsumers && variables?.library.tokens.length
+    ? resolveConsumers(store, variables.library, styleUsage ?? readCssVariableUsage(document)) : undefined,
+  [store, variables?.library, restrictToConsumers, cssRevision, styleUsage, resolveConsumers]);
   if (!variables?.library.tokens.length) return store;
   const modes = store.variableModes ?? variables.defaultModes;
-  const signature = variableModesSignature(variables.library, modes);
-  const cached = renderCache.get(store);
-  if (cached?.library === variables.library && cached.signature === signature) return cached.store;
-  const prepared = measureCanvasWork("variables", () => prepareVariableStore(store, variables.library, modes));
-  renderCache.set(store, { library: variables.library, signature, store: prepared });
+  const signature = variableModesSignature(variables.library, modes) + (usedCssNames ? `:used:${JSON.stringify([...usedCssNames].sort())}` : ":all");
+  let cached = renderCache.get(store);
+  if (cached?.library !== variables.library) {
+    cached = { library: variables.library, variants: new Map() };
+    renderCache.set(store, cached);
+  }
+  if (cached.variants.has(signature)) return cached.variants.get(signature);
+  const prepared = measureCanvasWork("variables", () => prepareVariableStore(store, variables.library, modes, undefined, usedCssNames));
+  // Canvas and preview deliberately use different declaration sets. Keep both
+  // identities, with a bound for transient CSS edits/default-mode combinations.
+  if (cached.variants.size >= 4) cached.variants.delete(cached.variants.keys().next().value!);
+  cached.variants.set(signature, prepared);
   return prepared;
 }

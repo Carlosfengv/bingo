@@ -70,6 +70,9 @@
   "pnpm": {
     "overrides": {
       "@babel/runtime": "7.28.6"
+    },
+    "patchedDependencies": {
+      "@radix-ui/react-scroll-area@1.2.10": "patches/@radix-ui__react-scroll-area@1.2.10.patch"
     }
   },
   "devDependencies": {

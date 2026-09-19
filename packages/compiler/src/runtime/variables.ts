@@ -1,4 +1,5 @@
 import { validateThemeLibrary } from "./theme";
+import { cssVariablesAffectOnlyPaint, type VariableStyleUsage } from "./variableGeometry";
 
 export type VariableMode = { id: string; name?: string; label?: string };
 export type VariableCollection = { id: string; name?: string; defaultModeId: string; modes: VariableMode[] };
@@ -222,6 +223,119 @@ export function variableDeclarationsForModes(library: VariableLibrary, modes: Co
   const declarations = variableDeclarations(library, resolveVariableValues(library, modes).values);
   if (usedCssNames) for (const property of Object.keys(declarations)) if (!usedCssNames.has(property.slice(2))) delete declarations[property];
   return cacheSet(index.declarationsByModes, signature, declarations);
+}
+
+function onlyLocalModesChanged(before: any, after: any) {
+  if (!before || !after) return false;
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (key === "theme") continue;
+    if (before[key] !== after[key]) return false;
+  }
+  const beforeTheme = before.theme || {};
+  const afterTheme = after.theme || {};
+  for (const key of new Set([...Object.keys(beforeTheme), ...Object.keys(afterTheme)])) {
+    if (key === "localCollectionModes" || key === "version") continue;
+    if (beforeTheme[key] !== afterTheme[key]) return false;
+  }
+  return JSON.stringify(beforeTheme.localCollectionModes || {}) !== JSON.stringify(afterTheme.localCollectionModes || {});
+}
+
+/** Independent canvas roots affected by a mode-only edit; other edits are unknown. */
+export function variableModeChangedRootIds(before: any, after: any, beforePageModes: CollectionModes, afterPageModes: CollectionModes): Set<string> | undefined {
+  if (!before || before.childrenByParent !== after.childrenByParent || before.parentByChild !== after.parentByChild || before.byId.size !== after.byId.size) return;
+  const roots = new Set<string>();
+  if (!sameCollectionModes(beforePageModes, afterPageModes)) {
+    for (const [id, parent] of after.parentByChild) if (parent === "ROOT") roots.add(id);
+  }
+  for (const [id, element] of after.byId) {
+    if (before.byId.get(id) === element) continue;
+    if (!onlyLocalModesChanged(before.byId.get(id), element)) return;
+    let root = id;
+    const visited = new Set<string>();
+    while (after.parentByChild.get(root) !== "ROOT") {
+      if (visited.has(root)) return;
+      visited.add(root);
+      root = after.parentByChild.get(root);
+      if (!root) return;
+    }
+    roots.add(root);
+  }
+  return roots;
+}
+
+/** True only when skipping a full geometry refresh is demonstrably safe. */
+export function isPaintOnlyVariableModeChange(before: any, after: any, library: VariableLibrary, beforePageModes: CollectionModes = before?.variableModes || {}, afterPageModes: CollectionModes = after?.variableModes || {}, readStyleUsage?: () => VariableStyleUsage) {
+  if (!before || !after || before === after || before.childrenByParent !== after.childrenByParent || before.parentByChild !== after.parentByChild || before.byId.size !== after.byId.size) return false;
+  const modePairs: Array<[CollectionModes, CollectionModes]> = [];
+  const pageChanged = JSON.stringify(beforePageModes) !== JSON.stringify(afterPageModes);
+  if (pageChanged) {
+    for (const [id] of after.byId) if (after.parentByChild.get(id) === "ROOT") {
+      modePairs.push([
+        resolveCollectionModes(before, id, library, beforePageModes).modes,
+        resolveCollectionModes(after, id, library, afterPageModes).modes,
+      ]);
+    }
+  }
+  for (const [id, element] of after.byId) {
+    const previous = before.byId.get(id);
+    if (previous === element) continue;
+    if (!onlyLocalModesChanged(previous, element)) return false;
+    modePairs.push([
+      resolveCollectionModes(before, id, library, beforePageModes).modes,
+      resolveCollectionModes(after, id, library, afterPageModes).modes,
+    ]);
+  }
+  if (!modePairs.length) return false;
+  // Nested overrides can combine collections differently from their root,
+  // including cross-collection aliases. Prove safety in every such scope.
+  for (const [id, element] of after.byId) if (Object.keys(element.theme?.localCollectionModes || {}).length) {
+    modePairs.push([resolveCollectionModes(before, id, library, beforePageModes).modes,
+      resolveCollectionModes(after, id, library, afterPageModes).modes]);
+  }
+  const changedTokens = new Set<string>();
+  for (const [beforeModes, afterModes] of modePairs) {
+    const beforeResolved = resolveVariableValues(library, beforeModes);
+    const afterResolved = resolveVariableValues(library, afterModes);
+    if (beforeResolved.diagnostics.length || afterResolved.diagnostics.length) return false;
+    for (const token of library.tokens) if (!Object.is(beforeResolved.values[token.id], afterResolved.values[token.id])) changedTokens.add(token.id);
+  }
+  if (!changedTokens.size) return true;
+  const index = libraryIndex(library);
+  const changedCssNames = new Set<string>();
+  for (const id of changedTokens) {
+    const token = index.tokenById.get(id);
+    if (!token || token.type !== "color" || token.sourceRef && !readStyleUsage) return false;
+    if (token.cssName) changedCssNames.add(token.cssName);
+  }
+  const declarations: VariableStyleUsage["declarations"] = [];
+  const seenDeclarations = new Set<string>();
+  const addDeclaration = (property: string, value: string) => {
+    const key = `${property}\0${value}`;
+    if (!seenDeclarations.has(key)) { seenDeclarations.add(key); declarations.push({ property, value }); }
+  };
+  for (const element of after.byId.values()) {
+    if (["component", "capture", "webview"].includes(element.type) || element.props?.["data-component"] === "CapturedPage"
+      || !readStyleUsage && typeof element.props?.className === "string" && element.props.className.trim()) return false;
+    for (const styles of [element.styles, element.props?.style]) {
+      for (const [property, value] of Object.entries(styles || {})) {
+        if (typeof value === "string" && (/var\(/i.test(value) || value.includes("\\") && value.includes("--"))) addDeclaration(property, value);
+      }
+    }
+    for (const [property, value] of Object.entries(element.props || {})) {
+      if (typeof value === "string" && (/var\(/i.test(value) || value.includes("\\") && value.includes("--"))) addDeclaration(property, value);
+    }
+    for (const binding of element.theme?.bindings || []) {
+      const token = index.tokenById.get(binding.tokenId);
+      if (binding.target === "style" && token && canBindVariable(token, binding.property)) {
+        addDeclaration(binding.property, variableExpression(token, binding.property, binding.alpha));
+      }
+    }
+  }
+  for (const token of library.tokens) for (const value of Object.values(token.valuesByMode)) {
+    if (token.cssName && typeof value.value === "string" && (/var\(/i.test(value.value) || value.value.includes("\\") && value.value.includes("--"))) addDeclaration(`--${token.cssName}`, value.value);
+  }
+  const usage = readStyleUsage?.() ?? { complete: true, declarations: [], conditions: [] };
+  return cssVariablesAffectOnlyPaint(changedCssNames, { ...usage, declarations: [...usage.declarations, ...declarations] });
 }
 
 export function setElementVariableMode(element: any, library: VariableLibrary, collectionId: string, modeId: string | null) {

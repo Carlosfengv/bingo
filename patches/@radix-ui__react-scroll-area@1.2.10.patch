@@ -1,0 +1,30 @@
+diff --git a/dist/index.js b/dist/index.js
+index 6e0a40d99edf0a3e2ed405455c25bed6a48c1c5a..8ee732db655ca7f435789db0d7d4ec9e3cafa713 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -144,9 +144,7 @@ var ScrollAreaViewport = React2.forwardRef(
+       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+         "style",
+         {
+-          dangerouslySetInnerHTML: {
+-            __html: `[data-radix-scroll-area-viewport]{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;}[data-radix-scroll-area-viewport]::-webkit-scrollbar{display:none}`
+-          },
++          children: `[data-radix-scroll-area-viewport]{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;}[data-radix-scroll-area-viewport]::-webkit-scrollbar{display:none}`,
+           nonce
+         }
+       ),
+diff --git a/dist/index.mjs b/dist/index.mjs
+index fac521d1e293331d6c358170552a0d15ebbc04c6..b6f61cdc10512a3a433370139ab66f24ef068713 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -99,9 +99,7 @@ var ScrollAreaViewport = React2.forwardRef(
+       /* @__PURE__ */ jsx(
+         "style",
+         {
+-          dangerouslySetInnerHTML: {
+-            __html: `[data-radix-scroll-area-viewport]{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;}[data-radix-scroll-area-viewport]::-webkit-scrollbar{display:none}`
+-          },
++          children: `[data-radix-scroll-area-viewport]{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;}[data-radix-scroll-area-viewport]::-webkit-scrollbar{display:none}`,
+           nonce
+         }
+       ),

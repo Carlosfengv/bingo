@@ -1,4 +1,4 @@
-import { useVariableRenderStore } from "../../shared/theme/VariableContext";
+import { useVariableGeometryVersion, useVariableRenderStore } from "../../shared/theme/VariableContext";
 /*
  * Reconstructed from the shipped Bingo bundle by luna/tools/rebuild.mjs.
  * Original module: ../../packages/editor/src/canvas/components/Canvas.tsx
@@ -377,7 +377,7 @@ var PanAwarePointerSensor = class extends PointerSensor {
 /** Keep visual subtrees independent from selection and event callback identity. */
 function CanvasRootTrees(props) {
   const stable = useStableCanvasTreeProps(props);
-  const store = useVariableRenderStore(props.store);
+  const store = useVariableRenderStore(props.store, true, props.variableCssUsage);
   const liveStoreRef = import_react.useRef(store);
   const drilledParentIdRef = import_react.useRef(props.drilledParentId);
   import_react.useLayoutEffect(() => {
@@ -452,7 +452,7 @@ function CanvasRootTrees(props) {
   </CanvasSelectionContext.Provider>;
 }
 function Canvas(t0) {
-  const $ = (0, import_compiler_runtime.c)(472);
+  const $ = (0, import_compiler_runtime.c)(473);
   const { t } = useTranslation("editor");
   const {
     store,
@@ -527,6 +527,8 @@ function Canvas(t0) {
   } else t12 = $[3];
   const componentIndex = t12;
   const componentsRevision = t3 === void 0 ? 0 : t3;
+  const variableGeometry = useVariableGeometryVersion(store, componentsRevision, components, componentIndex);
+  const variableGeometryVersion = variableGeometry.version;
   let t13;
   if ($[4] !== t4) {
     t13 = t4 === void 0 ? {} : t4;
@@ -1396,24 +1398,18 @@ function Canvas(t0) {
     resizePreviewRectRef
   } = useResizing(t66);
   const t67 = !!resizing;
-  let t68;
-  if ($[113] !== canvasRef || $[114] !== componentsRevision || $[115] !== isDragging || $[116] !== selectedElementIds || $[117] !== store || $[118] !== t67) {
-    t68 = {
-      canvasRef,
-      store,
-      selectedElementIds,
-      componentsRevision,
-      isDragging,
-      isResizing: t67
-    };
-    $[113] = canvasRef;
-    $[114] = componentsRevision;
-    $[115] = isDragging;
-    $[116] = selectedElementIds;
-    $[117] = store;
-    $[118] = t67;
-    $[119] = t68;
-  } else t68 = $[119];
+  const t68 = {
+    canvasRef,
+    store,
+    selectedElementIds,
+    // This revision includes actual runtime and stylesheet changes. Unrelated
+    // component rebuilds must not remeasure an entirely HTML canvas.
+    componentsRevision: variableGeometryVersion,
+    variableGeometry,
+    isDragging,
+    isResizing: t67,
+    variableGeometryVersion
+  };
   const {
     geomByIdRef,
     geomVersion
@@ -2071,8 +2067,9 @@ function Canvas(t0) {
     $[240] = t122;
   } else t122 = $[240];
   let t123;
-  if ($[241] !== allowedPaths || $[242] !== assetResolver || $[243] !== commentMode || $[244] !== componentIndex || $[245] !== components || $[246] !== componentsRevision || $[247] !== draggedIds || $[248] !== drilledParentId || $[249] !== editingTextBounds || $[250] !== editingTextId || $[251] !== iconLibraries || $[252] !== interactiveParentIds || $[253] !== interactiveParentIdsRef || $[254] !== onActivateTextEditor || $[255] !== onAddAllowedPath || $[256] !== onAddElement || $[257] !== onDeactivateTextEditor || $[258] !== onEditText || $[259] !== onFixWithAI || $[260] !== onOpenFile || $[261] !== onResizeElement || $[262] !== onSaveToCode || $[263] !== onStartEditTextProp || $[264] !== onStopEditTextProp || $[265] !== onTextSelectionChange || $[266] !== onUpdateElementProps || $[267] !== panMode || $[268] !== readOnly || $[269] !== selectElement || $[270] !== selectedElementIds || $[271] !== store || $[272] !== throttledHoverElement) {
-    t123 = <CanvasRootTrees store={store} draggedIds={draggedIds} panMode={panMode} commentMode={commentMode} readOnly={readOnly} selectElement={selectElement} throttledHoverElement={throttledHoverElement} components={components} componentIndex={componentIndex} componentsRevision={componentsRevision} iconLibraries={iconLibraries} onEditText={onEditText} editingTextId={editingTextId} editingTextBounds={editingTextBounds} setEditingTextBounds={setEditingTextBounds} onStartEditTextProp={onStartEditTextProp} onStopEditTextProp={onStopEditTextProp} onActivateTextEditor={onActivateTextEditor} onDeactivateTextEditor={onDeactivateTextEditor} onTextSelectionChange={onTextSelectionChange} selectedElementIds={selectedElementIds} selectionMode="topmost" selectionModeRef={selectionModeRef} canvasScale={1} onResizeElement={onResizeElement} onViewportZoom={onViewportZoom} onViewportPan={onViewportPan} assetResolver={assetResolver} onFixWithAI={onFixWithAI} onAddElement={onAddElement} onUpdateElementProps={onUpdateElementProps} onSaveToCode={onSaveToCode} onOpenFile={onOpenFile} allowedPaths={allowedPaths} onAddAllowedPath={onAddAllowedPath} interactiveParentIds={interactiveParentIds} interactiveParentIdsRef={interactiveParentIdsRef} drilledParentId={drilledParentId} />;
+  if ($[472] !== variableGeometry.styles || $[241] !== allowedPaths || $[242] !== assetResolver || $[243] !== commentMode || $[244] !== componentIndex || $[245] !== components || $[246] !== componentsRevision || $[247] !== draggedIds || $[248] !== drilledParentId || $[249] !== editingTextBounds || $[250] !== editingTextId || $[251] !== iconLibraries || $[252] !== interactiveParentIds || $[253] !== interactiveParentIdsRef || $[254] !== onActivateTextEditor || $[255] !== onAddAllowedPath || $[256] !== onAddElement || $[257] !== onDeactivateTextEditor || $[258] !== onEditText || $[259] !== onFixWithAI || $[260] !== onOpenFile || $[261] !== onResizeElement || $[262] !== onSaveToCode || $[263] !== onStartEditTextProp || $[264] !== onStopEditTextProp || $[265] !== onTextSelectionChange || $[266] !== onUpdateElementProps || $[267] !== panMode || $[268] !== readOnly || $[269] !== selectElement || $[270] !== selectedElementIds || $[271] !== store || $[272] !== throttledHoverElement) {
+    $[472] = variableGeometry.styles;
+    t123 = <CanvasRootTrees store={store} variableCssUsage={variableGeometry.styles} draggedIds={draggedIds} panMode={panMode} commentMode={commentMode} readOnly={readOnly} selectElement={selectElement} throttledHoverElement={throttledHoverElement} components={components} componentIndex={componentIndex} componentsRevision={componentsRevision} iconLibraries={iconLibraries} onEditText={onEditText} editingTextId={editingTextId} editingTextBounds={editingTextBounds} setEditingTextBounds={setEditingTextBounds} onStartEditTextProp={onStartEditTextProp} onStopEditTextProp={onStopEditTextProp} onActivateTextEditor={onActivateTextEditor} onDeactivateTextEditor={onDeactivateTextEditor} onTextSelectionChange={onTextSelectionChange} selectedElementIds={selectedElementIds} selectionMode="topmost" selectionModeRef={selectionModeRef} canvasScale={1} onResizeElement={onResizeElement} onViewportZoom={onViewportZoom} onViewportPan={onViewportPan} assetResolver={assetResolver} onFixWithAI={onFixWithAI} onAddElement={onAddElement} onUpdateElementProps={onUpdateElementProps} onSaveToCode={onSaveToCode} onOpenFile={onOpenFile} allowedPaths={allowedPaths} onAddAllowedPath={onAddAllowedPath} interactiveParentIds={interactiveParentIds} interactiveParentIdsRef={interactiveParentIdsRef} drilledParentId={drilledParentId} />;
     $[241] = allowedPaths;
     $[242] = assetResolver;
     $[243] = commentMode;
