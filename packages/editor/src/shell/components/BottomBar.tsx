@@ -8,6 +8,7 @@
  */
 
 import { useEditorMode } from "../../shared/contexts/EditorModeContext";
+import { createVersionedSaveQueue } from "../utils/versionedSaveQueue";
 import { measureCanvasWork } from "../../canvas/lib/canvasPerformance";
 import { useBackendOptional } from "../../backends/BackendContext";
 import { isPlanLimitError } from "../../backends/planLimits";
@@ -99,6 +100,7 @@ function pickCssFileToEdit(files, currentPath, keepCurrent) {
   if (keepCurrent && currentPath) return currentPath;
   return DEFAULT_USER_CSS_PATH;
 }
+const EMPTY_COMPONENTS = {};
 function BottomBar({
   onSaveSuccess,
   onSaveStart,
@@ -106,6 +108,8 @@ function BottomBar({
   onOpenVersionHistory,
   readOnly = false,
   selectedElementId,
+  documentId,
+  onRevealDraft,
   store,
   enableCssEditor = false,
   componentIndex = {},
@@ -177,6 +181,7 @@ function BottomBar({
   const [isLoadingCss, setIsLoadingCss] = (0, import_react.useState)(false);
   const [isSavingCss, setIsSavingCss] = (0, import_react.useState)(false);
   const [cssDirty, setCssDirty] = (0, import_react.useState)(false);
+  const cssDraftsRef = import_react.useRef(new Map());
   const [cssError, setCssError] = (0, import_react.useState)(null);
   const [copiedKind, setCopiedKind] = (0, import_react.useState)(null);
   const assetResolver = useAssetResolver();
@@ -200,11 +205,13 @@ function BottomBar({
   const showSelectionCode = mode === "dev" && activeCodeTab === "selection";
   const selectedElementCode = import_react.useMemo(() => showSelectionCode ? buildSelectedElementCode() : "", [showSelectionCode, buildSelectedElementCode]);
   const selection = useSelectionJsxEditor({
+    documentId,
+    active: showSelectionCode,
     selectedElementId,
     selectedElementSnippet: selectedElementCode,
     store,
     iconLibraries,
-    components: components ?? {},
+    components: components ?? EMPTY_COMPONENTS,
     onPreviewElement,
     onClearPreview,
     onReplaceElement
@@ -286,52 +293,120 @@ function BottomBar({
   const activeSkillValue = activeOpenSkill ? skillDrafts[activeOpenSkill.name] ?? activeOpenSkill.content : "";
   const activeFileDirty = !!activeOpenFile && fileDrafts[activeOpenFile.path] !== void 0 && fileDrafts[activeOpenFile.path] !== activeOpenFile.content;
   const activeSkillDirty = !!activeOpenSkill && skillDrafts[activeOpenSkill.name] !== void 0 && skillDrafts[activeOpenSkill.name] !== activeOpenSkill.content;
-  const handleSaveOpenFile = (0, import_react.useCallback)(async () => {
-    if (!activeOpenFile || !onSaveFile) return;
-    const path_1 = activeOpenFile.path;
-    const content = fileDrafts[path_1] ?? activeOpenFile.content;
-    setSavingFile(true);
-    onSaveStart?.();
+  const codeStateRef = import_react.useRef(null);
+  import_react.useLayoutEffect(() => {
+    codeStateRef.current = { fileDrafts, skillDrafts, cssCode, cssDirty, selectedCssPath,
+      selection, onSaveFile, onSaveSkill, backend };
+  });
+  const codeSaveRef = import_react.useRef(null);
+  const codeSaves = import_react.useMemo(() => createVersionedSaveQueue({
+    delayMs: 0,
+    equal: (a, b) => a.content === b.content && a.kind === b.kind,
+    save: (_key, snapshot) => codeSaveRef.current(snapshot)
+  }), []);
+  import_react.useLayoutEffect(() => {
+    codeSaveRef.current = async ({ kind, path, content }) => {
+      const runtime = codeStateRef.current;
+      if (kind === "file") {
+        if (!runtime.onSaveFile) throw new Error(t("bottomBar.saveUnavailable"));
+        await runtime.onSaveFile(path, content);
+        setFileDrafts(current => {
+          if (current[path] !== content) return current;
+          const next = { ...current }; delete next[path]; return next;
+        });
+        onSaveSuccess?.(path);
+      } else if (kind === "skill") {
+        if (!runtime.onSaveSkill) throw new Error(t("bottomBar.saveUnavailable"));
+        await runtime.onSaveSkill(path, content);
+        setSkillDrafts(current => {
+          if (current[path] !== content) return current;
+          const next = { ...current }; delete next[path]; return next;
+        });
+      } else {
+        await runtime.backend.writeFileRaw(path, content);
+        if (cssDraftsRef.current.get(path) === content) cssDraftsRef.current.delete(path);
+        const current = codeStateRef.current;
+        if (current.selectedCssPath === path && current.cssCode === content) {
+          setCssLoadedPath(path); setCssDirty(false);
+        }
+      }
+    };
+  });
+  import_react.useEffect(() => () => codeSaves.dispose(), [codeSaves]);
+  const saveCode = async (kind, path, content) => {
+    codeSaves.update(`${kind === "skill" ? "skill" : "file"}:${path}`, { kind, path, content });
+    await codeSaves.flush();
+  };
+  const handleSaveOpenFile = async () => {
+    if (!activeOpenFile || !onSaveFile || readOnly) return;
+    setSavingFile(true); onSaveStart?.();
     try {
-      await onSaveFile(path_1, content);
-      setFileDrafts(d => {
-        const next_0 = {
-          ...d
-        };
-        delete next_0[path_1];
-        return next_0;
-      });
-      onSaveSuccess?.(path_1);
+      await saveCode("file", activeOpenFile.path, fileDrafts[activeOpenFile.path] ?? activeOpenFile.content);
       onSaveEnd?.(true);
-    } catch (err) {
-      onSaveEnd?.(false, err instanceof Error ? err.message : String(err));
-    } finally {
-      setSavingFile(false);
-    }
-  }, [activeOpenFile, onSaveFile, fileDrafts, onSaveStart, onSaveEnd, onSaveSuccess]);
-  const handleSaveOpenSkill = (0, import_react.useCallback)(async () => {
-    if (!activeOpenSkill || !onSaveSkill) return;
-    const name_0 = activeOpenSkill.name;
-    const content_0 = skillDrafts[name_0] ?? activeOpenSkill.content;
+    } catch (error) { onSaveEnd?.(false, error instanceof Error ? error.message : String(error)); }
+    finally { setSavingFile(false); }
+  };
+  const handleSaveOpenSkill = async () => {
+    if (!activeOpenSkill || !onSaveSkill || readOnly) return;
     setSavingSkill(true);
     try {
-      await onSaveSkill(name_0, content_0);
-      setSkillDrafts(d_0 => {
-        const next_1 = {
-          ...d_0
-        };
-        delete next_1[name_0];
-        return next_1;
-      });
+      await saveCode("skill", activeOpenSkill.name, skillDrafts[activeOpenSkill.name] ?? activeOpenSkill.content);
       setSaveStatus("success");
-      setTimeout(() => setSaveStatus("idle"), 2e3);
-    } catch {
-      setSaveStatus("error");
-      setTimeout(() => setSaveStatus("idle"), 3e3);
-    } finally {
-      setSavingSkill(false);
+    } catch { setSaveStatus("error"); }
+    finally { setSavingSkill(false); }
+  };
+  const closeSourceTab = async (kind, path) => {
+    try {
+      let savedContent;
+      // Typing remains possible while the backend write is in flight. Drain
+      // newer text before closing, even if the previous save just succeeded.
+      while (true) {
+        const drafts = kind === "skill" ? codeStateRef.current.skillDrafts : codeStateRef.current.fileDrafts;
+        if (drafts[path] === undefined || drafts[path] === savedContent) break;
+        savedContent = drafts[path];
+        await saveCode(kind, path, savedContent);
+      }
+      await codeSaves.remove(`${kind === "skill" ? "skill" : "file"}:${path}`);
+      if (kind === "skill") onCloseSkill?.(path); else onCloseFile?.(path);
+    } catch (error) {
+      setCssError(error instanceof Error ? error.message : String(error)); setSaveStatus("error");
     }
-  }, [activeOpenSkill, onSaveSkill, skillDrafts]);
+  };
+  import_react.useEffect(() => {
+    if (readOnly) return;
+    const prepare = event => {
+      const flush = async () => {
+        const submitted = new Map();
+        while (true) {
+          const current = codeStateRef.current;
+          if (current.selection.pendingDraft) {
+            setMode("dev"); setActiveCodeTab("selection");
+            onRevealDraft?.(...current.selection.pendingDraft);
+            throw new Error(t("bottomBar.unappliedDraft"));
+          }
+          const pending = new Map();
+          for (const [path, content] of Object.entries(current.fileDrafts))
+            pending.set(`file:${path}`, { kind: "file", path, content });
+          for (const [path, content] of Object.entries(current.skillDrafts))
+            pending.set(`skill:${path}`, { kind: "skill", path, content });
+          for (const [path, content] of cssDraftsRef.current)
+            pending.set(`file:${path}`, { kind: "css", path, content });
+          let changed = false;
+          for (const [key, snapshot] of pending) {
+            if (submitted.get(key) === snapshot.content) continue;
+            submitted.set(key, snapshot.content);
+            codeSaves.update(key, snapshot);
+            changed = true;
+          }
+          if (!changed && !codeSaves.hasPending()) return;
+          await codeSaves.flush();
+        }
+      };
+      event.detail.pending.push(flush());
+    };
+    window.addEventListener("bingo:prepare-project-close", prepare);
+    return () => window.removeEventListener("bingo:prepare-project-close", prepare);
+  }, [codeSaves, readOnly, t, setMode, onRevealDraft]);
   (0, import_react.useEffect)(() => {
     if (!activeOpenFile || readOnly) return;
     const onKey = e => {
@@ -395,6 +470,11 @@ function BottomBar({
   (0, import_react.useEffect)(() => {
     if (!enableCssEditor || !backend || activeCodeTab !== "css" || !selectedCssPath) return;
     if (cssDirty && cssLoadedPath === selectedCssPath) return;
+    if (cssDraftsRef.current.has(selectedCssPath)) {
+      setCssCode(cssDraftsRef.current.get(selectedCssPath));
+      setCssLoadedPath(selectedCssPath); setCssDirty(true); setIsLoadingCss(false);
+      return;
+    }
     let cancelled = false;
     const loadCss = async () => {
       setIsLoadingCss(true);
@@ -470,23 +550,15 @@ function BottomBar({
   };
   const handleSaveCssFile = async () => {
     if (!backend || readOnly || !enableCssEditor || !selectedCssPath) return;
-    setIsSavingCss(true);
-    setCssError(null);
+    setIsSavingCss(true); setCssError(null);
     try {
-      await backend.writeFileRaw(selectedCssPath, cssCode);
-      setCssLoadedPath(selectedCssPath);
-      setCssDirty(false);
-      await refreshCssFiles();
+      await saveCode("css", selectedCssPath, cssCode);
       setSaveStatus("success");
-      setTimeout(() => setSaveStatus("idle"), 2e3);
-    } catch (err_2) {
-      if (isPlanLimitError(err_2)) return;
-      setCssError(err_2 instanceof Error ? err_2.message : String(err_2));
+    } catch (error) {
+      if (isPlanLimitError(error)) return;
+      setCssError(error instanceof Error ? error.message : String(error));
       setSaveStatus("error");
-      setTimeout(() => setSaveStatus("idle"), 3e3);
-    } finally {
-      setIsSavingCss(false);
-    }
+    } finally { setIsSavingCss(false); }
   };
   const canEditSource = !readOnly && !!activeOpenFile && !!onSaveFile;
   const canEditSkill = !readOnly && !!activeOpenSkill && !!onSaveSkill;
@@ -499,6 +571,7 @@ function BottomBar({
     language: "css",
     editable: !readOnly,
     onChange: value => {
+      cssDraftsRef.current.set(selectedCssPath, value);
       setCssCode(value);
       setCssDirty(true);
     }
@@ -590,13 +663,13 @@ function BottomBar({
                     weight: "bold"
                   })}{label}{<span role="button" tabIndex={-1} aria-label={`Close ${label}`} onMouseDown={e_2 => e_2.stopPropagation()} onClick={e_3 => {
                     e_3.stopPropagation();
-                    onCloseFile?.(f_1.path);
+                    void closeSourceTab("file", f_1.path);
                   }} className="inline-flex size-2.5 items-center justify-center rounded text-ed-muted-foreground hover:bg-ed-muted hover:text-ed-foreground">{<XIcon className="size-2.5" />}</span>}</TabsTrigger>}</Tooltip>;
             })}{(openSkills || []).map(s_1 => {
               const id_2 = `skill:${s_1.name}`;
               return <Tooltip key={id_2} content={s_1.name}>{<TabsTrigger value={id_2} className="group h-6 gap-1.5 px-3 py-1 text-xs text-ed-muted-foreground data-[state=active]:text-ed-foreground">{<BookOpenIcon width={12} height={12} />}{s_1.name}{<span role="button" tabIndex={-1} aria-label={`Close ${s_1.name}`} onMouseDown={e_4 => e_4.stopPropagation()} onClick={e_5 => {
                     e_5.stopPropagation();
-                    onCloseSkill?.(s_1.name);
+                    void closeSourceTab("skill", s_1.name);
                   }} className="inline-flex size-2.5 items-center justify-center rounded text-ed-muted-foreground hover:bg-ed-muted hover:text-ed-foreground">{<XIcon className="size-2.5" />}</span>}</TabsTrigger>}</Tooltip>;
             })}{terminalTabs.map(t_3 => {
               const label_0 = t_3.label === "Connections" ? t("bottomBar.connections") : t_3.label ?? (terminalTabs.length === 1 ? t("bottomBar.terminal") : t("bottomBar.terminalNumber", { number: t_3.num }));
@@ -613,7 +686,7 @@ function BottomBar({
         if (!selectedCssPath.trim()) setSelectedCssPath(DEFAULT_USER_CSS_PATH);
       }} placeholder={DEFAULT_USER_CSS_PATH} className="h-5 w-[220px] rounded border border-ed-border bg-ed-background px-1.5 text-[10px] font-mono text-ed-foreground placeholder:text-ed-muted-foreground" />}</div> : activeOpenSkill ? <div className="flex min-h-[22px] items-center gap-1.5 overflow-x-auto border-b border-ed-border bg-ed-background px-3 py-0.5">{<Text$4 size="xs" className="font-mono text-ed-muted-foreground">{activeOpenSkill.name}/SKILL.md</Text$4>}</div> : !isTerminalActive && breadcrumbItems.length > 0 && <EditorFileBreadcrumb items={breadcrumbItems} />}{!isTerminalActive && status && <EditorStatusBar status={status} />}{<div className="flex-1 min-h-0 overflow-hidden" style={isTerminalActive ? {
       display: "none"
-    } : void 0}>{isLoadingCss && isCssActive ? <div className="flex items-center justify-center h-full">{<Text$4 size="sm" className="text-ed-muted-foreground">{t("bottomBar.loadingCss")}</Text$4>}</div> : <RetainedCodeEditor active={mode === "dev" && !isTerminalActive} editorRef={cmRef} value={activeSurface.value} height="100%" className={`${CODE_EDITOR_CLASS} h-full`} extensions={editorExtensions} editable={activeSurface.editable} onChange={activeSurface.onChange} onBlur={() => {
+    } : void 0}>{isLoadingCss && isCssActive ? <div className="flex items-center justify-center h-full">{<Text$4 size="sm" className="text-ed-muted-foreground">{t("bottomBar.loadingCss")}</Text$4>}</div> : <RetainedCodeEditor active={mode === "dev" && !isTerminalActive} documentKey={JSON.stringify([documentId, activeCodeTab, activeCodeTab === "selection" ? selectedElementId : selectedCssPath])} editorRef={cmRef} value={activeSurface.value} height="100%" className={`${CODE_EDITOR_CLASS} h-full`} extensions={editorExtensions} editable={activeSurface.editable} onChange={activeSurface.onChange} onBlur={() => {
         if (activeSurface.commitOnBlur) activeSurface.commit?.();
       }} onKeyDown={event_0 => {
         if (!(event_0.metaKey || event_0.ctrlKey) || event_0.key.toLowerCase() !== "s") return;

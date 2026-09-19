@@ -12,12 +12,12 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "bench:variables": "tsx tools/benchmark-variable-modes.ts",
     "check": "pnpm test && pnpm build",
     "dist:mac": "pnpm check && node tools/package-mac.mjs",
     "rebuild:source": "node tools/rebuild.mjs",
     "start": "electron-vite preview",
-    "test": "node --import tsx --test src/main/*.test.ts packages/compiler/src/runtime/*.test.ts packages/compiler/src/recovery/*.test.ts packages/editor/src/shell/utils/*.test.ts",
-    "bench:variables": "tsx tools/benchmark-variable-modes.ts"
+    "test": "node --import tsx --test src/main/*.test.ts packages/compiler/src/runtime/*.test.ts packages/compiler/src/recovery/*.test.ts packages/editor/src/shell/utils/*.test.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "*",
@@ -43,6 +43,7 @@
     "mdast-util-gfm": "3.1.0",
     "node-pty": "^1.0.0",
     "path-browserify": "^1.0.1",
+    "postcss": "8.5.28",
     "prosemirror-collab": "*",
     "prosemirror-commands": "1.7.1",
     "prosemirror-dropcursor": "1.8.2",
@@ -64,15 +65,15 @@
     "tailwindcss": "^4.3.3",
     "tinyglobby": "*",
     "unist-util-visit": "5.1.0",
-    "yaml": "*",
-    "postcss": "8.5.28"
+    "yaml": "*"
   },
   "pnpm": {
     "overrides": {
       "@babel/runtime": "7.28.6"
     },
     "patchedDependencies": {
-      "@radix-ui/react-scroll-area@1.2.10": "patches/@radix-ui__react-scroll-area@1.2.10.patch"
+      "@radix-ui/react-scroll-area@1.2.10": "patches/@radix-ui__react-scroll-area@1.2.10.patch",
+      "@uiw/react-codemirror@4.25.3": "patches/@uiw__react-codemirror@4.25.3.patch"
     }
   },
   "devDependencies": {

@@ -60,6 +60,7 @@ import { useCanvasToolHandler } from "../hooks/useCanvasToolHandler";
 import { isHumanCanvasCommit, useTabHistory } from "../hooks/useHistory";
 import { usePromptContextInsertion } from "../hooks/usePromptContextInsertion";
 import { ChatPersistence } from "../utils/chatPersistence";
+import { createVersionedSaveQueue } from "../utils/versionedSaveQueue";
 import { driveCamera, getCamera, isAddToPromptShortcut, publishCamera, subscribeCamera, subscribeUserCameraGesture } from "../utils/chatShortcuts";
 import { lastChatWorkTarget, outermostChatWorkIds } from "../utils/chatWorkTarget";
 import { collectFontFamilies, ensureFontsLoaded } from "../utils/fontLoader";
@@ -547,12 +548,19 @@ var BingoEditorInner = ({
   const chatBackend = useBackendOptional();
   const [openCodeFiles, setOpenCodeFiles] = (0, import_react.useState)([]);
   const openCodeFilesRef = (0, import_react.useRef)(openCodeFiles);
+  const fileReadVersionsRef = (0, import_react.useRef)(new Map());
+  const beginFileRead = path => {
+    const version = {};
+    fileReadVersionsRef.current.set(path, version);
+    return version;
+  };
   (0, import_react.useLayoutEffect)(() => {
     openCodeFilesRef.current = openCodeFiles;
   });
   const [fileOpenSignal, setFileOpenSignal] = (0, import_react.useState)(null);
   const fileOpenCountRef = (0, import_react.useRef)(0);
   const openFileInBottomBar = async (filePath, options) => {
+    const version = beginFileRead(filePath);
     setOpenCodeFiles(prev_0 => prev_0.some(f => f.path === filePath) ? prev_0 : [...prev_0, {
       path: filePath,
       content: "",
@@ -571,17 +579,21 @@ var BingoEditorInner = ({
     } catch {
       content = `// Couldn't read ${filePath}`;
     }
+    if (fileReadVersionsRef.current.get(filePath) !== version) return;
     setOpenCodeFiles(prev_1 => prev_1.map(f_0 => f_0.path === filePath ? {
       ...f_0,
       content
     } : f_0));
   };
   const closeCodeFile = filePath_0 => {
+    fileReadVersionsRef.current.delete(filePath_0);
     setOpenCodeFiles(prev_2 => prev_2.filter(f_1 => f_1.path !== filePath_0));
   };
   const saveCodeFile = async (filePath_1, content_0) => {
-    if (!chatBackend?.writeFileRaw) return;
+    if (!chatBackend?.writeFileRaw) throw new Error(t("bottomBar.saveUnavailable"));
+    beginFileRead(filePath_1);
     await chatBackend.writeFileRaw(filePath_1, content_0);
+    beginFileRead(filePath_1);
     setOpenCodeFiles(prev_3 => prev_3.map(f_2 => f_2.path === filePath_1 ? {
       ...f_2,
       content: content_0
@@ -1434,6 +1446,7 @@ var BingoEditorInner = ({
   const [showVersionHistory, setShowVersionHistory] = (0, import_react.useState)(false);
   const loadAllPages = (0, import_react.useEffectEvent)(async () => {
     const listResult = await listCanvases();
+    if (!listResult.success) { toast.error(listResult.error || t("shell.pageSaveFailed")); return; }
     if (listResult.success && listResult.canvases && listResult.canvases.length > 0) {
       const sortedCanvases = listResult.canvases;
       setPages(sortedCanvases.map(c => ({
@@ -1523,7 +1536,8 @@ var BingoEditorInner = ({
   const [isPageLoading, setIsPageLoading] = (0, import_react.useState)(false);
   const pageLoadIdRef = (0, import_react.useRef)(0);
   const handleSelectPage = async pageId_1 => {
-    if (pageId_1 === activePageId) return;
+    if (pageId_1 === activePageId && tabs.some(tab => tab.canvasId === pageId_1 && tab.loaded)) return;
+    const loadId = ++pageLoadIdRef.current;
     setActiveTabId(pageId_1);
     setSelectedElementIds(new Set());
     setDrilledParentId(null);
@@ -1532,13 +1546,18 @@ var BingoEditorInner = ({
     } catch {}
     const existingTab = tabs.find(t_6 => t_6.canvasId === pageId_1);
     if (existingTab?.loaded) {
+      setIsPageLoading(false);
       onEnsureComponentNames?.(liveCanvasComponentNames(existingTab.store));
       return;
     }
-    const loadId = ++pageLoadIdRef.current;
     setIsPageLoading(true);
     const result_0 = await loadCanvas(pageId_1);
     if (loadId !== pageLoadIdRef.current) return;
+    if (!result_0.success || !result_0.canvas) {
+      setIsPageLoading(false);
+      toast.error(result_0.error || t("shell.pageSaveFailed"));
+      return;
+    }
     const newElements = result_0.success && result_0.canvas ? result_0.canvas.elements ?? [] : [];
     const newStore = ensureV2(newElements);
     setTabs(prev_13 => prev_13.map(tab_10 => tab_10.canvasId === pageId_1 ? {
@@ -1643,6 +1662,13 @@ var BingoEditorInner = ({
     };
   };
   const handleRenamePage = async (pageId_2, newName_0) => {
+    const tab = tabs.find(item => item.canvasId === pageId_2);
+    if (tab && !tab.loaded) {
+      const loaded = await loadCanvas(pageId_2);
+      if (!loaded.success || !loaded.canvas) { toast.error(loaded.error || t("shell.pageSaveFailed")); return; }
+      setTabs(current => current.map(item => item.canvasId === pageId_2 && !item.loaded
+        ? { ...item, store: ensureV2(loaded.canvas.elements ?? []), loaded: true } : item));
+    }
     setPages(prev_18 => prev_18.map(p_0 => p_0.id === pageId_2 ? {
       ...p_0,
       name: newName_0
@@ -1651,16 +1677,7 @@ var BingoEditorInner = ({
       ...tab_11,
       name: newName_0
     } : tab_11));
-    const canvasTab = tabs.find(t_7 => t_7.canvasId === pageId_2);
-    if (canvasTab) await saveCanvas({
-      id: pageId_2,
-      name: newName_0,
-      elements: toWire(canvasTab.store),
-      backgroundColor: canvasTab.backgroundColor,
-      backgroundToken: canvasTab.backgroundToken
-    });
   };
-  const pageBackgroundSaveRef = (0, import_react.useRef)(null);
   const handleSetPageBackground = (color, token) => {
     if (readOnly) return;
     const tab_12 = tabs.find(t_8 => t_8.canvasId === activePageId);
@@ -1674,31 +1691,7 @@ var BingoEditorInner = ({
       backgroundColor: color,
       backgroundToken: token
     } : t_9));
-    if (pageBackgroundSaveRef.current) clearTimeout(pageBackgroundSaveRef.current);
-    const rootCount = getRootIds(tab_12.store).length;
-    const previousElementCount = pages.find(p_1 => p_1.id === tab_12.canvasId)?.elementCount ?? 0;
-    if (rootCount === 0 && previousElementCount > 0) {
-      console.warn("[PageBackground] Skipping save: would overwrite", previousElementCount, "elements with empty store");
-      return;
-    }
-    pageBackgroundSaveRef.current = setTimeout(async () => {
-      pageBackgroundSaveRef.current = null;
-      if ((await saveCanvas({
-        id: tab_12.canvasId,
-        name: tab_12.name,
-        elements: toWire(tab_12.store),
-        zoom: getCamera().scale,
-        backgroundColor: color,
-        backgroundToken: token
-      })).success) toast.dismiss("canvas-save-error");else toast.error(t("shell.pageBackgroundSaveFailed"), {
-        id: "canvas-save-error",
-        duration: Infinity
-      });
-    }, 500);
   };
-  (0, import_react.useEffect)(() => () => {
-    if (pageBackgroundSaveRef.current) clearTimeout(pageBackgroundSaveRef.current);
-  }, []);
   const handleDeletePage = async pageId_3 => {
     if (pages.length <= 1) return;
     const newPages = pages.filter(p_2 => p_2.id !== pageId_3);
@@ -1714,6 +1707,7 @@ var BingoEditorInner = ({
         } catch {}
       }
     }
+    await canvasSaveQueue.remove(pageId_3);
     deletePage(pageId_3).catch(() => {});
   };
   const handleReorderPages = reorderedPages => {
@@ -2008,14 +2002,6 @@ var BingoEditorInner = ({
         store: nextStore_0
       };
     }));
-    const targetTab = tabs.find(t_13 => t_13.id === targetTabId);
-    if (targetTab?.canvasId && targetTab.loaded) saveCanvas({
-      id: targetTab.canvasId,
-      name: targetTab.name,
-      elements: toWire(nextStore_0),
-      backgroundColor: targetTab.backgroundColor,
-      backgroundToken: targetTab.backgroundToken
-    }).catch(() => {});
   };
   useCanvasToolHandler({
     projectId: projectPath,
@@ -3656,13 +3642,14 @@ var BingoEditorInner = ({
     if (!match) return;
     const readFileRaw_0 = chatBackend ? chatBackend.readFileRaw : void 0;
     if (!readFileRaw_0) return;
+    const version = beginFileRead(match.path);
     let content_6;
     try {
       content_6 = await readFileRaw_0(match.path);
     } catch {
       return;
     }
-    if (content_6 != null) setOpenCodeFiles(prev_29 => prev_29.map(f_8 => f_8.path === match.path ? {
+    if (content_6 != null && fileReadVersionsRef.current.get(match.path) === version) setOpenCodeFiles(prev_29 => prev_29.map(f_8 => f_8.path === match.path ? {
       ...f_8,
       content: content_6
     } : f_8));
@@ -3689,108 +3676,93 @@ var BingoEditorInner = ({
       };
     }
   }, [onFileChangedRef]);
-  const hasUnsavedCanvasRef = (0, import_react.useRef)(false);
-  const pendingCanvasSavesRef = (0, import_react.useRef)(new Set());
   const lastPreviewAtRef = (0, import_react.useRef)(0);
   const capturingPreviewRef = (0, import_react.useRef)(false);
-  const capturePreview = () => {
-    if (capturingPreviewRef.current) return;
-    if (Date.now() - lastPreviewAtRef.current < 3e5) return;
-    capturingPreviewRef.current = true;
-    (async () => {
-      let dataUrl;
+  const previewTimerRef = (0, import_react.useRef)(null);
+  const saveSnapshotRef = (0, import_react.useRef)(null);
+  const saveErrorRef = (0, import_react.useRef)(null);
+  const canvasSaveQueue = (0, import_react.useMemo)(() => createVersionedSaveQueue({
+    delayMs: 1000,
+    equal: (a, b) => a.store === b.store && a.name === b.name
+      && a.backgroundColor === b.backgroundColor && a.backgroundToken === b.backgroundToken,
+    save: (id, snapshot, version) => saveSnapshotRef.current(id, snapshot, version),
+    onError: error => saveErrorRef.current?.(error)
+  }), []);
+  const schedulePreview = (canvasId, version) => {
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    previewTimerRef.current = setTimeout(async () => {
+      previewTimerRef.current = null;
+      const current = () => canvasSaveQueue.isCurrent(canvasId, version)
+        && activeTabIdRef.current === canvasId && !canvasSaveQueue.hasPending();
+      if (!current() || capturingPreviewRef.current || Date.now() - lastPreviewAtRef.current < 3e5) return;
+      capturingPreviewRef.current = true;
       try {
-        dataUrl = await captureCanvasPreview();
-      } catch {
-        lastPreviewAtRef.current = Date.now();
-        capturingPreviewRef.current = false;
-        return;
-      }
-      if (dataUrl) try {
-        await savePreview(dataUrl);
-        lastPreviewAtRef.current = Date.now();
-      } catch {
-        lastPreviewAtRef.current = Date.now();
-      }
-      capturingPreviewRef.current = false;
-    })();
+        const dataUrl = await captureCanvasPreview();
+        // A capture can outlive a page switch or an edit. Never publish that
+        // obsolete derived result as the preview of the latest saved document.
+        if (dataUrl && current()) {
+          await savePreview(dataUrl);
+          lastPreviewAtRef.current = Date.now();
+        }
+      } catch { /* A thumbnail failure must not affect the document save. */ }
+      finally { capturingPreviewRef.current = false; }
+    }, 1000);
   };
-  const persistCanvas = (0, import_react.useEffectEvent)(async (canvasId, canvasName, wirePayload, currentState, canvasRevision) => {
-    const latestBackground = pageBackgroundByCanvasRef.current.get(canvasId);
-    const canvasTab = tabs.find(tab => tab.canvasId === canvasId);
-    const camera = canvasTab?.id === activeTabId ? getCamera() : tabTransformsRef.current[canvasTab?.id];
-    const pendingSave = saveCanvas({
-      id: canvasId,
-      name: canvasName,
-      elements: wirePayload,
-      zoom: camera?.scale,
-      backgroundColor: latestBackground?.color,
-      backgroundToken: latestBackground?.token
-    });
-    pendingCanvasSavesRef.current.add(pendingSave);
-    let result_10;
-    try { result_10 = await pendingSave; }
-    finally { pendingCanvasSavesRef.current.delete(pendingSave); }
-    if (result_10.success) {
-      setTabs(prev_30 => prev_30.map(tab_19 => tab_19.id === canvasId ? {
-        ...tab_19,
-        lastSavedState: currentState
-      } : tab_19));
-      if (result_10.canvas) {
-        const savedElementCount = countCanvasElements(result_10.canvas.elements);
-        setPages(prev_31 => prev_31.map(p_9 => p_9.id === canvasId ? {
-          ...p_9,
-          elementCount: savedElementCount
-        } : p_9));
-      }
-      onCanvasSaved?.();
-      hasUnsavedCanvasRef.current = false;
-      toast.dismiss("canvas-save-error");
-      capturePreview();
-      const savedRevision = canvasRevision;
+  const persistCanvasSnapshot = async (canvasId, snapshot, version) => {
+    const { store, name, tabId, revision, backgroundColor, backgroundToken } = snapshot;
+    // Serialization is intentionally inside the scheduled task, not in an
+    // effect on every keystroke, mode change or selection render.
+    const wire = toWire(store);
+    const serialized = JSON.stringify(wire);
+    const camera = tabId === activeTabIdRef.current ? getCamera() : tabTransformsRef.current[tabId];
+    const result = await saveCanvas({ id: canvasId, name, elements: wire, zoom: camera?.scale,
+      backgroundColor, backgroundToken });
+    if (!result.success) {
       for (const [operationId, pending] of pendingCanvasOperationPersistenceRef.current) {
-        if (pending.canvasId !== canvasId || pending.committedRevision > savedRevision) continue;
-        window.api?.send?.("canvas_operation_persistence", {
-          projectId: projectPath,
-          operationId,
-          resolvedCanvasId: canvasId,
-          committedRevision: savedRevision,
-          persistenceState: "saved"
-        });
-        pendingCanvasOperationPersistenceRef.current.delete(operationId);
+        if (pending.canvasId !== canvasId || pending.committedRevision > revision) continue;
+        window.api?.send?.("canvas_operation_persistence", { projectId: projectPath, operationId,
+          resolvedCanvasId: canvasId, committedRevision: revision, persistenceState: "failed" });
       }
-    } else {
-      const failedRevision = canvasRevision;
-      for (const [operationId, pending] of pendingCanvasOperationPersistenceRef.current) {
-        if (pending.canvasId !== canvasId || pending.committedRevision > failedRevision) continue;
-        window.api?.send?.("canvas_operation_persistence", {
-          projectId: projectPath,
-          operationId,
-          resolvedCanvasId: canvasId,
-          committedRevision: failedRevision,
-          persistenceState: "failed"
-        });
-      }
-      toast.error(t("shell.pageSaveFailed"), {
-        id: "canvas-save-error",
-        duration: Infinity
-      });
+      throw new Error(result.error || t("shell.pageSaveFailed"));
     }
-    return result_10.success;
+    if (canvasSaveQueue.isCurrent(canvasId, version)) {
+      setTabs(current => current.map(tab => tab.id === tabId && tab.store === store
+        && tab.name === name && tab.backgroundColor === backgroundColor && tab.backgroundToken === backgroundToken
+        ? { ...tab, lastSavedState: serialized } : tab));
+      setPages(current => current.map(page => page.id === canvasId ? { ...page, elementCount: store.byId.size } : page));
+      schedulePreview(canvasId, version);
+    }
+    onCanvasSaved?.();
+    toast.dismiss("canvas-save-error");
+    for (const [operationId, pending] of pendingCanvasOperationPersistenceRef.current) {
+      if (pending.canvasId !== canvasId || pending.committedRevision > revision) continue;
+      window.api?.send?.("canvas_operation_persistence", { projectId: projectPath, operationId,
+        resolvedCanvasId: canvasId, committedRevision: revision, persistenceState: "saved" });
+      pendingCanvasOperationPersistenceRef.current.delete(operationId);
+    }
+  };
+  (0, import_react.useLayoutEffect)(() => {
+    saveSnapshotRef.current = persistCanvasSnapshot;
+    saveErrorRef.current = () => toast.error(t("shell.pageSaveFailed"), { id: "canvas-save-error", duration: Infinity });
   });
-  const flushProjectCanvases = (0, import_react.useEffectEvent)(async () => {
+  const collectCanvasSaves = (0, import_react.useEffectEvent)(() => {
     if (readOnly) return;
-    await Promise.all([...pendingCanvasSavesRef.current]);
     for (const tab of tabs) {
       if (!tab.canvasId || !tab.loaded) continue;
-      const wire = toWire(tab.store);
-      const serialized = JSON.stringify(wire);
-      if (serialized === tab.lastSavedState) continue;
-      const savedCount = pages.find(page => page.id === tab.canvasId)?.elementCount ?? 0;
-      if (getRootIds(tab.store).length === 0 && savedCount > 0) throw new Error(t("shell.pageSaveFailed"));
-      const saved = await persistCanvas(tab.canvasId, tab.name, wire, serialized, canvasContentRevisionsRef.current.get(tab.id) ?? 0);
-      if (!saved) throw new Error(t("shell.pageSaveFailed"));
+      canvasSaveQueue.update(tab.canvasId, { tabId: tab.id, store: tab.store, name: tab.name,
+        backgroundColor: tab.backgroundColor, backgroundToken: tab.backgroundToken,
+        revision: canvasContentRevisionsRef.current.get(tab.id) ?? 0 });
     }
+  });
+  (0, import_react.useLayoutEffect)(() => { collectCanvasSaves(); }, [tabs, pages, readOnly]);
+  (0, import_react.useEffect)(() => () => {
+    canvasSaveQueue.dispose();
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+  }, [canvasSaveQueue]);
+  const flushProjectCanvases = (0, import_react.useEffectEvent)(async () => {
+    if (readOnly) return;
+    collectCanvasSaves();
+    await canvasSaveQueue.flush();
   });
   const openingBrowserPreviewRef = (0, import_react.useRef)(false);
   const openBrowserPreview = (0, import_react.useEffectEvent)(async (elementId) => {
@@ -3819,45 +3791,21 @@ var BingoEditorInner = ({
     return () => window.removeEventListener("bingo:prepare-project-close", prepare);
   }, []);
   (0, import_react.useEffect)(() => {
-    if (readOnly) return;
-    if (!activeTab?.canvasId || !activeTab.loaded) return;
-    const wirePayload_0 = toWire(activeTab.store);
-    const rootCount_0 = getRootIds(activeTab.store).length;
-    if (rootCount_0 >= POPULATED_PAGE_ROOT_COUNT && !populatedPageIdsRef.current.has(activeTab.canvasId)) {
+    if (readOnly || !activeTab?.canvasId || !activeTab.loaded) return;
+    const rootCount = getRootIds(activeTab.store).length;
+    if (rootCount >= POPULATED_PAGE_ROOT_COUNT && !populatedPageIdsRef.current.has(activeTab.canvasId)) {
       populatedPageIdsRef.current.add(activeTab.canvasId);
-      onActivityRef.current?.({
-        type: "page_populated",
-        pageId: activeTab.canvasId,
-        elementCount: rootCount_0
-      });
+      onActivityRef.current?.({ type: "page_populated", pageId: activeTab.canvasId, elementCount: rootCount });
     }
-    const previousElementCount_0 = pages.find(p_10 => p_10.id === activeTab.canvasId)?.elementCount ?? 0;
-    if (rootCount_0 === 0 && previousElementCount_0 > 0) {
-      console.warn("[AutoSave] Skipping save: would overwrite", previousElementCount_0, "elements with empty store");
-      return;
-    }
-    const currentState_0 = JSON.stringify(wirePayload_0);
-    if (currentState_0 === activeTab.lastSavedState) {
-      hasUnsavedCanvasRef.current = false;
-      return;
-    }
-    hasUnsavedCanvasRef.current = true;
-    const canvasId_0 = activeTab.canvasId;
-    const canvasName_0 = activeTab.name;
-    const canvasRevision_0 = canvasContentRevisionsRef.current.get(activeTab.id) ?? 0;
-    const timeout = setTimeout(() => {
-      persistCanvas(canvasId_0, canvasName_0, wirePayload_0, currentState_0, canvasRevision_0);
-    }, 1e3);
-    return () => clearTimeout(timeout);
-  }, [activeTab?.store, activeTab?.id, activeTab?.canvasId, activeTab?.loaded, activeTab?.lastSavedState, activeTab?.name, readOnly, pages]);
+  }, [activeTab?.store, activeTab?.canvasId, activeTab?.loaded, readOnly]);
   (0, import_react.useEffect)(() => {
     if (readOnly) return;
-    const handleBeforeUnload = e_3 => {
-      if (hasUnsavedCanvasRef.current) e_3.preventDefault();
+    const handleBeforeUnload = event => {
+      if (canvasSaveQueue.hasPending()) event.preventDefault();
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [readOnly]);
+  }, [readOnly, canvasSaveQueue]);
   useGlobalShortcut("focusLayersSearch", e_4 => {
     if (isCodeEditorTarget(e_4)) return;
     e_4.preventDefault();
@@ -3955,11 +3903,11 @@ var BingoEditorInner = ({
       e_10.preventDefault();
       onDeleteElements(selectedElementIds);
     }
-    if ((e_10.metaKey || e_10.ctrlKey) && !e_10.shiftKey && e_10.key === "z") {
+    if ((e_10.metaKey || e_10.ctrlKey) && !e_10.shiftKey && e_10.key.toLowerCase() === "z") {
       e_10.preventDefault();
       undoLatest();
     }
-    if ((e_10.metaKey || e_10.ctrlKey) && e_10.shiftKey && e_10.key === "z" || (e_10.metaKey || e_10.ctrlKey) && e_10.key === "y") {
+    if ((e_10.metaKey || e_10.ctrlKey) && (e_10.shiftKey && e_10.key.toLowerCase() === "z" || e_10.key.toLowerCase() === "y")) {
       e_10.preventDefault();
       redoLatest();
     }
@@ -4406,7 +4354,11 @@ var BingoEditorInner = ({
             });else toast.error(t("shell.saveToCodeFailed", { name: componentName_8 }), {
               description: errorMsg || t("shell.unknownError")
             });
-          }} onOpenVersionHistory={() => setShowVersionHistory(true)} readOnly={readOnly} selectedElementId={selectedElementId} store={currentStore} enableCssEditor={enableCssEditor} componentIndex={componentIndex} components={components} iconLibraries={iconLibraries} onReplaceElement={onReplaceElement} onPreviewElement={onPreviewElement} onClearPreview={onClearPreview} />}>{canvasAlert}{activeTab && <div className="h-full relative">{(!activeTab.loaded || canvasCameraPending) && <div className="absolute inset-0 flex items-center justify-center z-10">{<div className="flex flex-col items-center gap-2 text-ed-muted-foreground">{<div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />}</div>}</div>}{<ContextMenu$1 onOpenChange={open => {
+          }} onOpenVersionHistory={() => setShowVersionHistory(true)} readOnly={readOnly} selectedElementId={selectedElementId} documentId={activeTabId} onRevealDraft={async (pageId, elementId) => {
+                await handleSelectPage(pageId);
+                setSelectedElementIds(new Set([elementId]));
+                setPendingElementToCenter(elementId);
+              }} store={currentStore} enableCssEditor={enableCssEditor} componentIndex={componentIndex} components={components} iconLibraries={iconLibraries} onReplaceElement={onReplaceElement} onPreviewElement={onPreviewElement} onClearPreview={onClearPreview} />}>{canvasAlert}{activeTab && <div className="h-full relative">{(!activeTab.loaded || canvasCameraPending) && <div className="absolute inset-0 flex items-center justify-center z-10">{<div className="flex flex-col items-center gap-2 text-ed-muted-foreground">{<div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />}</div>}</div>}{<ContextMenu$1 onOpenChange={open => {
                 if (!open) setCanvasMenuTargetId(null);
               }}>{<ContextMenuTrigger asChild={true} onContextMenu={handleCanvasContextMenu}>{<div style={{
                     display: "contents",

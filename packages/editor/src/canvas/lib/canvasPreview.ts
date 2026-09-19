@@ -85,7 +85,7 @@ async function captureCanvasPreview() {
 */
 async function inlineAssetImages(root) {
   const imgs = Array.from(root.querySelectorAll("img"));
-  const originals = imgs.map(img => [img, img.getAttribute("src")]);
+  const replacements = [];
   await Promise.all(imgs.map(async img => {
     const src = img.getAttribute("src");
     if (!src || !src.includes("/assets/by-path")) return;
@@ -100,12 +100,16 @@ async function inlineAssetImages(root) {
         reader.onerror = reject;
         reader.readAsDataURL(blob);
       });
+      // Do not replace a newer source chosen while the image was fetched.
+      if (img.getAttribute("src") !== src) return;
       img.setAttribute("src", dataUrl);
+      replacements.push([img, src, dataUrl]);
     } catch {}
   }));
   return () => {
-    for (const [img, src] of originals) if (src !== null) img.setAttribute("src", src);
+    for (const [img, src, replacement] of replacements)
+      if (img.getAttribute("src") === replacement) img.setAttribute("src", src);
   };
 }
 
-export { captureCanvasPreview };
+export { captureCanvasPreview, inlineAssetImages };

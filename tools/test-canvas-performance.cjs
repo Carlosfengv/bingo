@@ -85,6 +85,14 @@ app.whenReady().then(async () => {
     check('Native click selects root A', (await selected()).join() === 'a');
     await click('b', { padding: true });
     check('Native click selects root B', (await selected()).join() === 'b');
+    // Compilation can finish before initial saves, thumbnail capture and
+    // camera settling. Measure steady selection only after that work stops.
+    let previousCounts = '', stableSince = Date.now();
+    await waitFor(async () => {
+      const counts = JSON.stringify(Object.entries(await metrics()).map(([name, sample]) => [name, sample.count]));
+      if (counts !== previousCounts) { previousCounts = counts; stableSince = Date.now(); }
+      return Date.now() - stableSince >= 2000;
+    }, 'initial canvas work settles');
     await toolbarButton('重置');
     for (let i = 0; i < 12; i++) await click(i % 2 ? 'b' : 'a', { padding: true });
     await sleep(550);
@@ -92,10 +100,13 @@ app.whenReady().then(async () => {
     check('Selection timing samples are collected', report.metrics['选中框提交'].count >= 12);
     check('Ordinary selection does not rebuild root trees', report.metrics['根元素树构建'].count === 0);
     check('Collapsed code pane generates no JSX', report.metrics['选中 JSX 生成'].count === 0);
-    fs.writeFileSync(path.join(qa, 'selection-benchmark.png'), (await editor.capturePage()).toPNG());
     const beforeIdle = JSON.stringify(report.metrics);
     await sleep(650);
-    check('Toolbar refresh does not render or remeasure canvas', JSON.stringify(await metrics()) === beforeIdle);
+    report.idleMetrics = await metrics();
+    check('Toolbar refresh does not render or remeasure canvas', JSON.stringify(report.idleMetrics) === beforeIdle);
+    // capturePage can trigger visibility/layout work; keep it outside the
+    // interval whose only expected activity is the toolbar's polling timer.
+    fs.writeFileSync(path.join(qa, 'selection-benchmark.png'), (await editor.capturePage()).toPNG());
     await click('a', { padding: true, shift: true });
     check('Shift selection retains both roots', (await selected()).join() === 'a,b');
     await click('a-text');

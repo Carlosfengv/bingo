@@ -1,0 +1,60 @@
+diff --git a/cjs/useCodeMirror.js b/cjs/useCodeMirror.js
+index eae5ecf7b17954437998b24c1ff67107772dbe27..21640c58a7fd72b52fd6fede6b37d1e62258abab 100644
+--- a/cjs/useCodeMirror.js
++++ b/cjs/useCodeMirror.js
+@@ -185,6 +185,7 @@ function useCodeMirror(props) {
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [theme, extensions, height, minHeight, maxHeight, width, minWidth, maxWidth, placeholderStr, editable, readOnly, defaultIndentWithTab, defaultBasicSetup, onChange, onUpdate]);
+   (0, _react.useEffect)(function () {
++    pendingUpdate.current = null;
+     if (value === undefined) {
+       return;
+     }
+@@ -209,6 +210,7 @@ function useCodeMirror(props) {
+         pendingUpdate.current = forceUpdate;
+       }
+     }
++    return () => { pendingUpdate.current = null; };
+   }, [value, view]);
+   return {
+     state: state,
+diff --git a/esm/useCodeMirror.js b/esm/useCodeMirror.js
+index db4e6bf1ca9e83791577dbdc7dee2737be33dd95..0e44fee22de734652a2de0a98d691578dd29bf86 100644
+--- a/esm/useCodeMirror.js
++++ b/esm/useCodeMirror.js
+@@ -147,6 +147,7 @@ export function useCodeMirror(props) {
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [theme, extensions, height, minHeight, maxHeight, width, minWidth, maxWidth, placeholderStr, editable, readOnly, defaultIndentWithTab, defaultBasicSetup, onChange, onUpdate]);
+   useEffect(() => {
++    pendingUpdate.current = null;
+     if (value === undefined) {
+       return;
+     }
+@@ -171,6 +172,7 @@ export function useCodeMirror(props) {
+         pendingUpdate.current = forceUpdate;
+       }
+     }
++    return () => { pendingUpdate.current = null; };
+   }, [value, view]);
+   return {
+     state,
+diff --git a/src/useCodeMirror.ts b/src/useCodeMirror.ts
+index 93c034af1b0db5ab85168e6d6344b0044c64eba2..4b386e8bd921673532e5c8b8c0366dbcd344e2be 100644
+--- a/src/useCodeMirror.ts
++++ b/src/useCodeMirror.ts
+@@ -182,6 +182,7 @@ export function useCodeMirror(props: UseCodeMirror) {
+   ]);
+ 
+   useEffect(() => {
++    pendingUpdate.current = null;
+     if (value === undefined) {
+       return;
+     }
+@@ -204,6 +205,7 @@ export function useCodeMirror(props: UseCodeMirror) {
+         pendingUpdate.current = forceUpdate;
+       }
+     }
++    return () => { pendingUpdate.current = null; };
+   }, [value, view]);
+ 
+   return { state, setState, view, setView, container, setContainer };
