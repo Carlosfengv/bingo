@@ -35,7 +35,9 @@ import {
   writeProjectConfiguration,
 } from "./projectConfiguration";
 import { readPrototypeThemePreference, writePrototypeThemePreference } from "./prototypeThemePreferences";
-import { readProjectVariables, writeProjectVariables } from "./projectVariables";
+import { writeProjectVariables } from "./projectVariables";
+import { ProjectVariableCache, variableFileChangeMatters } from "./projectVariableCache";
+import { readProjectVariablesAsync, disposeProjectVariableReader } from "./projectVariableReader";
 import {
   deletePortablePage,
   hasPortableDesign,
@@ -195,6 +197,13 @@ const discoveryRequests = new Map();
 const configurationWatchers = new Map();
 const designWatchers = new Map();
 const variableSources = new Map();
+const variableCache = new ProjectVariableCache(readProjectVariablesAsync);
+let variableGeneration = 0;
+export function releaseProjectVariableCache(root: string) { variableCache.delete(canonicalPath(root)); }
+function invalidateVariables(root: string) {
+  variableCache.invalidate(root);
+  broadcastToEditors("variable-library:invalidated", { projectId: root, generation: ++variableGeneration });
+}
 
 function assertRegisteredProjectRoot(root) {
   if (typeof root !== "string" || !root) throw new Error("A project folder is required.");
@@ -227,6 +236,7 @@ function assertProjectWriteAllowed(root) {
 }
 
 function broadcastSettingsChanged(projectId, reason = "configuration", key = "configuration") {
+  invalidateVariables(canonicalPath(projectId));
   broadcastToEditors("settings_changed", { projectId, key, reason });
 }
 
@@ -257,11 +267,17 @@ function ensureDesignWatcher(root) {
         ...(status || {}),
         ...(error ? { error } : {}),
       });
-    }, { onFileChange: filePath => {
+    }, { onFileChange: (filePath, eventType) => {
+      if (variableFileChangeMatters(filePath, variableSources.get(projectRoot), eventType === "rename")) invalidateVariables(projectRoot);
       if (variableSources.get(projectRoot)?.has(filePath)) broadcastToEditors("file_changed", { projectId: projectRoot, filePath });
+    }, onError: error => {
+      designWatchers.get(projectRoot)?.close();
+      designWatchers.delete(projectRoot);
+      variableCache.invalidate(projectRoot);
+      console.warn("[Variables] Project watcher stopped:", error);
     } });
     designWatchers.set(projectRoot, watcher);
-  } catch {}
+  } catch (error) { console.warn("[Variables] Project watcher unavailable; reads will revalidate after the cache TTL:", error); }
 }
 
 function acknowledgeDesignState(root) {
@@ -1024,19 +1040,23 @@ const OPS = {
 
   "upload-asset": (root, args, a) => saveAsset(root, a),
   "read-settings": (root) => readSettings(root),
-  "read-variable-library": (root) => {
+  "read-variable-library": async (root, _args, a) => {
     root = assertRegisteredProjectRoot(root);
-    const result = readProjectVariables(root, readEffectiveConfiguration(root, app.getPath("userData")).settings.prototypeTheme);
-    variableSources.set(canonicalPath(root), new Set((result.watchedFiles || [result.source]).map(file => file.replace(/\\/g, "/").replace(/^\.\//, ""))));
     ensureDesignWatcher(root);
+    const result = await variableCache.get(root, readEffectiveConfiguration(root, app.getPath("userData")).settings.prototypeTheme,
+      typeof a.knownSnapshotKey === "string" ? a.knownSnapshotKey : undefined, a.force === true);
+    if (!("unchanged" in result)) variableSources.set(root, new Set((result.watchedFiles || [result.source]).map(file => file.replace(/\\/g, "/").replace(/^\.\//, ""))));
     return result;
   },
   "write-variable-library": (root, args, a) => {
     root = assertRegisteredProjectRoot(root);
     assertProjectWriteAllowed(root);
-    const result = writeProjectVariables(root, a, readEffectiveConfiguration(root, app.getPath("userData")).settings.prototypeTheme);
-    broadcastToEditors("file_changed", { projectId: root, filePath: result.source });
-    return result;
+    variableCache.invalidate(root);
+    try {
+      const result = writeProjectVariables(root, a, readEffectiveConfiguration(root, app.getPath("userData")).settings.prototypeTheme);
+      broadcastToEditors("file_changed", { projectId: root, filePath: result.source });
+      return result;
+    } finally { invalidateVariables(root); }
   },
   "write-settings": (root, args, a) => writeSettings(root, a.patch || {}, a.expectedRevision),
   "add-icon-libraries": (root, args, a) => addIconLibraries(root, a.libraries || []),
@@ -1436,6 +1456,7 @@ function registerHandlers({ prepareProjectRemoval = async () => true } = {}) {
       designWatchers.get(root)?.close();
       designWatchers.delete(root);
       variableSources.delete(root);
+      variableCache.delete(root);
       if (deleteDesignData) deleteProjectDesignData(root, app.getPath("userData"));
       saveProjects(readRegistry().filter(project => project.id !== projectId));
       chatStores.delete(directory);
@@ -1466,6 +1487,8 @@ function registerHandlers({ prepareProjectRemoval = async () => true } = {}) {
     for (const watcher of designWatchers.values()) watcher.close();
     designWatchers.clear();
     variableSources.clear();
+    variableCache.clear();
+    disposeProjectVariableReader();
   });
 }
 

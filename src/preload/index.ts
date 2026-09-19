@@ -9,6 +9,7 @@
 import * as electron from "electron";
 
 const INVOKE_CHANNELS = new Set([
+  "project-tabs:activity-get",
   "bingo:open-presentation",
   "project-tabs:get", "project-tabs:open", "project-tabs:activate", "project-tabs:reload", "project-tabs:home", "project-tabs:close", "project-tabs:list",
   "agent:list", "agent:models", "ai_chat", "ai_chat_cancel", "ai_chat_title", "ai-config:get", "ai-config:set", "ai-config:test",
@@ -33,6 +34,8 @@ const SEND_CHANNELS = new Set([
   "canvas_operation_persistence", "canvas_tool_result", "folder_access_response", "screenshot_result", "terminal:dispose", "terminal:input", "terminal:resize"
 ]);
 const RECEIVE_CHANNELS = new Set([
+  "project-tabs:activity-changed",
+  "variable-library:invalidated",
   "project-tabs:changed", "project-tabs:prepare-close", "project-tabs:resume",
   "canvas_tool_request", "clear-caches-and-reload", "deep-link-project", "design_storage_changed",
   "file_changed", "bingo:builder-event", "bingo:project-discovery-progress", "mcp_external_tool_approval_needed",

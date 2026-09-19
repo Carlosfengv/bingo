@@ -44,11 +44,12 @@ function watchPortableDesign(root, onChange, options = {}) {
   };
 
   const watcher = fs.watch(projectRoot, { recursive: true }, (_event, filename) => {
-    if (!filename) return schedule();
+    if (!filename) { options.onFileChange?.(""); return schedule(); }
     const normalized = String(filename).split(path.sep).join("/");
-    options.onFileChange?.(normalized);
+    options.onFileChange?.(normalized, _event);
     if (normalized === ".bingo" || normalized.startsWith(".bingo/design")) schedule();
   });
+  watcher.on("error", error => options.onError?.(error));
 
   return {
     acknowledge() {

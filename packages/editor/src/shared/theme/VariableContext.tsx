@@ -61,10 +61,12 @@ export function VariableLibraryProvider({ projectPath, children }) {
     reading.current = true;
     const request = ++generation.current;
     try {
-      let next = await invoke("read-variable-library");
+      let next = await invoke("read-variable-library", { knownSnapshotKey: snapshotRef.current.snapshotKey });
       if (request !== generation.current || busy.current) return;
+      if (next?.unchanged) { setError(""); setStatus("ready"); return; }
       if (!next?.library) throw new Error("Could not read project variables.");
-      if (snapshotRef.current.revision !== next.revision) { undo.current = []; redo.current = []; }
+      // Configuration can change the resolved library without changing file revisions.
+      if (snapshotRef.current.revision !== next.revision || JSON.stringify(snapshotRef.current.library) !== JSON.stringify(next.library)) { undo.current = []; redo.current = []; }
       else next = { ...next, library: snapshotRef.current.library };
       accept(next); setError(""); setStatus("ready");
     } catch (error) { if (request === generation.current) { setError(error.message); setStatus("error"); } }
@@ -88,13 +90,14 @@ export function VariableLibraryProvider({ projectPath, children }) {
       if (String(event?.projectId) === String(root) && watched.some(file => changed === String(file || "").replace(/\\/g, "/").replace(/^\.\//, "") || changed.endsWith(`/${String(file || "").replace(/\\/g, "/").replace(/^\.\//, "")}`))) scheduleReload();
     });
     const offSettings = window.api?.on?.("settings_changed", event => { if (String(event?.projectId) === String(root)) scheduleReload(); });
+    const offVariables = window.api?.on?.("variable-library:invalidated", event => { if (String(event?.projectId) === String(root)) scheduleReload(); });
     const offDesign = window.api?.on?.("design_storage_changed", event => { if (String(event?.projectId) === String(root)) scheduleReload(); });
     const focus = () => { if (!busy.current) void reload(); };
     window.addEventListener("focus", focus);
     return () => {
       generation.current++;
       if (reloadTimer.current !== null) window.clearTimeout(reloadTimer.current);
-      offFile?.(); offSettings?.(); offDesign?.(); window.removeEventListener("focus", focus);
+      offFile?.(); offSettings?.(); offDesign?.(); offVariables?.(); window.removeEventListener("focus", focus);
     };
   }, [reload, scheduleReload, root]);
   const write = React.useCallback(async (library, historyAction = "edit") => {

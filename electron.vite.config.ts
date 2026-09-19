@@ -106,6 +106,7 @@ export default defineConfig({
         entry: {
           index: "src/main/index.ts",
           mcpBridge: "src/main/mcpBridge.ts",
+          projectVariableWorker: "src/main/projectVariableWorker.ts",
         },
       },
     },
