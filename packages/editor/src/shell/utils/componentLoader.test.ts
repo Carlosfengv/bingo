@@ -40,10 +40,12 @@ test("a failed revision is not retried on canvas changes and a corrected revisio
     loader.applyComponentIndex(index);
     await loader.ensureModulesForNames(["App"]);
     assert.match(loader.moduleErrors.get(broken.path), /Broken fixture/);
+    assert.match(loader.applyComponentIndex(index).componentIndex.App.runtimeError, /Broken fixture/);
     assert.equal(await loader.ensureModulesForNames(["App"]), null);
     const good = { path: broken.path, codeUrl: moduleUrl("export default function Fixed() { return 4 }") };
     const recovered = await loader.reloadUpdatedModules([good]);
     assert.equal(recovered.components.App(), 4);
+    assert.equal(recovered.componentIndex.App.runtimeError, undefined);
     const failure = await loader.reloadUpdatedModules([broken]);
     assert.equal(failure.components.App(), 4, "a failed refresh preserves the working component");
   } finally {
@@ -65,4 +67,15 @@ test("concurrent requests wait for the same module and stale completions cannot 
   await loader.reloadUpdatedModules([{ ...slow, codeUrl: moduleUrl("export default function Latest() { return 7 }") }]);
   await pending;
   assert.equal(loader.applyComponentIndex(index).components.App(), 7);
+});
+
+test("a canvas request made before registration loads when the component index arrives", async () => {
+  const loader = createLoader();
+  loader.applyComponentIndex({});
+  assert.equal(await loader.ensureModulesForNames(["Late"]),null);
+  loader.cacheModules([{path:"Late.tsx",codeUrl:moduleUrl('export function Late(){return 8}') }]);
+  const registered = await loader.patchComponentIndexAndLoad({Late:{path:"Late.tsx",exportName:"Late"}});
+  assert.equal(registered.components.Late(),8);
+  const repaired = await loader.reloadUpdatedModules([{path:"Late.tsx",codeUrl:moduleUrl('export function Late(){return 9}')}]);
+  assert.equal(repaired.components.Late(),9);
 });

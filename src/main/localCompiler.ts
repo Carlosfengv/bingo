@@ -17,6 +17,7 @@
 
 import { build } from "esbuild";
 import { compileProjectStyles } from "./projectStylesCompiler";
+import { extractComponentPropMetadata } from "./componentPropMetadata";
 import { isDesignStyleSource } from "./projectDesignStyles";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -68,6 +69,24 @@ const EXTERNAL = [
   "react-dom/server.browser",
 ];
 
+/** CommonJS dependencies (for example use-sync-external-store/shim) must use
+ * the same browser React instance as ESM components, without a Node require.
+ */
+function browserReactRequirePlugin() {
+  return {
+    name: "bingo-browser-react-require",
+    setup(buildApi) {
+      buildApi.onResolve({filter: /^react(?:-dom)?(?:\/.*)?$/}, args =>
+        args.kind === "require-call" && EXTERNAL.includes(args.path)
+          ? {path: args.path, namespace: "bingo-react-require"} : null);
+      buildApi.onLoad({filter: /.*/, namespace: "bingo-react-require"}, args => ({
+        contents: `import * as runtime from ${JSON.stringify(args.path)}; module.exports = runtime.default ?? runtime;`,
+        loader: "js",
+      }));
+    },
+  };
+}
+
 /** sessionId -> active local build session */
 const sessions = new Map();
 /** project root -> one compile shared by all active sessions for that project */
@@ -88,10 +107,14 @@ const projectBuildTimers = new Map();
  * compiler is the only thing that knows, so it keeps the last result.
  */
 const lastIndex = new Map();
+const lastBuildIssues = new Map<string, string[]>();
 
 /** The component index produced by the most recent compile of `root`. */
 function componentIndexFor(root) {
   return lastIndex.get(root) || {};
+}
+function buildIssuesFor(root) {
+  return lastBuildIssues.get(root) || [];
 }
 
 function collect(root, exts) {
@@ -412,7 +435,7 @@ async function compileProject(root, controls = {}) {
           target: "es2020",
           jsx: "automatic",
           external: EXTERNAL,
-          plugins: [aliasPlugin],
+          plugins: [browserReactRequirePlugin(), aliasPlugin],
           logLevel: "silent",
           // A CSS import inside a component becomes a separate file esbuild would
           // reference from the bundle; from a data: URL that import cannot
@@ -420,7 +443,8 @@ async function compileProject(root, controls = {}) {
           loader: { ".css": "empty", ".png": "dataurl", ".jpg": "dataurl", ".svg": "dataurl" },
         });
         assertActive();
-        results[fileIndex] = { rel, result };
+        const props = extractComponentPropMetadata(fs.readFileSync(file, "utf8"));
+        results[fileIndex] = { rel, result, props };
       } catch (error) {
         if (error?.code === "BUILD_CANCELLED") throw error;
         const message = String(error?.errors?.[0]?.text || error?.message || error);
@@ -440,7 +464,7 @@ async function compileProject(root, controls = {}) {
       buildFailures.push(entry.failure);
       continue;
     }
-    const { rel, result } = entry;
+    const { rel, result, props } = entry;
     const inputsForEntry = [];
     for (const inputPath of Object.keys(result.metafile?.inputs || {})) {
       const buildInput = buildInputPath(inputPath, workspaceRoot);
@@ -458,11 +482,11 @@ async function compileProject(root, controls = {}) {
     const exportNames = Array.isArray(meta.exports) ? meta.exports : [];
     for (const exportName of exportNames) {
       if (exportName === "default") continue;
-      componentIndex[exportName] = { path: rel, exportName };
+      componentIndex[exportName] = { path: rel, exportName, ...(props[exportName] ? { props: props[exportName] } : {}) };
     }
     if (exportNames.includes("default")) {
       const base = path.basename(rel).replace(/\.[^.]+$/, "");
-      if (/^[A-Z]/.test(base)) componentIndex[base] = { path: rel, exportName: "default" };
+      if (/^[A-Z]/.test(base)) componentIndex[base] = { path: rel, exportName: "default", ...(props.default ? { props: props.default } : {}) };
     }
   }
 
@@ -714,6 +738,7 @@ async function buildAndEmit(session, initial) {
   if (!sessionIsActive(session) || buildId !== session.buildId) return;
   refreshSessionWatchers(session, compiled);
   lastIndex.set(root, compiled.componentIndex);
+  lastBuildIssues.set(root, [...compiled.buildFailures, ...(compiled.cssError ? [compiled.cssError] : [])]);
   if (compiled.complete) rememberSuccessfulBuild(root, compiled);
 
   // Order matters: the module catalog must exist before the index that
@@ -771,6 +796,7 @@ async function restoreCachedBuild(session) {
   const buildId = ++session.buildId;
   refreshSessionWatchers(session, compiled);
   lastIndex.set(session.root, compiled.componentIndex);
+  lastBuildIssues.set(session.root, [...(compiled.buildFailures ?? []), ...(compiled.cssError ? [compiled.cssError] : [])]);
   rememberSuccessfulBuild(session.root, compiled);
   broadcast(sessionEvent(session, "project:status", { stage: "restoring", cacheSource: cached.source }, buildId));
   broadcast(sessionEvent(session, "modules:ready", { modules: compiled.modules, cacheSource: cached.source }, buildId));
@@ -813,7 +839,7 @@ async function runBuildQueue(session, initial) {
   }
 }
 
-export { compileProject, componentIndexFor };
+export { compileProject, componentIndexFor, buildIssuesFor };
 
 async function loadLocalModule({ root, specifier }) {
   try {

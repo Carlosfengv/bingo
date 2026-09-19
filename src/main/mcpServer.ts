@@ -18,6 +18,8 @@ import { findWindowForProject, getFocusedProjectId, getOpenProjectIds } from "./
 import { CANVAS_OPERATION_PROTOCOL_VERSION, buildMcpServerInstructions, ensureV2, extractPartialCanvasDrawArgs, extractPartialMcpToolName, formatComponentSearchLine, getRootIds, hashAllElementSubtreesFrom, inspectLocalCopyBuffer, isCanvasDrawToolName, isLoadableIconLibrary, jsxContainsTruncationStub, loadSystemSkills, normalizeProjectCopyFileArgs, scanProject } from "@bingo/compiler";
 import { systemSkillsPath } from "./systemSkillsPath";
 import { collectProjectTheme, formatProjectThemeSummary } from "./projectThemeSummary";
+import { extractComponentPropMetadata } from "./componentPropMetadata";
+import { componentIndexFor, buildIssuesFor } from "./localCompiler";
 import { findComponentCandidates } from "@bingo/compiler";
 import * as child_process from "child_process";
 import * as crypto$1 from "crypto";
@@ -1247,9 +1249,7 @@ function mergeWrittenComponentsIntoIndex(projectId, files) {
   };
   for (const file of files) {
     if (!/\.(tsx|jsx)$/.test(file.path)) continue;
-    const previousForPath = new Map();
     for (const [name, entry] of Object.entries(next)) if (entry.path === file.path) {
-      previousForPath.set(name, entry);
       delete next[name];
     }
     const found = new Map();
@@ -1263,8 +1263,9 @@ function mergeWrittenComponentsIntoIndex(projectId, files) {
     const identifierDefault = /\bexport\s+default\s+([A-Z][A-Za-z0-9_$]*)\s*;?/.exec(file.content);
     const defaultName = namedDefault?.[1] ?? identifierDefault?.[1];
     if (defaultName) found.set(defaultName, "default");
+    const metadata = extractComponentPropMetadata(file.content);
     for (const [name, exportName] of found) {
-      const props = previousForPath.get(name)?.props;
+      const props = metadata[exportName];
       next[name] = props ? {
         path: file.path,
         exportName,
@@ -2195,11 +2196,12 @@ async function handleLocalGrep(_projectId, args, chatTabId) {
   };
 }
 async function handleSearchComponents(projectId, args) {
-  const index = projectComponentIndex.get(projectId);
+  const index = currentComponentIndex(projectId);
+  const buildIssues = componentBuildIssueSummary(projectId);
   if (!index || Object.keys(index).length === 0) return {
     content: [{
       type: "text",
-      text: "No indexed components are available. This is not proof that the source has no components. Inspect actual project source directories (including ui/), exports and registration state with targeted project_glob/project_read before writing substitutes."
+      text: buildIssues + "No indexed components are available. This is not proof that the source has no components. Inspect actual project source directories (including ui/), exports and registration state with targeted project_glob/project_read before writing substitutes."
     }]
   };
   const query = (args.query || "").toLowerCase().trim();
@@ -2207,7 +2209,7 @@ async function handleSearchComponents(projectId, args) {
   if (matched.length === 0) return {
     content: [{
       type: "text",
-      text: `No indexed candidates for "${args.query}". Try source synonyms and targeted project_glob/project_grep; check registration before concluding that a component is absent.`
+      text: buildIssues + `No indexed candidates for "${args.query}". Try source synonyms and targeted project_glob/project_grep; check registration before concluding that a component is absent.`
     }]
   };
   const grouped = new Map();
@@ -2225,9 +2227,19 @@ async function handleSearchComponents(projectId, args) {
   return {
     content: [{
       type: "text",
-      text: lines.join("\n")
+      text: buildIssues + lines.join("\n")
     }]
   };
+}
+function currentComponentIndex(projectId) {
+  // Local imports/rebuilds change the catalog during a chat. Read the compiler's
+  // current snapshot, including an empty one, rather than reviving deleted exports
+  // from the index captured when the chat started.
+  return path.isAbsolute(projectId) ? componentIndexFor(projectId) : projectComponentIndex.get(projectId) ?? {};
+}
+function componentBuildIssueSummary(projectId) {
+  const issues = path.isAbsolute(projectId) ? buildIssuesFor(projectId) : [];
+  return issues.length ? `BUILD FAILURES (${issues.length}):\n${issues.slice(0, 12).map(issue => String(issue).slice(0, 500)).join("\n")}\nFix dependency/alias/CSS resolution before substituting components.\n\n` : "";
 }
 async function handleGetTheme(projectId, _args) {
   const summary = await getProjectThemeSummary(projectId);
@@ -2257,7 +2269,7 @@ function createdElementIdsFromResult(result) {
 }
 async function handleGetDesignContext(projectId, _args) {
   const [theme, pagesResult] = await Promise.all([getProjectThemeSummary(projectId), handleCanvasList(projectId, {})]);
-  const index = projectComponentIndex.get(projectId) ?? {};
+  const index = currentComponentIndex(projectId);
   const componentEntries = Object.entries(index);
   const shownComponents = componentEntries.slice(0, 80).map(([name, info]) => formatComponentSearchLine(name, info.path, info.props));
   const componentSummary = shownComponents.length > 0 ? `${shownComponents.length}/${componentEntries.length} indexed components shown (source coverage not guaranteed). Inspect source/compositions for semantic purpose, compound children and API details:\n${shownComponents.join("\n")}${componentEntries.length > shownComponents.length ? `\n... (${componentEntries.length - shownComponents.length} more; use targeted search_components)` : ""}` : "Component index empty or unavailable. Inspect source directories and registration state; this does not establish an empty project.";
@@ -2265,7 +2277,7 @@ async function handleGetDesignContext(projectId, _args) {
   return {
     content: [{
       type: "text",
-      text: [`THEME\n${theme || "No project theme yet. If this is an import, write the source tokens into app/globals.css first, then style the canvas with the utilities they generate — do not build a parallel inline-style system."}`, `COMPONENTS\n${componentSummary}`, `CANVAS\n${pages}`].join("\n\n")
+      text: [`THEME\n${theme || "No project theme yet. If this is an import, write the source tokens into app/globals.css first, then style the canvas with the utilities they generate — do not build a parallel inline-style system."}`, `COMPONENTS\n${componentBuildIssueSummary(projectId)}${componentSummary}`, `CANVAS\n${pages}`].join("\n\n")
     }]
   };
 }

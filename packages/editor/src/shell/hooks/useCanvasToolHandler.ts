@@ -9,6 +9,7 @@
 import { applyOperationsToStore, createInsertOperation, createRemoveOperation, createReplaceOperation } from "../../shared/utils/operations";
 import { CanvasRevisionConflictError, appendCanvasCandidateOperation, commitCanvasCandidate, createCanvasCommitCandidate } from "./canvasOperationCommit";
 import { lintCanvasDesign, parseCanvasJsx } from "@bingo/compiler";
+import { collectRenderDiagnostics } from "../../canvas/utils/renderDiagnostics";
 import { UNKNOWN_ROOT_WIDTH, nextRootPlacement } from "./nextRootPlacement";
 import { isDrawPreviewId, occupiedRootBoxes, rootOccupancyBox } from "./rootBoxes";
 import { CANVAS_OPERATION_PROTOCOL_VERSION, ancestorChainMatchesQuery, applyJsxStringEdit, ensureV2, generateJSX, generateJSXWithinBudget, getById, getChildren$2, getDescendantIds, getIndex, getParentId, getRootIds, hashAllElementSubtreesFrom, hashElementSubtreeFrom, isDescendant, jsxContainsTruncationStub, lintNewlyIntroducedRawHtmlControls, lintRawHtmlControls, matchElementGrep, normalizeUpdateSubtree, storeSubtreeToLegacyNested, summarizeSubtreeChange, walk } from "@bingo/compiler";
@@ -488,6 +489,11 @@ function useCanvasToolHandler(deps) {
             });
             return;
           }
+          const renderDiagnostics = collectRenderDiagnostics(tab_0.store, elementId, iconLibraries, latestDeps().components, componentIndex);
+          const renderStatus = renderDiagnostics.length ? [{
+            type: "text",
+            text: "Render warnings (saved JSX alone is not rendering evidence):\n" + renderDiagnostics.slice(0, 40).map(issue => `${issue.code} [${issue.elementId}]: ${issue.message}`).join("\n")
+          }] : [];
           if (elementId) {
             if (!getById(tab_0.store, elementId)) {
               respond({
@@ -500,6 +506,7 @@ function useCanvasToolHandler(deps) {
               return;
             }
             const opts = {
+              purpose: "exchange",
               includeDataElementId: true,
               rootId: elementId
             };
@@ -511,11 +518,13 @@ function useCanvasToolHandler(deps) {
               content: [{
                 type: "text",
                 text: jsx_0
-              }],
+              }, ...renderStatus],
+              structuredContent: { jsx: jsx_0, renderDiagnostics },
               _coveringReads: Object.fromEntries(hashes)
             });
           } else {
             const jsx_1 = generateJSX(tab_0.store, 0, {
+              purpose: "exchange",
               includeDataElementId: true
             });
             const rootIds = getRootIds(tab_0.store);
@@ -530,13 +539,15 @@ function useCanvasToolHandler(deps) {
                 content: [{
                   type: "text",
                   text: `${rootIds.length} top-level elements:\n${summary}\n\nUse canvas_read with element_id to read specific elements.`
-                }]
+                }, ...renderStatus],
+                structuredContent: { summary: `${rootIds.length} top-level elements:\n${summary}\n\nUse canvas_read with element_id to read specific elements.`, renderDiagnostics }
               });
             } else respond({
               content: [{
                 type: "text",
                 text: jsx_1
-              }]
+              }, ...renderStatus],
+              structuredContent: { jsx: jsx_1, renderDiagnostics }
             });
           }
           return;

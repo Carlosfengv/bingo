@@ -37,6 +37,7 @@ var WebComponentLoader = class extends ComponentCompiler {
     this.moduleCatalog = new Map();
     this.loadedModuleUrls = new Map();
     this.requestedModulePaths = new Set();
+    this.requestedComponentNames = new Set();
     this.failedModuleUrls = new Map();
     this.moduleImports = new Map();
     this.lastComponentIndex = null;
@@ -55,6 +56,7 @@ var WebComponentLoader = class extends ComponentCompiler {
     this.moduleCatalog.clear();
     this.loadedModuleUrls.clear();
     this.requestedModulePaths.clear();
+    this.requestedComponentNames.clear();
     this.failedModuleUrls.clear();
     this.moduleImports.clear();
     this.lastComponentIndex = null;
@@ -101,6 +103,7 @@ var WebComponentLoader = class extends ComponentCompiler {
   * composition previews). No-op when every named path is already bound.
   */
   async ensureModulesForNames(names) {
+    for (const name of names) this.requestedComponentNames.add(name);
     const index = this.lastComponentIndex ?? this._componentIndex;
     if (!index) return null;
     const pathsNeedingImport = [...new Set([...names].map(name => index[name]?.path).filter(path => !!path))].filter(path => this.needsModuleImport(path));
@@ -248,6 +251,7 @@ var WebComponentLoader = class extends ComponentCompiler {
     for (const [key, meta] of Object.entries(index)) componentIndex[key] = {
       path: meta.path,
       exportName: meta.exportName,
+      ...(this.moduleErrors.has(meta.path) ? { runtimeError: this.moduleErrors.get(meta.path) } : {}),
       ...(prev[key]?.props ? {
         props: prev[key].props
       } : {}),
@@ -293,6 +297,7 @@ var WebComponentLoader = class extends ComponentCompiler {
       componentIndex[key] = {
         path: incoming.path || existing?.path || "",
         exportName: incoming.exportName || existing?.exportName || key,
+        ...(this.moduleErrors.has(incoming.path || existing?.path) ? { runtimeError: this.moduleErrors.get(incoming.path || existing?.path) } : {}),
         ...(existing?.props ? {
           props: existing.props
         } : {}),
@@ -330,7 +335,7 @@ var WebComponentLoader = class extends ComponentCompiler {
     // import every missing entry merely because the full index was republished.
     const pathsInUse = new Set(this.requestedModulePaths);
     for (const [name, meta] of Object.entries(patch)) {
-      if (this._components?.[name]) {
+      if (this._components?.[name] || this.requestedComponentNames.has(name)) {
         pathsInUse.add(meta.path);
         this.requestedModulePaths.add(meta.path);
       }

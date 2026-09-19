@@ -2009,6 +2009,7 @@ var BingoEditorInner = ({
     activeTabId,
     iconLibraries,
     componentIndex,
+    components,
     history: (0, import_react.useMemo)(() => ({
       pushOperation: (tabId_5, store_1, ops_1) => history.pushOperation(tabId_5, store_1, ops_1, "ai"),
       recordOperations: (tabId_6, ops_2, postOpStore_0) => history.recordOperations(tabId_6, ops_2, postOpStore_0, "ai")

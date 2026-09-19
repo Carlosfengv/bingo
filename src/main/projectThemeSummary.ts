@@ -97,6 +97,8 @@ export async function collectProjectTheme(filePaths: string[], readFile: (file: 
             await visit(resolved, imported.conditions ? [...context, `@import ${imported.conditions}`] : context, [...ancestors, file]);
           } else if (/^tailwindcss(?:\/|$)/.test(imported.target)) {
             warnings.push(`${file}: Tailwind package defaults are not enumerated; this is not a complete utility catalog.`);
+          } else if (!imported.target.startsWith(".")) {
+            warnings.push(`${file}: package CSS ${imported.target} is not inspected by this source summary. This is NOT a compilation failure; preserve the import unless the compiler reports an actual resolution error.`);
           } else {
             warnings.push(`${file}: unresolved CSS import ${imported.target}; inspect its package or missing file.`);
           }

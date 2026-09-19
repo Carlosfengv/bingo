@@ -79,13 +79,16 @@ function getIconsSection(libraryName) {
   const isPhosphor = libraryName.includes("phosphor");
   const isLucide = libraryName.includes("lucide");
   const isHeroicons = libraryName.includes("@heroicons/react");
+  const isTabler = libraryName === "@tabler/icons-react";
   const iconExamples = isHeroicons ? `<i data-icon="ArrowDownCircleIcon" data-icon-library="${libraryName}" size={20} />
 <i data-icon="Cog6ToothIcon" data-icon-library="${libraryName}" size={16} className="text-gray-500" />
-<i data-icon="ChevronDownIcon" data-icon-library="${libraryName}" size={16} />` : isPhosphor ? `<i data-icon="Play" data-icon-library="@phosphor-icons/react" size={20} />
+<i data-icon="ChevronDownIcon" data-icon-library="${libraryName}" size={16} />` : isTabler ? `<i data-icon="IconPlayerPlay" data-icon-library="${libraryName}" size={20} />
+<i data-icon="IconSettings" data-icon-library="${libraryName}" size={16} className="text-muted-foreground" />
+<i data-icon="IconChevronDown" data-icon-library="${libraryName}" size={16} />` : isPhosphor ? `<i data-icon="Play" data-icon-library="@phosphor-icons/react" size={20} />
 <i data-icon="Gear" data-icon-library="@phosphor-icons/react" size={16} className="text-gray-500" weight="bold" />
-<i data-icon="CaretDown" data-icon-library="@phosphor-icons/react" size={16} />` : `<i data-icon="CirclePlay" data-icon-library="lucide-react" size={20} />
+<i data-icon="CaretDown" data-icon-library="@phosphor-icons/react" size={16} />` : isLucide ? `<i data-icon="CirclePlay" data-icon-library="lucide-react" size={20} />
 <i data-icon="Settings" data-icon-library="lucide-react" size={16} className="text-gray-500" strokeWidth={1.5} />
-<i data-icon="ChevronDown" data-icon-library="lucide-react" size={16} />`;
+<i data-icon="ChevronDown" data-icon-library="lucide-react" size={16} />` : `<!-- Call search_icons for ${libraryName}; use an exact returned name in data-icon. -->`;
   return `## Icons (${isHeroicons ? "Heroicons" : isPhosphor ? "Phosphor" : isLucide ? "Lucide" : libraryName})
 Icon library: **${libraryName}**
 
@@ -97,7 +100,7 @@ Icon library: **${libraryName}**
 ${iconExamples}
 \`\`\`
 
-If you read an existing element that has \`<Eye />\` or similar component syntax, **replace it** with the \`<i data-icon="Eye" data-icon-library="${libraryName}" />\` format. Do not copy the broken format.
+Canvas readback may serialize an existing icon as a named tag. That alone is not a rendering failure; preserve existing icons during unrelated edits. When authoring a new icon, use an exact search_icons result in the attribute format above.
 
 ### Icon Props
 **Use \`size\` prop for sizing, NOT className w-X h-X.** \`className="w-3.5 h-3.5"\` does NOT work on data-icon elements. Use className only for color/opacity (e.g. \`className="text-muted-foreground"\`).
@@ -113,7 +116,8 @@ ${isHeroicons ? `- **size**: number — Bingo maps this to SVG width/height for 
 ### Library
 - Preferred icon library: **${libraryName}**. Always use icons from this library.
 - For Heroicons, icon names include the \`Icon\` suffix (for example \`ArrowDownCircleIcon\`, NOT \`ArrowDownCircle\`).
-- If an existing icon uses a different library, fix it to **${libraryName}**.
+- For Tabler, preserve the \`Icon\` prefix (for example \`IconClock\`, NOT \`clock\`).
+- Preserve existing icons unless the user asks to change them or they fail to render.
 - Use search_icons to find icon names by keyword.
 
 ### In Component Files (project_write tool):
@@ -121,9 +125,11 @@ Use real imports — \`data-icon\` does NOT work in .tsx files:
 \`\`\`tsx
 ${isHeroicons ? `import { ArrowDownCircleIcon, Cog6ToothIcon } from '${libraryName}'
 <ArrowDownCircleIcon width={20} height={20} className="text-primary" />
-<Cog6ToothIcon width={16} height={16} className="text-muted-foreground" />` : `import { ${isPhosphor ? "Play, Gear" : "Play, Settings"} } from '${libraryName}'
+<Cog6ToothIcon width={16} height={16} className="text-muted-foreground" />` : isTabler ? `import { IconPlayerPlay, IconSettings } from '${libraryName}'
+<IconPlayerPlay size={20} className="text-primary" />
+<IconSettings size={16} className="text-muted-foreground" />` : isPhosphor || isLucide ? `import { ${isPhosphor ? "Play, Gear" : "Play, Settings"} } from '${libraryName}'
 <${isPhosphor ? "Play size={20}" : "Play size={20}"} className="text-primary" />
-<${isPhosphor ? "Gear size={16} weight=\"duotone\"" : "Settings size={16} strokeWidth={1.5}"} className="text-muted-foreground" />`}
+<${isPhosphor ? "Gear size={16} weight=\"duotone\"" : "Settings size={16} strokeWidth={1.5}"} className="text-muted-foreground" />` : `// Use verified exports from '${libraryName}'; do not copy another pack's names.`}
 \`\`\`
 Component syntax (\`<Eye />\`) is ONLY valid inside .tsx files with real imports. On canvas, ALWAYS use data-icon.`;
 }
@@ -134,7 +140,7 @@ function buildBingoGuidance(options = {}) {
 - **Be FAITHFUL to references.** Match every detail. Don't improvise or add extra elements.
 - **Gather once.** Call \`get_design_context\` before drafting unless the prompt already contains sufficient theme, component, and active-page context. Do not separately call \`get_theme\`, unfiltered \`search_components\`, and \`canvas_list\` after it.
 - **Use EXISTING components.** Use the combined context first; call \`search_components\` only for a specific unresolved noun. Never create raw \`<button>\`/\`<input>\`/\`<select>\`/\`<textarea>\` when project components exist — writes reject them.
-- **Use theme colors** from combined context or Project Theme. Prefer \`bg-primary\`, \`text-muted-foreground\`, \`border-border\` over hardcoded colors when a project theme exists.
+- **Verify reuse and style sources.** Read real component APIs/compositions; an index miss is not proof of absence. Native layout/text is allowed, but do not imitate available components with div/span. Use source semantic tokens and scales for color, type, spacing, radius and shadow; example names such as \`bg-primary\` are valid only if the project defines them. Inspect written JSX and design diagnostics before the screenshot; matching pixels do not prove token/component reuse.
 - Every component must have realistic mock data — never empty tables, lists, or forms.
 - Use "use client" if using useState/useEffect.
 

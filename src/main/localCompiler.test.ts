@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   compileProject,
+  componentIndexFor,
   connectLocalBuilder,
   disconnectLocalBuilder,
   loadLocalModule,
@@ -53,6 +54,47 @@ test("installed project modules cannot be silently supplied by Bingo's own depen
     assert.match(result.error, /resolve|Could not/i);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("compiled component indexes carry current prop metadata across rebuilds", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bingo-prop-index-"));
+  const events = [];
+  const unsubscribe = subscribeLocalBuilderEvents(event => events.push(event));
+  try {
+    await fs.writeFile(path.join(root, "package.json"), JSON.stringify({ name: "fixture" }));
+    const file = path.join(root, "Badge.tsx");
+    await fs.writeFile(file, `export function Badge(p: {variant?: 'default' | 'success'}) {return <span/>}`);
+    await connectLocalBuilder({root, sessionId: "prop-metadata"});
+    await waitForEvent(events, event => event.sessionId === "prop-metadata" && event.type === "components:ready");
+    assert.equal(componentIndexFor(root).Badge.props.variant.type, "'default' | 'success'");
+    await fs.writeFile(file, `export function Badge(p: {variant?: 'default' | 'warning'}) {return <span/>}`);
+    await rebuildLocalBuilder({root, sessionId: "prop-metadata"});
+    await waitForEvent(events, event => event.sessionId === "prop-metadata" && event.type === "components:updated" && event.payload.componentIndex.Badge?.props.variant.type === "'default' | 'warning'");
+    assert.equal(componentIndexFor(root).Badge.props.variant.type, "'default' | 'warning'");
+  } finally {
+    unsubscribe();
+    await disconnectLocalBuilder({root, sessionId: "prop-metadata"});
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("CommonJS React dependencies share the browser ESM runtime without dynamic require", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bingo-react-require-"));
+  try {
+    await fs.writeFile(path.join(root, "package.json"), JSON.stringify({name:"fixture"}));
+    await fs.writeFile(path.join(root, "legacy.cjs"), 'module.exports = require("react");');
+    await fs.writeFile(path.join(root, "Probe.tsx"), 'import legacy from "./legacy.cjs"; import * as React from "react"; export function Probe(){return legacy === React.default;}');
+    const compiled = await compileProject(root);
+    const module = compiled.modules.find(item => item.path === "Probe.tsx");
+    const code = Buffer.from(module.codeUrl.split(",")[1], "base64").toString();
+    assert.doesNotMatch(code, /__require\("react"\)/);
+    const stub = `data:text/javascript,${encodeURIComponent('const shared = {}; export default shared;')}`;
+    const browserCode = code.replaceAll('from "react"', `from ${JSON.stringify(stub)}`);
+    const exports = await import(`data:text/javascript;base64,${Buffer.from(browserCode).toString("base64")}`);
+    assert.equal(exports.Probe(), true);
+  } finally {
+    await fs.rm(root, {recursive:true, force:true});
   }
 });
 

@@ -60,6 +60,12 @@ test("v3 config is identified without executing it or inventing a mapping", asyn
   assert.equal(result.declarations[0].theme, false);
 });
 
+test("package CSS outside project metadata is not misreported as a failed import", async () => {
+  const result = await inspect({ "index.css": '@import "tw-animate-css"; :root { --surface: white; }' });
+  assert.ok(result.warnings.some(warning => warning.includes("NOT a compilation failure")));
+  assert.ok(result.warnings.every(warning => !warning.includes("unresolved CSS import")));
+});
+
 test("ambiguous entries, malformed CSS and excessive graphs remain explicit discovery gaps", async () => {
   assert.equal((await inspect({ "a.css": "", "b.css": "" })).entry, null);
   assert.ok((await inspect({ "index.css": ":root { --bad:" })).warnings.length);

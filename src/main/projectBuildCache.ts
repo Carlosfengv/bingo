@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const CACHE_SCHEMA_VERSION = 1;
-const COMPILER_SIGNATURE = "local-compiler-v2-compiled-css";
+const COMPILER_SIGNATURE = "local-compiler-v4-component-props-react-require";
 const MAX_IDLE_PROJECTS = 3;
 const MAX_CACHE_BYTES = 256 * 1024 * 1024;
 const MAX_DISK_CACHE_BYTES = 1024 * 1024 * 1024;
