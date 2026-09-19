@@ -12,6 +12,7 @@ import { CanvasOperationRegistry } from "./canvasOperationRegistry";
 import { toPngBase64 } from "./captureImage";
 import { recordDiagnosticEvent } from "./diagnosticsStore";
 import { getAllowedLocalPaths } from "./promptFolders";
+import { AgentResultError, RESULT_MAX_BYTES, agentResultErrorResult, classifyToolResultPath, isAgentToolResultPath, readOwnedToolResult, revokeAllResultScopes, revokeResultScopesForRun, validateResultRange } from "./agentToolResultAccess";
 import { getProjectAccessContext, getProjectAllowedPaths, grantProjectPath, setProjectAllowedPaths } from "./projectAccess";
 import { findWindowForProject, getFocusedProjectId, getOpenProjectIds } from "./windowManager";
 import { CANVAS_OPERATION_PROTOCOL_VERSION, buildMcpServerInstructions, ensureV2, extractPartialCanvasDrawArgs, extractPartialMcpToolName, formatComponentSearchLine, getRootIds, hashAllElementSubtreesFrom, inspectLocalCopyBuffer, isCanvasDrawToolName, isLoadableIconLibrary, jsxContainsTruncationStub, loadSystemSkills, normalizeProjectCopyFileArgs, scanProject } from "@bingo/compiler";
@@ -205,6 +206,7 @@ function registerMcpChatSession(projectId, chatTabId, chatRunId) {
   return () => {
     if (!registered) return;
     registered = false;
+    revokeResultScopesForRun(chatRunId);
     runs.delete(chatRunId);
     clearReaderKeyedState(designSkillRunKey(projectId, chatTabId, chatRunId));
     if (runs.size > 0) return;
@@ -1714,6 +1716,7 @@ function denyPath(filePath) {
 * existence / symlink check afterwards.
 */
 async function ensureLocalAccess(projectId, filePath, chatTabId) {
+  if (await isAgentToolResultPath(filePath)) return agentResultErrorResult(new AgentResultError("AGENT_RESULT_OPERATION_UNSUPPORTED", "Use local_read to read the current run's result; this operation cannot access internal results."));
   const access = getProjectAccessContext(projectId);
   if (access.projectRoot && access.mode === "disabled") return {
     isError: true,
@@ -1808,15 +1811,33 @@ async function walkDir(dir, base, results, maxFiles = 5e4) {
     } else results.push(relPath);
   }
 }
-async function handleLocalRead(_projectId, args, chatTabId) {
+function logResultAccess(ctx, decision, reason?, bytesRead = 0) {
+  void recordDiagnosticEvent({ source: "mcpServer", eventName: "agent_result_access", projectId: ctx?.projectId,
+    chatId: ctx?.chatTabId, runId: ctx?.chatRunId, level: decision === "read" ? "info" : "warn",
+    payload: { decision, reason, bytesRead } });
+}
+export async function handleLocalRead(_projectId, args, chatTabId, _sessionId?, toolContext?) {
   const filePath = args.file_path;
-  if (!filePath) return {
+  if (typeof filePath !== "string" || !path.isAbsolute(filePath)) return {
     isError: true,
     content: [{
       type: "text",
-      text: "file_path is required"
+      text: "file_path must be an absolute path"
     }]
   };
+  try {
+    if ((await classifyToolResultPath(toolContext, filePath)).kind === "owned") {
+      const budget = { remaining: RESULT_MAX_BYTES };
+      const result = await readOwnedToolResult(toolContext, filePath, args, budget);
+      result.assertActive();
+      logResultAccess(toolContext, "read", undefined, RESULT_MAX_BYTES - budget.remaining);
+      return { content: [{ type: "text", text: result.text }] };
+    }
+  } catch (error) {
+    const result = agentResultErrorResult(error);
+    logResultAccess(toolContext, "denied", result.reason);
+    return result;
+  }
   const denied = await ensureLocalAccess(_projectId, filePath, chatTabId);
   if (denied) return denied;
   if (!(await isExistingPathAllowed(filePath, _projectId, chatTabId))) return denyPath(filePath);
@@ -1844,7 +1865,7 @@ async function handleLocalRead(_projectId, args, chatTabId) {
     };
   }
 }
-async function handleLocalReadBatch(_projectId, args, chatTabId) {
+export async function handleLocalReadBatch(_projectId, args, chatTabId, _sessionId?, toolContext?) {
   const filePaths = args.file_paths;
   if (!Array.isArray(filePaths) || filePaths.length === 0) return {
     isError: true,
@@ -1860,34 +1881,62 @@ async function handleLocalReadBatch(_projectId, args, chatTabId) {
       text: `Too many files (${filePaths.length}). Max 10 per batch.`
     }]
   };
-  if (filePaths.some(filePath => typeof filePath !== "string" || !filePath)) return {
+  if (filePaths.some(filePath => typeof filePath !== "string" || !path.isAbsolute(filePath))) return {
     isError: true,
     content: [{
       type: "text",
       text: "every file_paths entry must be a non-empty absolute path"
     }]
   };
-  for (const filePath of filePaths) {
+  let classified;
+  try {
+    classified = await Promise.all(filePaths.map(file => classifyToolResultPath(toolContext, file)));
+    if (classified.some(item => item.kind === "owned")) validateResultRange(args);
+  } catch (error) {
+    const result = agentResultErrorResult(error);
+    logResultAccess(toolContext, "denied", result.reason);
+    return result;
+  }
+  for (const [index, filePath] of filePaths.entries()) {
+    if (classified[index].kind === "owned") continue;
     const denied = await ensureLocalAccess(_projectId, filePath, chatTabId);
     if (denied) return denied;
   }
-  const deniedIndex = (await Promise.all(filePaths.map(filePath => isExistingPathAllowed(filePath, _projectId, chatTabId)))).findIndex(isAllowed => !isAllowed);
+  const deniedIndex = (await Promise.all(filePaths.map((filePath, index) => classified[index].kind === "owned" || isExistingPathAllowed(filePath, _projectId, chatTabId)))).findIndex(isAllowed => !isAllowed);
   if (deniedIndex !== -1) return denyPath(filePaths[deniedIndex]);
+  const budget = { remaining: RESULT_MAX_BYTES };
+  const internalReads = [];
+  const texts = [];
+  try {
+    for (const [index, filePath] of filePaths.entries()) {
+      if (classified[index].kind === "owned") {
+        const result = await readOwnedToolResult(toolContext, filePath, args, budget);
+        internalReads.push(result);
+        texts.push(result.text);
+      } else {
+        try {
+          const content = await (0, fs_promises.readFile)(filePath, "utf-8");
+          texts.push(content ? sliceLines(content, filePath, args.offset, args.limit) : `File: ${filePath}\n(empty file)`);
+        } catch (error) { texts.push(`File: ${filePath}\n[read failed: ${error.message}]`); }
+      }
+    }
+    for (const result of internalReads) result.assertActive();
+    if (internalReads.length) logResultAccess(toolContext, "read", undefined, RESULT_MAX_BYTES - budget.remaining);
+  } catch (error) {
+    const result = agentResultErrorResult(error);
+    logResultAccess(toolContext, "denied", result.reason);
+    return result;
+  }
   return {
     content: [{
       type: "text",
-      text: (await Promise.all(filePaths.map(async filePath => {
-        try {
-          const content = await (0, fs_promises.readFile)(filePath, "utf-8");
-          return content ? sliceLines(content, filePath, args.offset, args.limit) : `File: ${filePath}\n(empty file)`;
-        } catch (err) {
-          return `File: ${filePath}\n[read failed: ${err.message}]`;
-        }
-      }))).join("\n\n")
+      text: texts.join("\n\n")
     }]
   };
 }
 export async function handleLocalWrite(_projectId, args, chatTabId) {
+  const internalDenied = await rejectInternalResultOperation("local_write", args);
+  if (internalDenied) return internalDenied;
   const filePath = args.file_path;
   const content = args.content;
   if (!filePath || content === void 0) return {
@@ -1922,6 +1971,8 @@ export async function handleLocalWrite(_projectId, args, chatTabId) {
   }
 }
 async function handleLocalEdit(_projectId, args, chatTabId) {
+  const internalDenied = await rejectInternalResultOperation("local_edit", args);
+  if (internalDenied) return internalDenied;
   const filePath = args.file_path;
   const oldText = args.old_string;
   const newText = args.new_string;
@@ -1999,6 +2050,8 @@ export async function handleLocalFolders(_projectId, _args, chatTabId) {
   };
 }
 async function handleLocalGlob(_projectId, args, chatTabId) {
+  const internalDenied = await rejectInternalResultOperation("local_glob", args);
+  if (internalDenied) return internalDenied;
   const pattern = args.pattern || "**/*";
   const headLimit = args.head_limit ?? 500;
   const noFolders = await ensureLocalAccess(_projectId, void 0, chatTabId);
@@ -2068,6 +2121,8 @@ async function handleLocalGlob(_projectId, args, chatTabId) {
   };
 }
 async function handleLocalGrep(_projectId, args, chatTabId) {
+  const internalDenied = await rejectInternalResultOperation("local_grep", args);
+  if (internalDenied) return internalDenied;
   const pattern = args.pattern;
   if (!pattern) return {
     isError: true,
@@ -4003,7 +4058,7 @@ var TOOLS = [{
   }
 }, {
   name: "local_read",
-  description: "Read a file from the user's local filesystem with line numbers. Use ABSOLUTE paths. Supports offset/limit for reading specific sections of large files. Always read before editing.",
+  description: "Read a file from the user's local filesystem with line numbers. Use ABSOLUTE paths and offset/limit for sections. Also reads this active in-app run's own internal tool results (read-only, default 200 lines, maximum 2000 lines, 32 KiB response budget). Always read before editing ordinary files.",
   inputSchema: {
     type: "object",
     properties: {
@@ -4017,14 +4072,14 @@ var TOOLS = [{
       },
       limit: {
         type: "number",
-        description: "Number of lines to read. Default: 2000. Use smaller values for large files."
+        description: "Number of lines to read. Default: 2000 for ordinary files; 200 for internal tool results (maximum 2000). Use smaller values for large files."
       }
     },
     required: ["file_path"]
   }
 }, {
   name: "local_read_batch",
-  description: "Read 1-10 text files from the user's local filesystem in one call. Use this for bounded component-import chunks instead of issuing many consecutive local_read calls. Returns each file under an absolute-path heading.",
+  description: "Read 1-10 text files from the user's local filesystem in one call. Also reads this active in-app run's own internal tool results, with a shared 32 KiB response budget, default 200 lines per result, maximum 2000. Returns each file under an absolute-path heading.",
   inputSchema: {
     type: "object",
     properties: {
@@ -4360,6 +4415,17 @@ async function handleScanProject(_projectId, args, chatTabId) {
     };
   }
 }
+async function rejectInternalResultOperation(toolName, args) {
+  if (!["local_write", "local_edit", "local_glob", "local_grep", "project_copy_file", "project_copy_asset", "scan_project"].includes(toolName)) return null;
+  const candidates = [args.file_path, args.local_path, args.root_path, args.path, args.glob,
+    ...(toolName === "local_glob" ? [args.pattern] : []),
+    ...(Array.isArray(args.files) ? args.files.map(file => file?.local_path) : [])];
+  for (const file of candidates) if (await isAgentToolResultPath(file)) {
+    const code = ["local_write", "local_edit"].includes(toolName) ? "AGENT_RESULT_READ_ONLY" : "AGENT_RESULT_OPERATION_UNSUPPORTED";
+    return agentResultErrorResult(new AgentResultError(code, "Internal results support current-run reads only. Narrow the original query if needed."));
+  }
+  return null;
+}
 async function handleMcpRequest(sessionId, msg, options) {
   const {
     id,
@@ -4672,6 +4738,8 @@ async function handleMcpRequest(sessionId, msg, options) {
             };
           }
         }
+        const internalDenied = await rejectInternalResultOperation(toolName, toolArgs);
+        if (internalDenied) return { status: 200, sessionId, body: { jsonrpc: "2.0", id, result: internalDenied } };
         const destructiveCall = DESTRUCTIVE_TOOLS.has(toolName) && !(toolName === "set_icon_library" && await iconLibraryRequestIsNoop(projectId, toolArgs));
         if (destructiveCall) {
           const decision = !legacyProjectId && externalAutoApproveFileEditsProjects.has(projectId) && EXTERNAL_AUTO_APPROVABLE_TOOLS.has(toolName) ? {
@@ -4709,7 +4777,8 @@ async function handleMcpRequest(sessionId, msg, options) {
           }
         }
         try {
-          const result = await handler(projectId, toolArgs, legacyChatTabId, sessionId);
+          const toolContext = { source: legacyProjectId ? "in-app" : "external", projectId, chatTabId: legacyChatTabId, chatRunId: legacyProjectId ? legacyChatRunId : undefined };
+          const result = await handler(projectId, toolArgs, legacyChatTabId, sessionId, toolContext);
           if (DESTRUCTIVE_TOOLS.has(toolName) || toolName.startsWith("canvas_") || toolName === "take_screenshot") {
             const createdElementIds = getCreatedCanvasElementIds(toolName, result);
             const errorText = result?.isError ? mcpResultText(result) : void 0;
@@ -4979,6 +5048,7 @@ async function ensureMcpServerReady() {
 }
 /** Stop the loopback server and its maintenance timer during app shutdown/tests. */
 function stopMcpServer() {
+  revokeAllResultScopes();
   cancelAllApprovals();
   if (mcpMaintenanceTimer) {
     clearInterval(mcpMaintenanceTimer);

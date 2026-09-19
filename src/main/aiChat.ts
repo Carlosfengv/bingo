@@ -7,6 +7,7 @@
  * author's original file. See luna/RECOVERY.md.
  */
 import { toPngBase64 } from "./captureImage";
+import { claudeResultConfigDir, registerClaudeResultScope, revokeResultScopesForRun } from "./agentToolResultAccess";
 import { getLocalAgents } from "./aiConfig";
 import { AGENT_INFO, runAgent } from "./agentRuntime";
 import { BINGO_MCP_TOOL_PREFIX, bingoToolName } from "./brand";
@@ -189,6 +190,7 @@ var cancelledSessionIds = new Set();
 */
 var CLI_IDLE_TIMEOUT_MS = 6e5;
 function killClaudeProcess(proc) {
+  if (!proc) return;
   const pid = proc.pid;
   if (pid) {
     const [cmd, args] = isWindows() ? ["taskkill", ["/pid", String(pid), "/T", "/F"]] : ["pkill", ["-KILL", "-P", String(pid)]];
@@ -202,6 +204,7 @@ function killClaudeProcess(proc) {
 }
 function cancelSession(sessionId) {
   cancelledSessionIds.add(sessionId);
+  revokeResultScopesForRun(sessionId);
   const session = activeSessions.get(sessionId);
   if (!session) return;
   markChatCancelled(session.projectId, session.chatTabId);
@@ -249,41 +252,43 @@ project_ files and local_ files are COMPLETELY DIFFERENT. NEVER fall back to pro
 ## Choosing a local folder
 The accessible local folders include the current project first, followed by extra folders and current-request attachments. When the user says "my codebase" without another explicit target, use the current project without requesting it again. An explicit target in the user's request takes precedence over this default.
 Choose the relevant folder from the user's request, referenced files, and conversation context. If needed, inspect likely folders with local_glob, local_grep, and local_read before choosing. Read the chosen project's applicable AGENTS.md and CLAUDE.md instructions before editing; do not carry project-specific assumptions from an unrelated folder into it.
-Use absolute paths within the accessible folders for local file tools. Work across folders when the task calls for it. Ask the user which project they mean only if the available context and inspection still leave the target ambiguous.
+Use absolute paths within the accessible folders for ordinary local files. local_read and local_read_batch can also read tool-result files owned by this active run. Internal results are read-only; never request folder access to the coding agent cache. If an internal result expires or its layout is unsupported, narrow and repeat the original query. Work across folders when the task calls for it. Ask the user which project they mean only if the available context and inspection still leave the target ambiguous.
 Choosing a folder for file operations does not change which MCP connections or skills are loaded. Use only available tools and request a missing connection when it is needed.
 
 ## Design skill (MANDATORY)
 The Bingo host includes the complete bingo-design skill below for every in-app run. Follow it before any canvas mutation, including canvas_create_import_scaffold. External MCP clients must call read_skill with name "bingo-design" in their own session.`;
-async function runClaudeCLI(prompt, mcpConfigPath, sessionId, emit, cliModel, images, claudeSessionId, resumeSessionId, runtime, projectId, chatTabId) {
+export async function runClaudeCLI(prompt, mcpConfigPath, sessionId, emit, cliModel, images, claudeSessionId, resumeSessionId, runtime, projectId, chatTabId) {
+  if (cancelledSessionIds.has(sessionId)) return { text: "" };
+  // Track startup too: project close/cancel may arrive while locating the CLI.
+  const sessionRecord = { process: null, projectId: projectId ?? "", chatTabId };
+  activeSessions.set(sessionId, sessionRecord);
+  let unregisterResults = () => {};
+  try {
   const [claudeBin, shellEnv] = await Promise.all([findClaudeBinary(), getShellEnv$1()]);
-  return new Promise((resolve, reject) => {
+  if (cancelledSessionIds.has(sessionId)) return { text: "" };
+  const { CLAUDECODE: _, ...cleanShellEnv } = shellEnv;
+  const home = process.env.HOME || cleanShellEnv.HOME;
+  const spawnEnv = {
+    ...cleanShellEnv,
+    ...(home ? { HOME: home } : {}),
+    ...(runtime?.effort ? { CLAUDE_CODE_EFFORT_LEVEL: toClaudeEffortEnvValue(runtime.effort) } : {})
+  };
+  unregisterResults = !resumeSessionId ? registerClaudeResultScope({
+    projectId, chatTabId, chatRunId: sessionId, claudeSessionId,
+    claudeConfigDir: claudeResultConfigDir(spawnEnv),
+    workDir: runtime?.workDir || (0, os.tmpdir)()
+  }) : () => {};
+  return await new Promise((resolve, reject) => {
     const permissionMode = runtime?.permissionMode ?? "auto";
     const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--tools", runtime?.effort === "ultracode" ? "WebFetch,WebSearch,Workflow,TaskOutput,TaskStop" : "WebFetch,WebSearch", "--permission-mode", permissionMode, "--permission-prompt-tool", `${BINGO_MCP_TOOL_PREFIX}${PERMISSION_PROMPT_TOOL}`, "--allowedTools", `${BINGO_MCP_TOOL_PREFIX}*`, "--mcp-config", mcpConfigPath, ...(runtime?.extraDirs.length ? ["--add-dir", ...runtime.extraDirs] : []), ...(runtime?.systemPromptAppend ? ["--append-system-prompt", runtime.systemPromptAppend] : []), ...(cliModel ? ["--model", cliModel] : []), ...(runtime?.effort ? ["--effort", runtime.effort] : []), ...(resumeSessionId ? ["--resume", resumeSessionId] : []), ...(claudeSessionId && !resumeSessionId ? ["--session-id", claudeSessionId] : [])];
-    const {
-      CLAUDECODE: _,
-      ...cleanShellEnv
-    } = shellEnv;
-    const home = process.env.HOME || cleanShellEnv.HOME;
     const invocation = claudeInvocation(claudeBin, args);
     const claude = (0, child_process.spawn)(invocation.file, invocation.args, {
       cwd: runtime?.workDir || (0, os.tmpdir)(),
       shell: false,
       windowsHide: true,
-      env: {
-        ...cleanShellEnv,
-        ...(home ? {
-          HOME: home
-        } : {}),
-        ...(runtime?.effort ? {
-          CLAUDE_CODE_EFFORT_LEVEL: toClaudeEffortEnvValue(runtime.effort)
-        } : {})
-      }
+      env: spawnEnv
     });
-    activeSessions.set(sessionId, {
-      process: claude,
-      projectId: projectId ?? "",
-      chatTabId
-    });
+    sessionRecord.process = claude;
     if (cancelledSessionIds.has(sessionId)) {
       killClaudeProcess(claude);
       activeSessions.delete(sessionId);
@@ -468,6 +473,8 @@ async function runClaudeCLI(prompt, mcpConfigPath, sessionId, emit, cliModel, im
       });
     });
     claude.on("error", err => {
+      if (idleTimer) clearTimeout(idleTimer);
+      if (fileWriteEmitTimer) clearTimeout(fileWriteEmitTimer);
       activeSessions.delete(sessionId);
       reject(err);
     });
@@ -496,6 +503,10 @@ async function runClaudeCLI(prompt, mcpConfigPath, sessionId, emit, cliModel, im
     }) + "\n");
     claude.stdin.end();
   });
+  } finally {
+    unregisterResults();
+    if (activeSessions.get(sessionId) === sessionRecord) activeSessions.delete(sessionId);
+  }
 }
 async function handleChat(opts) {
   const {
@@ -723,7 +734,7 @@ Use Bingo tools for canvas and file operations. Use the user's other connections
 ${localPaths.length > 0 ? `\n### Accessible local folders (current project, extra folders, and current-request attachments):
 ${localPaths.map(p => `- ${p}`).join("\n")}
 When the user says "my code", "my repo", "the codebase", "locally", "wire up", "implement" → use local_* tools with these paths.
-local_* tools ONLY work within these directories. Use ABSOLUTE paths. For "my code" without another explicit target, start in the current project (the first folder). Do not ask the user to share this folder again.` : `\nNo local folders are currently accessible. If the task needs local files, call local_folders to check access. Respect disabled access; do not guess paths.`}
+Ordinary local_* file operations work only within these directories. local_read and local_read_batch additionally support this active run's own internal tool results; use small offset/limit pages (internal default: 200 lines, maximum: 2000 lines, shared response budget: 32 KiB). Never edit those results or ask the user to share the agent cache. Use ABSOLUTE paths. For "my code" without another explicit target, start in the current project (the first folder). Do not ask the user to share this folder again.` : `\nNo local folders are currently accessible. If the task needs local files, call local_folders to check access. Respect disabled access; do not guess paths.`}
 
 ### Local file workflow:
 1. **Find**: local_glob or local_grep to locate the file
