@@ -34,7 +34,7 @@ import fs from "node:fs";
 import os from "node:os";
 
 import { componentIndexFor } from "./localCompiler";
-import { readProjectFile, writeProjectFile } from "./localStore";
+import { invokeLocalStore, readProjectFile, writeProjectFile } from "./localStore";
 import { AGENT_INFO, getAgentStatus, runAgent } from "./agentRuntime";
 import { getLocalAgents } from "./aiConfig";
 import { createIncident, recordDiagnosticEvent } from "./diagnosticsStore";
@@ -152,7 +152,14 @@ async function saveFileLocally(projectId, options) {
 
   const store = ensureV2(elements);
   const originalHash = crypto.createHash("sha256").update(originalCode).digest("hex");
-  const generatedJSX = generateJSX(store);
+  let generatedJSX;
+  try {
+    const variables = await invokeLocalStore({ op: "read-variable-library", root: projectId });
+    generatedJSX = generateJSX(store, 0, { purpose: "project", variableLibrary: variables.library, variablePageModes: store.variableModes ?? variables.defaultModes });
+  } catch (error) {
+    const failed = await failure(error, { stage: "generate-source" });
+    return { success: false, error: failed.message, incidentId: failed.report.incidentId };
+  }
 
   const deps = extractComponentDependencies(store);
   if (internalComponent?.name) deps.delete(internalComponent.name);

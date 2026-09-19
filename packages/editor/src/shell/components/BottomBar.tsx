@@ -193,6 +193,7 @@ function BottomBar({
     if (!hasSelectedElement) return t("bottomBar.elementNotFound");
     return measureCanvasWork("codegen", () => generateCompleteFile({
       componentName: "NewComponent",
+      purpose: "editor",
       store,
       rootId: selectedElementId,
       variableLibrary: variables?.library,
@@ -211,6 +212,7 @@ function BottomBar({
     selectedElementSnippet: selectedElementCode,
     store,
     iconLibraries,
+    variableLibrary: variables?.library,
     components: components ?? EMPTY_COMPONENTS,
     onPreviewElement,
     onClearPreview,

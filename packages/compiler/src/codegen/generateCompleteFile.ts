@@ -40,6 +40,7 @@ function generateCompleteFile(options) {
   parts.push(`export function ${componentName}() {`);
   parts.push("  return (");
   const jsx = generateJSX(store, 2, {
+    purpose: options.purpose ?? "project",
     includeDataElementId,
     assetResolver,
     variableLibrary: options.variableLibrary,

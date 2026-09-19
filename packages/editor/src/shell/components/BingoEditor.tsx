@@ -3472,6 +3472,7 @@ var BingoEditorInner = ({
     const targetFilePath = `components/${componentName_5}.tsx`;
     const code = generateCompleteFile({
       componentName: componentName_5,
+      purpose: "project",
       store: currentStore,
       rootId: selectedElementId,
       variableLibrary: variableRuntime?.library,
@@ -4197,7 +4198,7 @@ var BingoEditorInner = ({
         const ids_6 = selectedElementIds.size > 0 ? selectedElementIds : new Set([targetId_6]);
         onPasteToReplace(ids_6);
       }}>{<span>{t("shell.pasteToReplace")}</span>}{<ContextMenuShortcut>⇧⌘R</ContextMenuShortcut>}</ContextMenuItem>}{targetId_6 && <>{<ContextMenuItem onSelect={async () => {
-          const jsx_1 = generateJSX(currentStore, 0, { rootId: targetId_6, variableLibrary: variableRuntime?.library, variablePageModes: currentStore.variableModes ?? variableRuntime?.defaultModes });
+          const jsx_1 = generateJSX(currentStore, 0, { purpose: "project", rootId: targetId_6, variableLibrary: variableRuntime?.library, variablePageModes: currentStore.variableModes ?? variableRuntime?.defaultModes });
           try {
             await navigator.clipboard.writeText(jsx_1);
             toast.success(t("shell.copiedAsReact"));

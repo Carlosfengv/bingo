@@ -1,4 +1,4 @@
-import { getById, getRootIds, parseJSX, preserveMatchingSubtreeIds, storeSubtreeToLegacyNested } from "@bingo/compiler";
+import { buildSelectionRootFromParsed, getById, getRootIds, parseJSX, storeSubtreeToLegacyNested } from "@bingo/compiler";
 import { useTranslation } from "@bingo/i18n";
 import * as React from "react";
 
@@ -7,7 +7,7 @@ const PREVIEW_DEBOUNCE_MS = 300;
 /** Keep an unapplied draft local. A preview or commit belongs to the page,
  * selection and document snapshot against which that draft was started. */
 function useSelectionJsxEditor({ documentId, active = true, selectedElementId, selectedElementSnippet,
-  store, iconLibraries, components, onPreviewElement, onClearPreview, onReplaceElement }) {
+  store, iconLibraries, components, variableLibrary, onPreviewElement, onClearPreview, onReplaceElement }) {
   const { t } = useTranslation("editor");
   const [draft, setDraft] = React.useState(selectedElementSnippet);
   const [dirty, setDirty] = React.useState(false);
@@ -40,7 +40,7 @@ function useSelectionJsxEditor({ documentId, active = true, selectedElementId, s
     if (dirty && baseStore.current !== store) {
       setError(t("bottomBar.draftConflict")); setPreviewUnapplied(true);
     }
-  }, [documentId, selectedElementId, store, active, components, iconLibraries]);
+  }, [documentId, selectedElementId, store, active, components, iconLibraries, variableLibrary]);
   React.useEffect(() => () => { cancel(); latest.current?.onClearPreview?.(); }, [cancel]);
   const build = jsx => {
     if (!selectedElementId || !getById(store, selectedElementId)) return { error: "No element selected" };
@@ -48,7 +48,7 @@ function useSelectionJsxEditor({ documentId, active = true, selectedElementId, s
       const parsed = parseJSX(jsx, iconLibraries, components, undefined, { forceNewIds: true });
       const roots = getRootIds(parsed);
       const previous = storeSubtreeToLegacyNested(store, selectedElementId);
-      const built = buildSelectionRootFromParsed(previous, selectedElementId, roots.map(id => storeSubtreeToLegacyNested(parsed, id)));
+      const built = buildSelectionRootFromParsed(previous, selectedElementId, roots.map(id => storeSubtreeToLegacyNested(parsed, id)), variableLibrary);
       if ("error" in built) return built;
       const original = getById(store, selectedElementId);
       if (original.canvasPosition) built.element.canvasPosition = { ...original.canvasPosition };
@@ -75,6 +75,7 @@ function useSelectionJsxEditor({ documentId, active = true, selectedElementId, s
       const result = build(value);
       setPreviewUnapplied(!result.element);
       if (result.element) current.onPreviewElement?.(selectedElementId, result.element);
+      else current.onClearPreview?.();
     }, PREVIEW_DEBOUNCE_MS);
   };
   const reset = () => {
@@ -98,31 +99,4 @@ function useSelectionJsxEditor({ documentId, active = true, selectedElementId, s
   return { draft, dirty, error, previewUnapplied, onChange, reset, apply,
     pendingDraft: pendingKey ? JSON.parse(pendingKey) : null };
 }
-/**
-* Re-wrap Selection-tab drafts under a capture host when needed, then reuse
-* stable ids. Pure helper so capture ↔ Fragment round-trips are unit-tested.
-*/
-function buildSelectionRootFromParsed(previousRoot, selectedElementId, parsedRoots) {
-  if (parsedRoots.length === 0) return {
-    error: "No element found in JSX"
-  };
-  const previousCapture = previousRoot.type === "capture" ? previousRoot : null;
-  let parsedRoot;
-  if (parsedRoots.length === 1) {
-    parsedRoot = parsedRoots[0];
-    if (previousCapture && parsedRoot.id !== selectedElementId) parsedRoot = {
-      ...previousCapture,
-      children: [parsedRoot]
-    };
-  } else if (previousCapture) parsedRoot = {
-    ...previousCapture,
-    children: parsedRoots
-  };else return {
-    error: "Selection must have a single root element"
-  };
-  return {
-    element: preserveMatchingSubtreeIds(previousRoot, parsedRoot)
-  };
-}
-
 export { useSelectionJsxEditor };

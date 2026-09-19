@@ -196,12 +196,12 @@ test("fixed-value overrides detach stale metadata and undo restores the binding"
   assert.equal(restored.byId.get("card").theme.bindings[0].tokenId, "bg");
   assert.equal(restored.byId.get("card").styles.backgroundColor, "var(--surface-page)");
 });
-test("exported JSX retains live expressions, local modes and page inheritance when reopened", () => {
+test("exchange JSX retains live expressions, local modes and page inheritance without runtime declarations", () => {
   const store = fixture(); store.variableModes = { colors: "dark", density: "compact" };
   store.byId.set("card", bindElementVariable(setElementVariableMode(store.byId.get("card"), variableFixture, "colors", "ocean"), variableFixture, "backgroundColor", "bg"));
   const jsx = generateJSX(store, 0, { variableLibrary: variableFixture, includeDataElementId: true });
   assert.match(jsx, /var\(--surface-page\)/);
-  assert.match(jsx, /#06293b/);
+  assert.doesNotMatch(jsx, /#06293b|"--surface-page"/);
   const parsed = parseJSX(`<>${jsx}</>`, {}, {});
   assert.equal(parsed.variableModes.colors, "dark");
   assert.equal(parsed.byId.get("card").theme.localCollectionModes.colors, "ocean");
@@ -212,7 +212,7 @@ test("subtree export carries the effective ancestor mode on its new root", () =>
   const store = fixture(); store.variableModes = { colors: "dark", density: "compact" };
   store.byId.set("text", bindElementVariable(store.byId.get("text"), variableFixture, "backgroundColor", "bg"));
   const jsx = generateJSX(store, 0, { rootId: "text", variableLibrary: variableFixture, includeDataElementId: true });
-  assert.match(jsx, /"--surface-page": "#111827"/);
+  assert.doesNotMatch(jsx, /"--surface-page"/);
   assert.match(jsx, /var\(--surface-page\)/);
   assert.match(jsx, /data-bingo-variables/);
 });

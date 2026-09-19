@@ -11,7 +11,8 @@ import { getById, getChildren$2, getRootIds } from "../store/read";
 import { isTransientUploadProp } from "../store/sanitize";
 import { normalizeReactAttrs } from "./htmlAttrCasing";
 import { storeFromNested } from "../store/ensureV2";
-import { prepareVariableStore, resolveCollectionModes } from "../runtime/variables";
+import { resolveCollectionModes } from "../runtime/variables";
+import { prepareProjectVariableStore } from "./projectVariables";
 
 /** Marker embedded in budget truncation stubs — canvas_update hard-rejects if present. */
 var BINGO_TRUNCATED_MARKER = "bingo:truncated";
@@ -54,8 +55,11 @@ function resolveStyleValue(value, assetResolver) {
 * Generate JSX code from a flat Store
 */
 function generateJSX(store, indent = 0, options = {}) {
-  options = { ...options, variableSourceStore: store };
-  if (options.variableLibrary) store = prepareVariableStore(store, options.variableLibrary, options.variablePageModes ?? store.variableModes ?? {}, options.rootId != null ? new Set([options.rootId]) : undefined);
+  options = { ...options, purpose: options.purpose ?? "exchange", variableSourceStore: store };
+  if (!["editor", "exchange", "project"].includes(options.purpose)) throw new Error(`Unknown JSX purpose: ${options.purpose}`);
+  // Rendering declarations never belong to editable or exchange JSX. Project
+  // output handles its own explicit theme boundaries, not component bridges.
+  if (options.purpose === "project" && options.variableLibrary) store = prepareProjectVariableStore(store, options);
   return (options.rootId != null ? [options.rootId] : getRootIds(store)).map(id => generateElement(store, id, indent, options)).join("\n");
 }
 function generateElement(store, id, indent, options) {
@@ -67,7 +71,7 @@ function generateElement(store, id, indent, options) {
     const inner = element.children && element.children.length > 0 ? element.children.map(emitInlineRun).join("") : emitText(element.text || "");
     const hasOuterStyles = element.styles && Object.keys(element.styles).length > 0;
     const hasOuterClass = !!element.className;
-    if (hasOuterStyles || hasOuterClass || element.theme) {
+    if (hasOuterStyles || hasOuterClass || element.theme && options.purpose === "exchange") {
       let attrs = generateAttributes(id, element.styles, {}, options);
       if (hasOuterClass) attrs += ` className="${escapeAttribute(element.className)}"`;
       return `${spaces}<span${attrs}>${inner}</span>`;
@@ -123,7 +127,7 @@ function generateAttributes(elementId, styles, props, options) {
   const pageModes = options?.variableLibrary && isRoot
     ? resolveCollectionModes(sourceStore, sourceStore.parentByChild.get(elementId), options.variableLibrary, options.variablePageModes ?? sourceStore.variableModes ?? {}).modes
     : isRoot ? sourceStore?.variableModes : undefined;
-  if (sourceElement?.theme || (pageModes && Object.keys(pageModes).length)) {
+  if (options?.purpose !== "editor" && options?.purpose !== "project" && (sourceElement?.theme || (pageModes && Object.keys(pageModes).length))) {
     const metadata = { version: 1, ...(sourceElement?.theme ? { theme: sourceElement.theme } : {}), ...(pageModes ? { pageModes } : {}) };
     attrs += ` data-bingo-variables="${escapeAttribute(JSON.stringify(metadata))}"`;
   }
@@ -151,6 +155,7 @@ function generateAttributes(elementId, styles, props, options) {
     if (key === "data-element-id" || key === "dataElementId") return;
     if (isTransientUploadProp(key)) return;
     if (key === "data-bingo-component" || key === "data-bingo-map") return;
+    if (key === "data-bingo-variables") return;
     if (value === void 0) return;
     if (typeof value === "string") {
       const resolved = options?.assetResolver && looksLikeAssetPath$1(value) ? options.assetResolver(value) : value;

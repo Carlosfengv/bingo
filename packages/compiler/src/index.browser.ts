@@ -12,6 +12,7 @@ export { parseCompositionFile } from "./codegen/extractCompositionElement";
 export { extractComponentDependencies, extractIconDependencies } from "./codegen/extractDependencies";
 export { extractPartialCanvasDrawArgs, extractPartialFileWriteArgs, extractPartialMcpToolName, isCanvasDrawToolName, isFileWriteToolName } from "./codegen/extractPartialJson";
 export { generateCompleteFile } from "./codegen/generateCompleteFile";
+export { buildSelectionRootFromParsed } from "./codegen/selectionEdit";
 export { generateIconImports, generateImports, getComponentImportMappings } from "./codegen/generateImports";
 export { generateJSX, generateJSXWithinBudget, hashAllElementSubtreesFrom, hashElementSubtreeFrom, jsxContainsTruncationStub } from "./codegen/generateJSX";
 export { normalizeReactAttrs } from "./codegen/htmlAttrCasing";
