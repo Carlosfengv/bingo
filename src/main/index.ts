@@ -16,6 +16,7 @@ import { registerDebugBridge } from "./debugBridge";
 import { handleDevToolsShortcut } from "./devToolsShortcut";
 import { registerAiConfig } from "./aiConfig";
 import { registerLocalCompiler } from "./localCompiler";
+import { getPresentationUrl, stopPresentationServer } from "./presentationServer";
 import { initializeLocalization, refreshSystemLocale, tNative } from "./localization";
 import { saveFileLocally } from "./localSaveToCode";
 import { chatStoreForRoot, registerLocalStore, resolveRegisteredProjectRoot } from "./localStore";
@@ -488,6 +489,17 @@ function registerIPC() {
     },
   });
   registerLocalCompiler(electron.ipcMain);
+  electron.ipcMain.handle("bingo:open-presentation", async (event, params) => {
+    const projectId = projectForWebContents(event.sender);
+    if (!projectId || params?.projectId !== projectId) throw new Error("Preview project mismatch");
+    if (!resolveRegisteredProjectRoot(projectId)) throw new Error("Preview project is no longer available");
+    const url = await getPresentationUrl(path.join(__dirname, "../renderer"), {
+      projectId, pageId: params.pageId, elementId: params.elementId,
+      locale: params.locale, themeSelection: params.themeSelection
+    });
+    await electron.shell.openExternal(url);
+    return { url };
+  });
   registerDebugBridge();
   registerAiConfig(electron.ipcMain);
 }
@@ -825,6 +837,7 @@ electron.app.on("before-quit", event => {
   }
   cancelAllSessions();
   stopMcpServer();
+  stopPresentationServer();
 });
 electron.app.on("window-all-closed", () => {
   if (process.platform !== "darwin") electron.app.quit();

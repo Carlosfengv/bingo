@@ -7,6 +7,7 @@
  * author's original file. See luna/RECOVERY.md.
  */
 import { invokeLocalStore } from "../localApi";
+import { projectAssetUrl } from "../utils/projectAssetUrl";
 import { ComponentCompiler, executeCompiledModule, stripUnresolvableCssImports } from "@bingo/compiler";
 
 /**
@@ -18,12 +19,6 @@ import { ComponentCompiler, executeCompiledModule, stripUnresolvableCssImports }
 * The actual project ID (UUID) is stored separately.
 */
 var VIRTUAL_ROOT_PREFIX = "/project/";
-function projectAssetUrl(projectId, assetPath) {
-  const rel = assetPath.replace(/^\/+/, "");
-  const joined = `${projectId.replace(/[\\/]+$/, "")}/public/${rel}`.replace(/\\/g, "/");
-  const encoded = joined.split("/").map((part, index) => index === 0 && /^[A-Za-z]:$/.test(part) ? part : encodeURIComponent(part)).join("/");
-  return `file://${encoded.startsWith("/") ? "" : "/"}${encoded}`;
-}
 var WebComponentLoader = class extends ComponentCompiler {
   constructor() {
     let projectIdRef = null;
@@ -31,7 +26,7 @@ var WebComponentLoader = class extends ComponentCompiler {
       onProjectRootChanged: root => {
         if (root.startsWith(VIRTUAL_ROOT_PREFIX)) projectIdRef = root.slice(9);else projectIdRef = root;
         window.__BINGO_RESOLVE_ASSET__ = url => {
-          if (url.startsWith("/") && projectIdRef) return projectAssetUrl(projectIdRef, url);
+          if ((url.startsWith("/") || url.startsWith("bingo-asset:")) && projectIdRef) return projectAssetUrl(projectIdRef, url);
           return url;
         };
       }

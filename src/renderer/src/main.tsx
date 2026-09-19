@@ -6,6 +6,7 @@
  * this is build output with the build's own rewrites undone -- not the
  * author's original file. See luna/RECOVERY.md.
  */
+import "./presentationBridge";
 import { App } from "./App";
 import { queryClient } from "@bingo/workspace";
 import { createInteropJsxRuntime } from "@bingo/compiler";
@@ -26,7 +27,9 @@ window.React = import_react.default;
 window.ReactDOM = import_react_dom;
 window.ReactDOMClient = import_client;
 window.__BINGO_REACT_DOM_SERVER__ = import_server_browser;
-window.__BINGO_REACT_JSX_RUNTIME__ = createInteropJsxRuntime(import_jsx_runtime);
+window.__BINGO_REACT_JSX_RUNTIME__ = createInteropJsxRuntime(import_jsx_runtime, {
+  resolveAsset: url => window.__BINGO_RESOLVE_ASSET__?.(url) ?? url
+});
 async function boot() {
   let latestLocaleState = null;
   let initialized = false;

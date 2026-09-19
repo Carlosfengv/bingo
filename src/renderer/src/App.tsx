@@ -7,10 +7,11 @@ import {
 } from "@bingo/workspace";
 import { GLOBAL_SHORTCUTS, ProjectSettingsModal } from "@bingo/editor";
 import { useTranslation } from "@bingo/i18n";
-import { Button, EditorThemeProvider, PlayIcon, Toaster, Tooltip, TooltipProvider } from "@bingo/ui";
+import { Button, CaretDownIcon, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger, EditorThemeProvider, PlayIcon, Toaster, TooltipProvider } from "@bingo/ui";
 import * as React from "react";
 import { ProjectTitlebar } from "./components/ProjectTitlebar";
 import { ProjectTabLifecycle } from "./components/ProjectTabLifecycle";
+import { browserPresentation } from "./presentationBridge";
 import type { ProjectTab, ProjectTabsState } from "../../shared/projectTabs";
 
 class ErrorBoundary extends React.Component {
@@ -41,6 +42,7 @@ function ErrorFallback({ error, onRetry }) {
 function ProjectEditor({ projectId, onBack }) {
   const { t } = useTranslation("app");
   const openPreviewRef = React.useRef<(() => void) | null>(null);
+  const openBrowserPreviewRef = React.useRef<(() => void) | null>(null);
   const previewLabel = t("preview.title", { ns: "editor" });
   const { data: project } = useProject(projectId);
   const { data: allowedPathsData } = useAllowedPaths(projectId);
@@ -112,14 +114,26 @@ function ProjectEditor({ projectId, onBack }) {
       readOnly={access.mode !== "edit"}
       createBackend={createElectronBackend}
       openPreviewRef={openPreviewRef}
+      openBrowserPreviewRef={openBrowserPreviewRef}
       rightHeader={<div className="editor-panel-header flex items-center justify-end border-b border-ed-divider bg-ed-background p-3">
-        <Tooltip content={`${previewLabel} (${GLOBAL_SHORTCUTS.togglePreviewWindow.keyLabel})`} contentProps={{ side: "bottom" }}>
-          <Button variant="outline" size="xs" isChildText={false} aria-label={previewLabel}
-            onClick={() => openPreviewRef.current?.()}>
-            <PlayIcon width={14} height={14} aria-hidden="true" />
-            <span>{previewLabel}</span>
-          </Button>
-        </Tooltip>
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="xs" isChildText={false} aria-label={previewLabel}>
+              <PlayIcon width={14} height={14} aria-hidden="true" />
+              <span>{previewLabel}</span>
+              <CaretDownIcon width={12} height={12} aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" onCloseAutoFocus={event => event.preventDefault()}>
+            <DropdownMenuItem onSelect={() => openPreviewRef.current?.()}>
+              {t("preview.windowPreview", { ns: "editor" })}
+              <DropdownMenuShortcut>{GLOBAL_SHORTCUTS.togglePreviewWindow.keyLabel}</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => openBrowserPreviewRef.current?.()}>
+              {t("preview.webPreview", { ns: "editor" })}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>}
       allowedPaths={allowedPaths}
       onAddAllowedPath={addAllowedPath}
@@ -259,7 +273,11 @@ function AppContent() {
 }
 
 function App() {
-  return <EditorThemeProvider><TooltipProvider><AppContent /><Toaster /></TooltipProvider></EditorThemeProvider>;
+  const params = new URLSearchParams(window.location.search);
+  return <EditorThemeProvider><TooltipProvider>
+    {browserPresentation ? <ErrorBoundary><EditorView projectPath={params.get("project")} protoMode readOnly isElectron={false} /></ErrorBoundary> : <AppContent />}
+    <Toaster />
+  </TooltipProvider></EditorThemeProvider>;
 }
 
 export { App };

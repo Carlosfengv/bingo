@@ -54,12 +54,23 @@ function ensureDispatcherOwner(seen) {
 * Delegates to React's real runtime — re-implementing jsx() via createElement
 * takes React 19's owner-tracking path and breaks the same reconcilers.
 */
-function createInteropJsxRuntime(runtime) {
+function createInteropJsxRuntime(runtime, { resolveAsset } = {}) {
   const seen = {
     current: null
   };
   const wrap = fn => (...args) => {
     ensureDispatcherOwner(seen);
+    const [type, props] = args;
+    if (resolveAsset && typeof type === "string" && ["img", "source", "video", "audio", "track"].includes(type) && props) {
+      let next = props;
+      for (const key of ["src", "poster"]) {
+        const value = props[key];
+        if (typeof value === "string" && ((value.startsWith("/") && !value.startsWith("//")) || value.startsWith("bingo-asset:"))) {
+          next = { ...next, [key]: resolveAsset(value) };
+        }
+      }
+      args[1] = next;
+    }
     return fn(...args);
   };
   const source = runtime;

@@ -137,40 +137,18 @@ function useFramePager(t0) {
 * Render one frame in presentation mode (no editor wrappers, iframes live).
 * Walks the frame tree via renderElement — expensive, so this stays memoized.
 */
-function useFrameContent(currentId, store, render) {
-  store = useVariableRenderStore(store);
-  const $ = (0, import_compiler_runtime.c)(7);
-  const {
-    components,
-    componentIndex,
-    iconLibraries,
-    assetResolver
-  } = render;
-  let t0;
-  if ($[0] !== assetResolver || $[1] !== componentIndex || $[2] !== components || $[3] !== currentId || $[4] !== iconLibraries || $[5] !== store) {
-    t0 = currentId ? renderElement(currentId, store, {
-      components,
-      componentIndex,
-      iconLibraries,
-      assetResolver,
-      presentationMode: true,
-      selectionMode: "deepest",
-      isFrameRoot: true
-    }) : null;
-    $[0] = assetResolver;
-    $[1] = componentIndex;
-    $[2] = components;
-    $[3] = currentId;
-    $[4] = iconLibraries;
-    $[5] = store;
-    $[6] = t0;
-  } else t0 = $[6];
-  return t0;
+function useFrameContent(currentId, store, render, responsive = false) {
+  const resolvedStore = useVariableRenderStore(store);
+  const { components, componentIndex, iconLibraries, assetResolver } = render;
+  return import_react.useMemo(() => currentId ? renderElement(currentId, resolvedStore, {
+    components, componentIndex, iconLibraries, assetResolver,
+    presentationMode: true, responsivePreview: responsive,
+    selectionMode: "deepest", isFrameRoot: true
+  }) : null, [currentId, resolvedStore, components, componentIndex, iconLibraries, assetResolver, responsive]);
 }
 /**
-* Measure the frame's real rendered box (offsetWidth/Height — pre-transform, so
-* accurate under the scale() below) and derive a fit-to-WIDTH factor against the
-* container: never upscale past 1:1, and let tall frames scroll instead of being
+* Measure the original frame before scaling. Fit its width to the container;
+* never upscale past 1:1, and let tall frames scroll instead of being
 * crushed to fit the height. Reading the layout box beats element.styles.width/
 * height, which misses sizes coming from a class, inheritance, or another prop.
 * `frameSizeRef` mirrors the size for imperative (per-pointermove) consumers.

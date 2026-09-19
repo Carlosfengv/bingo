@@ -233,7 +233,10 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
       ...options,
       isFrameRoot: false
     };
-    const styles = normalizeFrameRootStyles(element.styles);
+    const styles = options.responsivePreview ? {
+      ...normalizeFrameRootStyles(element.styles),
+      width: "100%", minWidth: 0, maxWidth: "none", height: "auto", minHeight: "100vh", maxHeight: "none"
+    } : normalizeFrameRootStyles(element.styles);
     if (styles !== element.styles) element = {
       ...element,
       styles

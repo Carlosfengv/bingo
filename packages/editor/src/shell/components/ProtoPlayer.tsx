@@ -9,6 +9,7 @@
 import { LOCAL_SHORTCUTS } from "../../shared/shortcuts/catalog";
 import { isTypingTarget, matchesShortcut } from "../../shared/shortcuts/matchShortcut";
 import { PresentationFrame, useFitToWidth, useFrameContent, useFramePager } from "./presentation";
+import { ResponsivePreview } from "./ResponsivePreview";
 import { ChevronLeft, ChevronRight, Minus, Plus, RotateCcw } from "lucide-react";
 import { useTranslation } from "@bingo/i18n";
 import * as import_react from "react";
@@ -34,7 +35,7 @@ function contentHasFocus() {
 * Rendered by BingoEditor in protoMode, reusing its loaded store/components/
 * CSS. Content is rendered in `presentationMode` so real controls stay interactive.
 */
-function ProtoPlayer(t0) {
+function FixedProtoPlayer(t0) {
   const $ = (0, import_compiler_runtime.c)(126);
   const { t } = useTranslation("editor");
   let pageName;
@@ -704,6 +705,38 @@ function _temp2$8(e_3) {
 }
 function _temp$15() {
   return typeof window !== "undefined" ? window.innerWidth : 1280;
+}
+
+function ProtoPlayer({ store, rootIds, startId, pageName, ...render }) {
+  const { t } = useTranslation("editor");
+  const [responsive, setResponsive] = import_react.useState(true);
+  const { currentId, index, go } = useFramePager({
+    store, rootIds, startId, prevShortcut: LOCAL_SHORTCUTS.prototypePlayer.prev,
+    nextShortcut: LOCAL_SHORTCUTS.prototypePlayer.next, isDisabled: () => !responsive
+  });
+  const content = useFrameContent(currentId, store, render, true);
+  import_react.useEffect(() => {
+    document.title = `${pageName || t("preview.title")} · Bingo`;
+  }, [pageName, t]);
+  return <div className="h-screen w-screen overflow-hidden">
+    {responsive ? (currentId ? <ResponsivePreview title={t("preview.title")} onKeyDown={event => {
+      if (event.defaultPrevented || isTypingTarget(event)) return;
+      if (event.key === "ArrowRight") { event.preventDefault(); go(1); }
+      else if (event.key === "ArrowLeft") { event.preventDefault(); go(-1); }
+    }}>{content}</ResponsivePreview>
+      : <div className="flex h-full items-center justify-center">{t("preview.empty")}</div>)
+      : <FixedProtoPlayer store={store} rootIds={rootIds} startId={currentId} pageName={pageName} {...render} />}
+    <nav aria-label={t("preview.prototypeFrames")} className="fixed right-4 top-4 z-50 flex items-center gap-2 rounded-lg border border-ed-border bg-ed-background p-2 text-xs text-ed-foreground shadow-lg">
+      {responsive && rootIds.length > 1 && <>
+        <button type="button" onClick={() => go(-1)} aria-label={t("preview.previousFrame")}><ChevronLeft size={18} /></button>
+        <span>{index + 1} / {rootIds.length}</span>
+        <button type="button" onClick={() => go(1)} aria-label={t("preview.nextFrame")}><ChevronRight size={18} /></button>
+      </>}
+      <button type="button" onClick={() => setResponsive(value => !value)} aria-pressed={responsive}>
+        {t(responsive ? "preview.responsive" : "preview.originalSize")}
+      </button>
+    </nav>
+  </div>;
 }
 
 export { ProtoPlayer };

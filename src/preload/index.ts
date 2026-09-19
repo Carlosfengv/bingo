@@ -9,6 +9,7 @@
 import * as electron from "electron";
 
 const INVOKE_CHANNELS = new Set([
+  "bingo:open-presentation",
   "project-tabs:get", "project-tabs:open", "project-tabs:activate", "project-tabs:reload", "project-tabs:home", "project-tabs:close", "project-tabs:list",
   "agent:list", "agent:models", "ai_chat", "ai_chat_cancel", "ai_chat_title", "ai-config:get", "ai-config:set", "ai-config:test",
   "claude:check-status", "claude:list-connections", "claude:list-commands", "clear_all_caches",

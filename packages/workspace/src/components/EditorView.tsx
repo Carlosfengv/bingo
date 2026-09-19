@@ -1,4 +1,5 @@
 import { ProjectLoadError } from "./ProjectLoadError";
+import { projectAssetUrl } from "../utils/projectAssetUrl";
 import { ProjectLoadProgress } from "./ProjectLoadProgress";
 import { ProjectStylesAlert } from "./ProjectStylesAlert";
 import { ProjectDependencyPrompt } from "./ProjectDependencyPrompt";
@@ -42,14 +43,6 @@ async function loadInstalledIconLibrary(projectId, library, revision) {
   return icons;
 }
 
-function projectAssetUrl(projectId, assetPath) {
-  const rel = String(assetPath || "").replace(/^\/+/, "");
-  const joined = `${projectId.replace(/[\\/]+$/, "")}/public/${rel}`.replace(/\\/g, "/");
-  const encoded = joined.split("/").map((part, index) =>
-    index === 0 && /^[A-Za-z]:$/.test(part) ? part : encodeURIComponent(part)
-  ).join("/");
-  return `file://${encoded.startsWith("/") ? "" : "/"}${encoded}`;
-}
 
 function EditorView({
   projectPath,
@@ -63,6 +56,7 @@ function EditorView({
   createBackend: createBackendProp,
   onRebuildRef,
   openPreviewRef,
+  openBrowserPreviewRef,
   allowedPaths,
   onAddAllowedPath,
   onRemoveAllowedPath,
@@ -84,6 +78,7 @@ function EditorView({
   onProjectIconClick,
 }) {
   const projectId = projectPath;
+  const assetResolver = React.useCallback((url) => url.startsWith("/") || url.startsWith("bingo-asset:") ? projectAssetUrl(projectId, url) : url, [projectId]);
   const [feedbackDraft, setFeedbackDraft] = React.useState(null);
   const [cssLoaded, setCssLoaded] = React.useState(false);
   const [loadTimedOut, setLoadTimedOut] = React.useState(false);
@@ -286,7 +281,6 @@ function EditorView({
     }}>{dependencyPrompt}</ProjectLoadError>;
   }
 
-  const assetResolver = (url) => url.startsWith("/") ? projectAssetUrl(projectId, url) : url;
   return <BackendProvider backend={backend}>
     <BingoEditor
       components={components}
@@ -307,6 +301,7 @@ function EditorView({
       onComponentCreated={waitForComponent}
       serverDrivenFileRefresh={true}
       openPreviewRef={openPreviewRef}
+      openBrowserPreviewRef={openBrowserPreviewRef}
       onSelectionChange={onSelectionChange}
       scanLoading={scanLoading}
       onRequestPropsScan={requestPropsScan}

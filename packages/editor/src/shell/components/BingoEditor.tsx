@@ -382,6 +382,7 @@ var BingoEditorInner = ({
   figmaImageResolver,
   onFileChangedRef,
   openPreviewRef,
+  openBrowserPreviewRef,
   onSelectionChange,
   onCopySelectionLink,
   comments: commentsProp = [],
@@ -405,7 +406,7 @@ var BingoEditorInner = ({
   onCommentsHiddenChange,
   fonts
 }) => {
-  const { t } = useTranslation("editor");
+  const { t, i18n } = useTranslation("editor");
   const uploadImage = useUploadImage();
   const searchParams = useSearchParamsCompat();
   const elementParam = searchParams?.get("element") ?? null;
@@ -3784,6 +3785,27 @@ var BingoEditorInner = ({
       if (!saved) throw new Error(t("shell.pageSaveFailed"));
     }
   });
+  const openingBrowserPreviewRef = (0, import_react.useRef)(false);
+  const openBrowserPreview = (0, import_react.useEffectEvent)(async (elementId) => {
+    if (openingBrowserPreviewRef.current) return;
+    openingBrowserPreviewRef.current = true;
+    try {
+      await flushProjectCanvases();
+      await window.api.invoke("bingo:open-presentation", {
+        projectId: effectiveProjectPath, pageId: activePageId,
+        elementId: elementId ?? selectedElementId, locale: i18n.resolvedLanguage
+      });
+    } catch (error) {
+      toast.error(t("preview.openFailed", { error: error?.message || String(error) }));
+    } finally {
+      openingBrowserPreviewRef.current = false;
+    }
+  });
+  (0, import_react.useEffect)(() => {
+    if (!openBrowserPreviewRef) return;
+    openBrowserPreviewRef.current = () => openBrowserPreview();
+    return () => { openBrowserPreviewRef.current = null; };
+  }, [openBrowserPreviewRef]);
   (0, import_react.useEffect)(() => {
     const prepare = event => event.detail.pending.push(flushProjectCanvases());
     window.addEventListener("bingo:prepare-project-close", prepare);
@@ -4416,7 +4438,7 @@ var BingoEditorInner = ({
                     e_14.preventDefault();
                     suppressMenuCloseFocusRef.current = false;
                   }
-                }}>{renderContextMenuItems(canvasMenuTargetId)}</ContextMenuContent>}</ContextMenu$1>}</div>}{<CreateComponentModal isOpen={showCreateComponentModal} onClose={() => setShowCreateComponentModal(false)} onConfirm={onCreateComponent} />}{showVersionHistory && focusedComponent?.filePath && <VersionHistoryModal componentName={focusedComponent.name} filePath={focusedComponent.filePath} onClose={() => setShowVersionHistory(false)} onRestore={fp => refreshFocusedComponentRef.current(fp)} componentIndex={mergedComponentIndex} compilePreview={compilePreview} />}</CanvasLayout>}{previewOpen && <PreviewWindow store={currentStore} rootIds={getRootIds(currentStore)} startId={selectedElementId ?? void 0} components={components} componentIndex={componentIndex} iconLibraries={iconLibraries} assetResolver={assetResolver} onClose={() => setPreviewOpen(false)} onPopOut={effectiveProjectPath ? () => window.open(`${webBaseUrl ?? ""}/proto/${effectiveProjectPath}${selectedElementId ? `?element=${selectedElementId}` : ""}`, "_blank") : void 0} />}</ScrubSessionContext.Provider>}</ActiveToolProvider>}</EditorModeProvider>}</VariableEditorProvider></>;
+                }}>{renderContextMenuItems(canvasMenuTargetId)}</ContextMenuContent>}</ContextMenu$1>}</div>}{<CreateComponentModal isOpen={showCreateComponentModal} onClose={() => setShowCreateComponentModal(false)} onConfirm={onCreateComponent} />}{showVersionHistory && focusedComponent?.filePath && <VersionHistoryModal componentName={focusedComponent.name} filePath={focusedComponent.filePath} onClose={() => setShowVersionHistory(false)} onRestore={fp => refreshFocusedComponentRef.current(fp)} componentIndex={mergedComponentIndex} compilePreview={compilePreview} />}</CanvasLayout>}{previewOpen && <PreviewWindow store={currentStore} rootIds={getRootIds(currentStore)} startId={selectedElementId ?? void 0} components={components} componentIndex={componentIndex} iconLibraries={iconLibraries} assetResolver={assetResolver} onClose={() => setPreviewOpen(false)} onPopOut={effectiveProjectPath ? elementId => openBrowserPreview(elementId) : void 0} />}</ScrubSessionContext.Provider>}</ActiveToolProvider>}</EditorModeProvider>}</VariableEditorProvider></>;
 };
 var BingoEditor = t0 => {
   const $ = (0, import_compiler_runtime.c)(9);
