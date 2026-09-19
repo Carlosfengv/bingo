@@ -11,7 +11,8 @@ import { useSkillOverrides, useUpdateSkillOverrides } from "../hooks/useSkillOve
 import { projectBuilderClient } from "../services/ProjectBuilderClient";
 import { cleanupProjectStylesheet, loadProjectStylesheet } from "../services/projectStylesheet";
 import { FeedbackDialog } from "./ProjectsSidebarFeedback";
-import { executeCompiledModule, isLoadableIconLibrary } from "@bingo/compiler";
+import { isLoadableIconLibrary } from "@bingo/compiler";
+import { loadProjectIconLibrary } from "../services/projectIconLibrary";
 import { BackendProvider, BingoEditor, applyFonts, cleanupFonts } from "@bingo/editor";
 import * as React from "react";
 
@@ -23,13 +24,9 @@ const ICON_LIBRARY_DISPLAY_NAMES = {
   "@heroicons/react/24/outline": "Heroicons Outline",
   "@heroicons/react/24/solid": "Heroicons Solid",
   "@heroicons/react/20/solid": "Heroicons Mini",
+  "@hugeicons/core-free-icons": "Hugeicons",
 };
 const iconLibraryCache = new Map();
-
-function isUsableIconExport(name, value) {
-  return (typeof value === "function" || (typeof value === "object" && value !== null && "$$typeof" in value)) &&
-    /^[A-Z][a-zA-Z0-9]*$/.test(name) && name !== "default";
-}
 
 function displayNameForIconLibrary(library) {
   return ICON_LIBRARY_DISPLAY_NAMES[library] ||
@@ -40,11 +37,7 @@ async function loadInstalledIconLibrary(projectId, library, revision) {
   const cacheKey = `${projectId}:${library}:${revision || "current"}`;
   if (iconLibraryCache.has(cacheKey)) return iconLibraryCache.get(cacheKey);
   if (!isLoadableIconLibrary(library)) return undefined;
-  const result = await window.api.invoke("bingo:load-module", { root: projectId, specifier: library });
-  if (!result?.success || !result.url) throw new Error(result?.error || `Could not load ${library}`);
-  const module = await executeCompiledModule(result.url);
-  const icons = Object.fromEntries(Object.entries(module).filter(([name, value]) => isUsableIconExport(name, value)));
-  if (Object.keys(icons).length === 0) throw new Error(`${library} does not export named React icon components`);
+  const icons = await loadProjectIconLibrary(projectId, library);
   iconLibraryCache.set(cacheKey, icons);
   return icons;
 }

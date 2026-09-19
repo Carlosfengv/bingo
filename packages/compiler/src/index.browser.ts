@@ -25,6 +25,7 @@ export { applySourceEdit, resolveElementInSource } from "./codegen/sourceEdit";
 export { ComponentCompiler, componentDisplayName } from "./runtime/ComponentCompiler";
 export { buildCompositionTemplates, getCompositionPathForBase, isCompositionFile } from "./runtime/compositionFiles";
 export { executeCompiledModule, executeCompiledModuleSource } from "./runtime/executeModule";
+export { loadIconLibrary } from "./runtime/iconLibrary";
 export { isFigmaClipboardHtml, parseFigmaClipboardHtml } from "./runtime/figma/parser/clipboard";
 export { parseFigmaArchive } from "./runtime/figma/parser/kiwi";
 export { vectorNetworkBlobToPaths } from "./runtime/figma/parser/vector";
