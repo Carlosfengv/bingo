@@ -24,6 +24,20 @@ function fixture() {
   const root = { id: "root", type: "html", tag: "div", children: [{ id: "card", type: "html", tag: "div", children: [{ id: "text", type: "html", tag: "span" }] }] };
   return ensureV2([root, { id: "second", type: "html", tag: "div" }]);
 }
+test("prepared variable scopes reuse unchanged nodes across edits, page modes and library revisions", () => {
+  const before = fixture();
+  before.byId.set("card", setElementVariableMode(before.byId.get("card"), variableFixture, "colors", "ocean"));
+  const first = prepareVariableStore(before, variableFixture);
+  const byId = new Map(before.byId).set("root", setElementVariableMode(before.byId.get("root"), variableFixture, "colors", "dark"));
+  const next = prepareVariableStore({ ...before, byId }, variableFixture);
+  assert.notEqual(first.byId.get("root"), next.byId.get("root"));
+  for (const id of ["second", "card", "text"]) assert.equal(first.byId.get(id), next.byId.get(id));
+  const page = prepareVariableStore(before, variableFixture, { colors: "dark" });
+  assert.equal(page.byId.get("card"), first.byId.get("card"));
+  assert.equal(page.byId.get("root").styles["--surface-page"], "#111827");
+  const library = structuredClone(variableFixture); library.tokens[0].valuesByMode.light.value = "#aabbcc";
+  assert.equal(prepareVariableStore(before, library).byId.get("root").styles["--surface-page"], "#aabbcc");
+});
 test("unchanged modes retain identity while an explicit override of an inherited value remains an edit", () => {
   const element = fixture().byId.get("root");
   assert.equal(setElementVariableMode(element, variableFixture, "colors", null), element);
@@ -112,6 +126,22 @@ test("render-only values differ across roots without modifying saved variable ex
   assert.equal(prepared.byId.get("card").styles["--surface-card"], "#06293b");
   assert.equal(store.byId.get("root").styles["--surface-page"], undefined);
 });
+test("render declarations stay on scope boundaries and untouched descendants retain identity", () => {
+  const store = fixture();
+  store.byId.set("card", setElementVariableMode(store.byId.get("card"), variableFixture, "colors", "ocean"));
+  const originalText = store.byId.get("text");
+  const prepared = prepareVariableStore(store, variableFixture, { colors: "dark", density: "comfortable" });
+  assert.equal(prepared.byId.get("root").styles["--surface-page"], "#111827");
+  assert.equal(prepared.byId.get("card").styles["--surface-page"], "#06293b");
+  assert.equal(prepared.byId.get("text"), originalText);
+  assert.equal(prepared.byId.get("text").styles?.["--surface-page"], undefined);
+});
+test("components retain declarations as a portal compatibility bridge", () => {
+  const store = ensureV2([{ id: "root", type: "html", tag: "div", children: [{ id: "dialog", type: "component", componentName: "Dialog" }] }]);
+  const prepared = prepareVariableStore(store, variableFixture, { colors: "dark", density: "compact" });
+  assert.equal(prepared.byId.get("dialog").styles["--surface-page"], "#111827");
+  assert.equal(prepared.byId.get("dialog").styles["--space-gap"], "8");
+});
 test("page modes survive ordinary edits, save/reload, and undo/redo", () => {
   const store = fixture();
   const ops = [{ type: "set_variable_modes", oldModes: undefined, newModes: { colors: "dark" } }];
@@ -144,4 +174,12 @@ test("exported JSX retains live expressions, local modes and page inheritance wh
   assert.equal(parsed.byId.get("card").theme.localCollectionModes.colors, "ocean");
   assert.equal(parsed.byId.get("card").theme.bindings[0].tokenId, "bg");
   assert.equal(parsed.byId.get("card").props["data-bingo-variables"], undefined);
+});
+test("subtree export carries the effective ancestor mode on its new root", () => {
+  const store = fixture(); store.variableModes = { colors: "dark", density: "compact" };
+  store.byId.set("text", bindElementVariable(store.byId.get("text"), variableFixture, "backgroundColor", "bg"));
+  const jsx = generateJSX(store, 0, { rootId: "text", variableLibrary: variableFixture, includeDataElementId: true });
+  assert.match(jsx, /"--surface-page": "#111827"/);
+  assert.match(jsx, /var\(--surface-page\)/);
+  assert.match(jsx, /data-bingo-variables/);
 });

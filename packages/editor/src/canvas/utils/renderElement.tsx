@@ -7,6 +7,7 @@
  * author's original file. See luna/RECOVERY.md.
  */
 import { measureVisibleBounds } from "../../shared/utils/visibleElement";
+import { measureCanvasWork } from "../lib/canvasPerformance";
 import { CapturedPageRenderer } from "../components/CapturedPageRenderer";
 import { DraggableElement } from "../components/DraggableElement";
 import { ElementErrorBoundary } from "../components/ErrorBoundary";
@@ -215,6 +216,12 @@ function domTag(tag) {
 }
 function renderElement(idOrElement, store, options = {}) {
   try {
+    if (options.renderCache && typeof idOrElement === "string") {
+      return options.renderCache.render(idOrElement, options, () => {
+        const build = () => measureCanvasWork("renderNode", () => renderElementOrThrow(idOrElement, store, options));
+        return options._currentParentId == null ? measureCanvasWork("tree", build) : build();
+      });
+    }
     return renderElementOrThrow(idOrElement, store, options);
   } catch (error) {
     const id = typeof idOrElement === "string" ? idOrElement : idOrElement?.id;
@@ -263,7 +270,7 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
   const wrapInteractive = isElementInteractive("topmost", _currentParentId, interactiveParentIds);
   const takesPointer = () => {
     const mode = liveSelectionMode();
-    return isElementInteractive(mode, _currentParentId, options.interactiveParentIdsRef?.current ?? interactiveParentIds) && !(mode !== "deepest" && yieldsToCoveredRoot(store, element.id, options.drilledParentId));
+    return isElementInteractive(mode, _currentParentId, options.interactiveParentIdsRef?.current ?? interactiveParentIds) && !(mode !== "deepest" && yieldsToCoveredRoot(options.liveStoreRef?.current ?? store, element.id, options.drilledParentIdRef ? options.drilledParentIdRef.current : options.drilledParentId));
   };
   const isSVGElement = element.type === "html" && element.tag === "svg";
   const childSVGContext = isSVGContext || isSVGElement;
@@ -278,7 +285,7 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
         const id = node.getAttribute?.("data-element-id");
         if (id) path.push(id);
       }
-      options.onSelectElement(resolveTextOwner(store, element.id), e.shiftKey, {
+      options.onSelectElement(resolveTextOwner(options.liveStoreRef?.current ?? store, element.id), e.shiftKey, {
         x: e.clientX,
         y: e.clientY,
         detail: countClick(e.clientX, e.clientY),
@@ -288,7 +295,7 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
     onMouseOver: options.onHoverElement ? e => {
       const interactive = takesPointer();
       if (interactive && (element.type !== "text" || liveSelectionMode() === "deepest")) e.stopPropagation();
-      if (interactive) options.onHoverElement(resolveTextOwner(store, element.id));
+      if (interactive) options.onHoverElement(resolveTextOwner(options.liveStoreRef?.current ?? store, element.id));
     } : void 0,
     onMouseLeave: options.onHoverElement ? e => {
       const interactive = takesPointer();
@@ -478,7 +485,7 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
       ...commonProps,
       "data-text-element": "true",
       onDoubleClick: e => {
-        const ownerId = resolveTextOwner(store, element.id);
+        const ownerId = resolveTextOwner(options.liveStoreRef?.current ?? store, element.id);
         if (!((options.selectedElementIdsRef?.current ?? options.selectedElementIds)?.has(ownerId) ?? false)) return;
         e.stopPropagation();
         if (options.onStartEditText) {
@@ -504,6 +511,7 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
     }, captureChildren);
   } else if (element.type === "component") {
     const componentElement = element;
+    const componentRevision = options.renderCache?.componentRevision(element.componentName) ?? options.componentsRevision ?? 0;
     const componentInfo = options.componentIndex?.[element.componentName];
     const hasChildrenProp = componentInfo?.props?.children !== void 0;
     const componentChildIds = getChildren$2(store, element.id);
@@ -516,10 +524,10 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
         styles: element.styles ?? null,
         children: componentChildIds,
         inspectsChildren: componentInfo?.inspectsChildren === true,
-        revision: options.componentsRevision ?? 0
+        revision: componentRevision
       });
     } catch {
-      renderSignature = `${componentChildIds.join(",")}:${componentInfo?.inspectsChildren === true}:${options.componentsRevision ?? 0}`;
+      renderSignature = `${componentChildIds.join(",")}:${componentInfo?.inspectsChildren === true}:${componentRevision}`;
     }
     const crashedRender = crashedElementRenders.get(element.id);
     const componentStillCrashed = !!crashedRender && crashedRender.component === Component && crashedRender.signature === renderSignature;
@@ -542,7 +550,7 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
       }, fallbackChildren);
     } else {
       if (element._componentMissing) delete element._componentMissing;
-      const componentMountKey = `${element.id}:r${options.componentsRevision ?? 0}`;
+      const componentMountKey = `${element.id}:r${componentRevision}`;
       const componentPositioned = isOutOfFlow(element.styles?.position);
       const {
         box,

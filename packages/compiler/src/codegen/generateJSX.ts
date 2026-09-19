@@ -55,7 +55,7 @@ function resolveStyleValue(value, assetResolver) {
 */
 function generateJSX(store, indent = 0, options = {}) {
   options = { ...options, variableSourceStore: store };
-  if (options.variableLibrary) store = prepareVariableStore(store, options.variableLibrary, options.variablePageModes ?? store.variableModes ?? {});
+  if (options.variableLibrary) store = prepareVariableStore(store, options.variableLibrary, options.variablePageModes ?? store.variableModes ?? {}, options.rootId != null ? new Set([options.rootId]) : undefined);
   return (options.rootId != null ? [options.rootId] : getRootIds(store)).map(id => generateElement(store, id, indent, options)).join("\n");
 }
 function generateElement(store, id, indent, options) {

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { emptyVariableLibrary, bindElementVariable, detachElementVariable, findElementVariableBinding, resolveCollectionModes, resolveVariableValues, setElementVariableMode, sameCollectionModes, prepareVariableStore, validateVariableLibrary, literalForProperty, variableModesSignature } from "../../../../compiler/src/runtime/variables";
 import { createSetStylesOperation } from "../utils/operations";
+import { measureCanvasWork } from "../../canvas/lib/canvasPerformance";
 
 export const VariableLibraryContext = React.createContext<any>(null);
 const VariableSnapshotContext = React.createContext<any>(null);
@@ -183,10 +184,10 @@ export function useVariableRenderStore(store) {
   const variables = useVariableSnapshot();
   if (!variables?.library.tokens.length) return store;
   const modes = store.variableModes ?? variables.defaultModes;
-  const signature = JSON.stringify(modes);
+  const signature = variableModesSignature(variables.library, modes);
   const cached = renderCache.get(store);
   if (cached?.library === variables.library && cached.signature === signature) return cached.store;
-  const prepared = prepareVariableStore(store, variables.library, modes);
+  const prepared = measureCanvasWork("variables", () => prepareVariableStore(store, variables.library, modes));
   renderCache.set(store, { library: variables.library, signature, store: prepared });
   return prepared;
 }

@@ -14,10 +14,14 @@ const viewport = (...ids: string[]) => ({ querySelectorAll: () => ids.map(id => 
 const flushFrames = () => { const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(cb => cb(performance.now())); };
 
 test("disabled diagnostics do not collect, work values and exceptions are preserved", () => {
+  assert.equal(measureCanvasWork("variables", () => 7), 7);
   assert.equal(measureCanvasWork("tree", () => 42), 42);
+  assert.equal(getCanvasPerformance().variables.count, 0);
   assert.equal(getCanvasPerformance().tree.count, 0);
   setCanvasPerformanceEnabled(true);
+  assert.equal(measureCanvasWork("variables", () => 7), 7);
   assert.throws(() => measureCanvasWork("tree", () => { throw new Error("render failed"); }), /render failed/);
+  assert.equal(getCanvasPerformance().variables.count, 1);
   assert.equal(getCanvasPerformance().tree.count, 1);
 });
 test("selection waits for the matching overlay and excludes unchanged selections", () => {

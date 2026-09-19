@@ -16,7 +16,8 @@
     "dist:mac": "pnpm check && node tools/package-mac.mjs",
     "rebuild:source": "node tools/rebuild.mjs",
     "start": "electron-vite preview",
-    "test": "node --import tsx --test src/main/*.test.ts packages/compiler/src/runtime/*.test.ts packages/compiler/src/recovery/*.test.ts packages/editor/src/shell/utils/*.test.ts"
+    "test": "node --import tsx --test src/main/*.test.ts packages/compiler/src/runtime/*.test.ts packages/compiler/src/recovery/*.test.ts packages/editor/src/shell/utils/*.test.ts",
+    "bench:variables": "tsx tools/benchmark-variable-modes.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "*",

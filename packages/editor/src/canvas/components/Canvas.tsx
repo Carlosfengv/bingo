@@ -11,7 +11,7 @@ import { useVariableRenderStore } from "../../shared/theme/VariableContext";
 import { useStableCanvasTreeProps } from "../hooks/useStableCanvasTreeProps";
 import { CanvasSelectionContext } from "../lib/CanvasSelectionContext";
 import { CanvasPerformanceToolbar } from "./CanvasPerformanceToolbar";
-import { measureCanvasWork, commitCanvasSelection } from "../lib/canvasPerformance";
+import { commitCanvasSelection } from "../lib/canvasPerformance";
 import { isInsertTool, useActiveTool } from "../../shared/contexts/ActiveToolContext";
 import { useAssetResolver } from "../../shared/contexts/AssetContext";
 import { useUploadImage } from "../../shared/hooks/useUploadImage";
@@ -35,6 +35,7 @@ import { getElementComputedMargins, getElementRect$1 } from "../utils/collisionU
 import { computeEdgeDistances, getAbsoluteContainingBox, getElementPaddingBox, isFlowLayoutElement } from "../utils/domGeometry";
 import { mapScreenPoint, previewZoomDrift } from "../utils/dragFrame";
 import { dragPreviewBoxSize, withDragPreviewSize } from "../utils/dragPreviewGeometry";
+import { createCanvasRenderCache } from "../utils/renderCache";
 import { collectAdoptedChildren, renderElement } from "../utils/renderElement";
 import { collectSnapLines, visibleSnapRects } from "../utils/snapping";
 import { CANVAS_ZOOM_STEP, MIN_CANVAS_SCALE, clampCanvasScale, zoomScaleForWheel } from "../utils/zoom";
@@ -373,194 +374,83 @@ var PanAwarePointerSensor = class extends PointerSensor {
     }];
   }
 };
-function CanvasRootRender(t0) {
-  t0 = { ...t0, store: useVariableRenderStore(t0.store) };
-  const $ = (0, import_compiler_runtime.c)(6);
-  const {
-    rootId,
-    store,
-    options
-  } = t0;
-  let t1;
-  if ($[0] !== options || $[1] !== rootId || $[2] !== store) {
-    t1 = measureCanvasWork("tree", () => renderElement(rootId, store, options));
-    $[0] = options;
-    $[1] = rootId;
-    $[2] = store;
-    $[3] = t1;
-  } else t1 = $[3];
-  let t2;
-  if ($[4] !== t1) {
-    t2 = <>{t1}</>;
-    $[4] = t1;
-    $[5] = t2;
-  } else t2 = $[5];
-  return t2;
+/** Keep visual subtrees independent from selection and event callback identity. */
+function CanvasRootTrees(props) {
+  const stable = useStableCanvasTreeProps(props);
+  const store = useVariableRenderStore(props.store);
+  const liveStoreRef = import_react.useRef(store);
+  const drilledParentIdRef = import_react.useRef(props.drilledParentId);
+  import_react.useLayoutEffect(() => {
+    liveStoreRef.current = store;
+    drilledParentIdRef.current = props.drilledParentId;
+  }, [store, props.drilledParentId]);
+  const cache = import_react.useMemo(createCanvasRenderCache, []);
+  const { panMode, commentMode, readOnly, selectElement, throttledHoverElement,
+    components, componentIndex, componentsRevision, iconLibraries, onEditText,
+    editingTextId, editingTextBounds, setEditingTextBounds, onStartEditTextProp,
+    onStopEditTextProp, onActivateTextEditor, onDeactivateTextEditor, onTextSelectionChange,
+    selectedElementIdsRef, selectionMode, selectionModeRef, canvasScale, onResizeElement,
+    onViewportZoom, onViewportPan, assetResolver, onFixWithAI, onAddElement,
+    onUpdateElementProps, onSaveToCode, onOpenFile, allowedPaths, onAddAllowedPath,
+    interactiveParentIds, interactiveParentIdsRef } = stable;
+  const handlers = import_react.useMemo(() => ({
+    onStartEditText: readOnly || panMode ? undefined : (id, bounds) => {
+      setEditingTextBounds(bounds);
+      onStartEditTextProp?.(id);
+      selectElement(resolveTextOwner(liveStoreRef.current, id));
+    },
+    onStopEditText: readOnly ? undefined : () => {
+      setEditingTextBounds(null);
+      onStopEditTextProp?.();
+    },
+    onResizeViewport: readOnly ? undefined : (id, width, height) => onResizeElement(id, { width, height }),
+    onSetMediaSource: readOnly ? undefined : (id, src) => {
+      const element = getById(liveStoreRef.current, id);
+      const nextProps = { ...(element?.props ?? {}), src };
+      if (element?.tag === "video") nextProps.controls = true;
+      onUpdateElementProps?.(id, nextProps);
+    },
+  }), [readOnly, panMode, setEditingTextBounds, onStartEditTextProp, selectElement, onStopEditTextProp, onResizeElement, onUpdateElementProps]);
+  const options = import_react.useMemo(() => ({
+    ...handlers,
+    inert: panMode,
+    onSelectElement: commentMode || panMode ? undefined : selectElement,
+    onHoverElement: commentMode || panMode ? undefined : throttledHoverElement,
+    components, componentIndex, componentsRevision, iconLibraries,
+    onEditText: readOnly ? undefined : onEditText,
+    editingTextId: readOnly ? null : editingTextId,
+    editingTextBounds: readOnly ? null : editingTextBounds,
+    onActivateTextEditor: readOnly ? undefined : onActivateTextEditor,
+    onDeactivateTextEditor: readOnly ? undefined : onDeactivateTextEditor,
+    onTextSelectionChange: readOnly ? undefined : onTextSelectionChange,
+    selectedElementIdsRef, selectionMode, selectionModeRef, canvasScale,
+    onViewportZoom, onViewportPan, assetResolver, onFixWithAI, onAddElement,
+    onSaveToCode, onOpenFile, allowedPaths, onAddAllowedPath,
+    interactiveParentIdsRef, liveStoreRef, drilledParentIdRef, renderCache: cache,
+  }), [panMode, commentMode, readOnly, selectElement, throttledHoverElement,
+    components, componentIndex, componentsRevision, iconLibraries, onEditText,
+    editingTextId, editingTextBounds, setEditingTextBounds, onStartEditTextProp,
+    onStopEditTextProp, onActivateTextEditor, onDeactivateTextEditor, onTextSelectionChange,
+    selectedElementIdsRef, selectionMode, selectionModeRef, canvasScale, onResizeElement,
+    onViewportZoom, onViewportPan, assetResolver, onFixWithAI, onAddElement,
+    onUpdateElementProps, onSaveToCode, onOpenFile, allowedPaths, onAddAllowedPath,
+    interactiveParentIdsRef, cache, handlers]);
+  const renderOptions = import_react.useMemo(() => ({ ...options, interactiveParentIds }), [options, interactiveParentIds]);
+  cache.prepare(store, renderOptions);
+  return <CanvasSelectionContext.Provider value={props.selectedElementIds}>
+    {getRootIds(store).map(rootId => {
+      const element = getById(store, rootId);
+      if (!element) return null;
+      return <div key={rootId} data-canvas-root-id={rootId} className="absolute" style={{
+        top: element.canvasPosition?.y ?? 20,
+        left: element.canvasPosition?.x ?? 20,
+        opacity: props.draggedIds.has(rootId) ? 0 : 1,
+      }}><ElementErrorBoundary elementId={rootId} silent={rootId.startsWith("el-draw-")} resetKey={`${rootId}:${store.byId.size}`}>
+        {renderElement(rootId, store, renderOptions)}
+      </ElementErrorBoundary></div>;
+    })}
+  </CanvasSelectionContext.Provider>;
 }
-/** Isolated from Canvas so viewport/select callbacks that close over refs are
-*  received as props. Referencing those callbacks inside Canvas's own `.map()`
-*  taints the map as a render-time ref access (`react-hooks/refs`). */
-function CanvasRootTrees(t0) {
-  const currentSelection = t0.selectedElementIds;
-  t0 = useStableCanvasTreeProps(t0);
-  const $ = (0, import_compiler_runtime.c)(41);
-  const {
-    store,
-    draggedIds,
-    panMode,
-    commentMode,
-    readOnly,
-    selectElement,
-    throttledHoverElement,
-    components,
-    componentIndex,
-    componentsRevision,
-    iconLibraries,
-    onEditText,
-    editingTextId,
-    editingTextBounds,
-    setEditingTextBounds,
-    onStartEditTextProp,
-    onStopEditTextProp,
-    onActivateTextEditor,
-    onDeactivateTextEditor,
-    onTextSelectionChange,
-    selectedElementIdsRef,
-    selectionMode,
-    canvasScale,
-    onResizeElement,
-    onViewportZoom,
-    onViewportPan,
-    assetResolver,
-    onFixWithAI,
-    onAddElement,
-    onUpdateElementProps,
-    onSaveToCode,
-    onOpenFile,
-    allowedPaths,
-    onAddAllowedPath,
-    interactiveParentIds,
-    interactiveParentIdsRef,
-    selectionModeRef,
-    drilledParentId
-  } = t0;
-  let t1;
-  if ($[0] !== allowedPaths || $[1] !== assetResolver || $[2] !== canvasScale || $[3] !== commentMode || $[4] !== componentIndex || $[5] !== components || $[6] !== componentsRevision || $[7] !== draggedIds || $[8] !== drilledParentId || $[9] !== editingTextBounds || $[10] !== editingTextId || $[11] !== iconLibraries || $[12] !== interactiveParentIds || $[13] !== interactiveParentIdsRef || $[14] !== onActivateTextEditor || $[15] !== onAddAllowedPath || $[16] !== onAddElement || $[17] !== onDeactivateTextEditor || $[18] !== onEditText || $[19] !== onFixWithAI || $[20] !== onOpenFile || $[21] !== onResizeElement || $[22] !== onSaveToCode || $[23] !== onStartEditTextProp || $[24] !== onStopEditTextProp || $[25] !== onTextSelectionChange || $[26] !== onUpdateElementProps || $[27] !== onViewportPan || $[28] !== onViewportZoom || $[29] !== panMode || $[30] !== readOnly || $[31] !== selectElement || $[32] !== selectedElementIdsRef || $[33] !== selectionMode || $[34] !== selectionModeRef || $[35] !== setEditingTextBounds || $[36] !== store || $[37] !== throttledHoverElement) {
-    t1 = getRootIds(store).map(rootId => {
-      const el = getById(store, rootId);
-      if (!el) return null;
-      const options = {
-        inert: panMode,
-        onSelectElement: commentMode || panMode ? void 0 : selectElement,
-        onHoverElement: commentMode || panMode ? void 0 : throttledHoverElement,
-        components,
-        componentIndex,
-        componentsRevision,
-        iconLibraries,
-        onEditText: readOnly ? _temp$56 : onEditText,
-        editingTextId: readOnly ? null : editingTextId,
-        editingTextBounds: readOnly ? null : editingTextBounds,
-        onStartEditText: readOnly || panMode ? _temp2$43 : (id, bounds) => {
-          setEditingTextBounds(bounds);
-          onStartEditTextProp?.(id);
-          selectElement(resolveTextOwner(store, id));
-        },
-        onStopEditText: readOnly ? _temp3$28 : () => {
-          setEditingTextBounds(null);
-          onStopEditTextProp?.();
-        },
-        onActivateTextEditor: readOnly ? void 0 : onActivateTextEditor,
-        onDeactivateTextEditor: readOnly ? void 0 : onDeactivateTextEditor,
-        onTextSelectionChange: readOnly ? void 0 : onTextSelectionChange,
-        selectedElementIdsRef,
-        selectionMode,
-        selectionModeRef,
-        canvasScale,
-        onResizeViewport: readOnly ? void 0 : (id_0, width, height) => {
-          onResizeElement(id_0, {
-            width,
-            height
-          });
-        },
-        onViewportZoom,
-        onViewportPan,
-        assetResolver,
-        onFixWithAI,
-        onAddElement,
-        onSetMediaSource: readOnly ? void 0 : (id_1, src) => {
-          const el_0 = getById(store, id_1);
-          const props = {
-            ...(el_0?.props ?? {})
-          };
-          props.src = src;
-          if (el_0?.tag === "video") props.controls = true;
-          onUpdateElementProps?.(id_1, props);
-        },
-        onSaveToCode,
-        onOpenFile,
-        allowedPaths,
-        onAddAllowedPath,
-        interactiveParentIds,
-        interactiveParentIdsRef,
-        drilledParentId
-      };
-      return <div key={el.id} data-canvas-root-id={el.id} className="absolute" style={{
-        top: el.canvasPosition?.y ?? 20,
-        left: el.canvasPosition?.x ?? 20,
-        opacity: draggedIds.has(el.id) ? 0 : 1
-      }}>{<ElementErrorBoundary elementId={el.id} silent={el.id.startsWith("el-draw-")} resetKey={`${el.id}:${store.byId.size}`}>{<CanvasRootRender rootId={el.id} store={store} options={options} />}</ElementErrorBoundary>}</div>;
-    });
-    $[0] = allowedPaths;
-    $[1] = assetResolver;
-    $[2] = canvasScale;
-    $[3] = commentMode;
-    $[4] = componentIndex;
-    $[5] = components;
-    $[6] = componentsRevision;
-    $[7] = draggedIds;
-    $[8] = drilledParentId;
-    $[9] = editingTextBounds;
-    $[10] = editingTextId;
-    $[11] = iconLibraries;
-    $[12] = interactiveParentIds;
-    $[13] = interactiveParentIdsRef;
-    $[14] = onActivateTextEditor;
-    $[15] = onAddAllowedPath;
-    $[16] = onAddElement;
-    $[17] = onDeactivateTextEditor;
-    $[18] = onEditText;
-    $[19] = onFixWithAI;
-    $[20] = onOpenFile;
-    $[21] = onResizeElement;
-    $[22] = onSaveToCode;
-    $[23] = onStartEditTextProp;
-    $[24] = onStopEditTextProp;
-    $[25] = onTextSelectionChange;
-    $[26] = onUpdateElementProps;
-    $[27] = onViewportPan;
-    $[28] = onViewportZoom;
-    $[29] = panMode;
-    $[30] = readOnly;
-    $[31] = selectElement;
-    $[32] = selectedElementIdsRef;
-    $[33] = selectionMode;
-    $[34] = selectionModeRef;
-    $[35] = setEditingTextBounds;
-    $[36] = store;
-    $[37] = throttledHoverElement;
-    $[38] = t1;
-  } else t1 = $[38];
-  let t2;
-  if ($[39] !== t1) {
-    t2 = <>{t1}</>;
-    $[39] = t1;
-    $[40] = t2;
-  } else t2 = $[40];
-  return <CanvasSelectionContext.Provider value={currentSelection}>{t2}</CanvasSelectionContext.Provider>;
-}
-function _temp3$28() {}
-function _temp2$43() {}
-function _temp$56() {}
 function Canvas(t0) {
   const $ = (0, import_compiler_runtime.c)(472);
   const { t } = useTranslation("editor");

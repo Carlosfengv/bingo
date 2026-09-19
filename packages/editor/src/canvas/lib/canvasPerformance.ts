@@ -1,6 +1,6 @@
 // Opt-in diagnostics. Samples are bounded and the toolbar polls them independently
 // so recording a render never schedules another canvas render.
-export type WorkKind = "tree" | "geometry" | "codegen";
+export type WorkKind = "variables" | "tree" | "renderNode" | "geometry" | "codegen";
 type Sample = { count: number; total: number; values: number[] };
 const emptySample = (): Sample => ({ count: 0, total: 0, values: [] });
 const limit = 120;
@@ -11,7 +11,7 @@ let frame: number | null = null;
 let samples = freshSamples();
 
 function freshSamples() {
-  return { tree: emptySample(), geometry: emptySample(), codegen: emptySample(), selection: emptySample(), nextFrame: emptySample() };
+  return { variables: emptySample(), tree: emptySample(), renderNode: emptySample(), geometry: emptySample(), codegen: emptySample(), selection: emptySample(), nextFrame: emptySample() };
 }
 function add(sample: Sample, ms: number) {
   if (!Number.isFinite(ms) || ms < 0) return;

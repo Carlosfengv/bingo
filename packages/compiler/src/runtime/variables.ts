@@ -214,6 +214,16 @@ export function variableDeclarations(library: VariableLibrary, values: Record<st
   return styles;
 }
 
+export function variableDeclarationsForModes(library: VariableLibrary, modes: CollectionModes, usedCssNames?: ReadonlySet<string>) {
+  const index = libraryIndex(library);
+  const signature = variableModesSignature(library, modes) + (usedCssNames ? `:used:${JSON.stringify([...usedCssNames].sort())}` : ":all");
+  const cached = index.declarationsByModes.get(signature);
+  if (cached) return cached;
+  const declarations = variableDeclarations(library, resolveVariableValues(library, modes).values);
+  if (usedCssNames) for (const property of Object.keys(declarations)) if (!usedCssNames.has(property.slice(2))) delete declarations[property];
+  return cacheSet(index.declarationsByModes, signature, declarations);
+}
+
 export function setElementVariableMode(element: any, library: VariableLibrary, collectionId: string, modeId: string | null) {
   const collection = library.collections.find(item => item.id === collectionId);
   if (!collection || (modeId !== null && !collection.modes.some(mode => mode.id === modeId))) throw variableError("VARIABLE_MODE_INVALID", "This mode is no longer available.");
@@ -247,23 +257,38 @@ export function detachElementVariable(element: any, library: VariableLibrary, pr
 }
 
 /** Render-only copy; persisted designs retain variable references, never resolved colors. */
-export function prepareVariableStore(store: any, library: VariableLibrary, pageModes: CollectionModes = store.variableModes || {}) {
+const noDeclarations = {};
+export function prepareVariableStore(store: any, library: VariableLibrary, pageModes: CollectionModes = store.variableModes || {}, additionalScopeRoots?: ReadonlySet<string>, usedCssNames?: ReadonlySet<string>) {
   if (!library.tokens.length) return store;
   const byId = new Map(store.byId);
-  const cache = new Map<string, ReturnType<typeof resolveVariableValues>>();
+  const index = libraryIndex(library);
   for (const [id, element] of store.byId) {
-    const { modes } = resolveCollectionModes(store, id, library, pageModes);
-    const signature = JSON.stringify(modes);
-    if (!cache.has(signature)) cache.set(signature, resolveVariableValues(library, modes));
-    const resolved = cache.get(signature)!;
-    // Declaring at consumer nodes also covers components that forward style into portals.
-    const declarations = variableDeclarations(library, resolved.values);
-    const styles = { ...element.styles, ...declarations };
-    for (const binding of element.theme?.bindings || []) {
-      const token = library.tokens.find(item => item.id === binding.tokenId);
-      if (binding.target === "style" && token && canBindVariable(token, binding.property)) styles[binding.property] = variableExpression(token, binding.property, binding.alpha);
+    const localModes = element.theme?.localCollectionModes;
+    const isRoot = store.parentByChild.get(id) === "ROOT";
+    const isComponentBridge = element.type === "component" || element.props?.["data-component"] === "CapturedPage";
+    const hasOwnLibraryDeclaration = Object.keys(element.styles || {}).some(property => property.startsWith("--") && index.cssNames.has(property.slice(2)));
+    const isScopeBoundary = isRoot || additionalScopeRoots?.has(id) || !!localModes && Object.keys(localModes).length > 0 || isComponentBridge || hasOwnLibraryDeclaration;
+    let declarations = noDeclarations;
+    if (isScopeBoundary) {
+      const { modes } = resolveCollectionModes(store, id, library, pageModes);
+      declarations = variableDeclarationsForModes(library, modes, usedCssNames);
     }
-    byId.set(id, { ...element, styles });
+    let variants = index.preparedElements.get(element);
+    const cached = variants?.get(declarations);
+    if (cached) { if (cached !== element) byId.set(id, cached); continue; }
+    let styles = isScopeBoundary ? { ...element.styles, ...declarations } : element.styles;
+    for (const binding of element.theme?.bindings || []) {
+      const token = index.tokenById.get(binding.tokenId);
+      if (binding.target !== "style" || !token || !canBindVariable(token, binding.property)) continue;
+      const expression = variableExpression(token, binding.property, binding.alpha);
+      if (styles?.[binding.property] === expression) continue;
+      if (styles === element.styles) styles = { ...styles };
+      styles[binding.property] = expression;
+    }
+    const prepared = styles !== element.styles ? { ...element, styles } : element;
+    if (!variants) index.preparedElements.set(element, variants = new WeakMap());
+    variants.set(declarations, prepared);
+    if (prepared !== element) byId.set(id, prepared);
   }
   return { ...store, byId };
 }

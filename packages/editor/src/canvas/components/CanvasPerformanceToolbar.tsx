@@ -66,7 +66,7 @@ export const CanvasPerformanceToolbar = memo(function CanvasPerformanceToolbar({
   const copy = async () => {
     try {
       const text = JSON.stringify({ capturedAt: new Date().toISOString(), nodeCount, selectedCount, frames,
-        metrics: getCanvasPerformance(), note: "Selection: click event timestamp to overlay DOM commit; nextFrame: subsequent requestAnimationFrame, not presentation time. P95: last 120 samples. Tree: renderElement CPU only. Geometry: individual box reads. FPS: document frame callbacks." }, null, 2);
+        metrics: getCanvasPerformance(), note: "Selection: click event timestamp to overlay DOM commit; nextFrame: subsequent requestAnimationFrame, not presentation time. P95: last 120 samples. Variables: render-store preparation. Tree: renderElement CPU only. Geometry: individual box reads. FPS: document frame callbacks." }, null, 2);
       try { await navigator.clipboard.writeText(text); } catch {
         // Electron/file previews may deny the asynchronous Clipboard API.
         const previousFocus = document.activeElement as HTMLElement | null;
@@ -95,7 +95,7 @@ export const CanvasPerformanceToolbar = memo(function CanvasPerformanceToolbar({
     {open && <div className="border-t border-ed-border px-3 py-2 text-[11px] tabular-nums">
       <table className="w-full text-left"><thead className="text-ed-muted-foreground"><tr>
         <th className="pb-1 pr-5 font-normal">{t("performance.metric")}</th><th className="pr-4 font-normal">{t("performance.latest")}</th><th className="pr-4 font-normal">P95</th><th className="font-normal">{t("performance.count")}</th>
-      </tr></thead><tbody>{(["selection", "nextFrame", "tree", "geometry", "codegen"] as const).map(key => <tr key={key}>
+      </tr></thead><tbody>{(["selection", "nextFrame", "variables", "tree", "renderNode", "geometry", "codegen"] as const).map(key => <tr key={key}>
         <th className="pr-5 font-normal">{t(`performance.${key}`)}</th><td className="pr-4">{ms(snapshot[key].last)}</td><td className="pr-4">{ms(snapshot[key].p95)}</td><td>{snapshot[key].count}</td>
       </tr>)}</tbody></table>
       <div className="mt-2 border-t border-ed-border pt-2 text-ed-muted-foreground">{t("performance.frames", { fps: frames ? frames.fps.toFixed(0) : "—", slow: frames?.slow ?? "—" })}</div>
