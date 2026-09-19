@@ -136,25 +136,3 @@ src/
 preview/      组件预览与验证
 tools/        恢复、打包与诊断工具
 ```
-
-### 排查问题与维护资料
-
-加载项目遇到问题时，可先查看 [项目加载问题说明](docs/project-load-errors.md)。本地诊断记录可通过以下命令读取：
-
-```bash
-node tools/diagnostics.mjs recent --json
-node tools/diagnostics.mjs show inc_<UUID> --json
-```
-
-更多内容见 [诊断说明](docs/diagnostics.md)、[对话恢复说明](docs/chat-resilience.md) 和 [代码审查与清理记录](docs/plans/code-review-and-cleanup.md)。
-
-当前维护代码基于已发布的 Bingo 0.0.146 应用包重建，部分文件仍保留重建标记或 React Compiler 产物。进行大范围结构调整前，请阅读 [代码恢复说明](RECOVERY.md)。
-
-需要重新提取历史源码时：
-
-```bash
-pnpm rebuild:source
-node tools/rebuild.mjs --output /tmp/bingo-recovered
-```
-
-恢复脚本默认输出到 `recovered-source/`，不会写入当前维护源码。`_raw/` 与 `_alt/` 为只读恢复证据；仅在调查历史构建中的未标记模块时，使用 `--discover --app-out <unpacked-build-directory>`。
