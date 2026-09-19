@@ -134,6 +134,11 @@ Record one row per source component:
 
 `source path | export name | status (import/adapt/skip) | reason | destination path`
 
+For imported components, also keep a compact usage record: semantic purpose and source
+name/synonyms, supported variants, required compound children/providers, and a source
+usage or existing composition path. Reuse source examples; do not manufacture APIs.
+This is the handoff to later design work, not a second component registry to maintain.
+
 Use the scanner as a starting point, but do not silently omit source components it
 misses. A skip requires a concrete reason such as router/context/API dependency,
 server-only behavior, or an unmockable deep dependency. “Low rank” is not a reason.
@@ -143,7 +148,10 @@ For each batch:
 1. Select 6–10 source components in source order.
 2. Read them with one `local_read_batch`. Use targeted reads only for direct dependencies.
 3. Adapt and write the batch with one `project_write_batch` when files are new. Use `project_write`/`project_edit` for existing files.
-4. Immediately add visible canvas sections for the successfully landed components. Do not begin the next source batch first.
+4. Confirm landed exports are registered and direct dependencies resolve, then add visible
+   sections using the real components. If registration/rendering is pending or failed,
+   diagnose it and record the blocker. Never replace a landed component with styled
+   div/span markup to simulate progress. Do not begin the next source batch first.
 5. Report concise progress such as `Imported 8/31 components`.
 
 Repeat `read batch → write batch → canvas sections`. Never do all reads, then all writes, then all canvas work.
@@ -167,8 +175,20 @@ After shared components are visible:
    - verify referenced assets were copied or recorded as missing;
    - confirm every landed component has a real source export and no synthetic
      component was introduced.
+   - read back representative canvas sections: imported exports must remain component
+     nodes with real props/compound children, not flattened HTML replicas;
+   - distinguish files copied, exports registered, CSS compiled, and examples rendered.
+     A copied file alone is not a usable component.
 7. Summarize imported files, adaptations, omissions, skipped reasons, component
    coverage (`N of M`), CSS/assets coverage, and any page-fidelity deviations.
+
+Keep a concise usage handoff in the completion summary: key component/example source
+paths, semantic token sources and scopes, and unresolved dependencies. Token coverage
+must retain light/dark declarations and alias chains. Record actual source bindings,
+including any hsl/rgb wrapper or v3 config mapping; do not infer them from token names.
+Foundation swatches may demonstrate raw palette scales. A recreated business page must
+use the source's semantic surface/text/border/status roles, not arbitrary palette choices.
+Screenshot success proves appearance only; inspect JSX references as well.
 
 ## Source-fidelity rules
 
@@ -177,10 +197,21 @@ After shared components are visible:
   - `src/ui/Button.tsx` → `ui/Button.tsx`
   - Do not relocate `ui/` to `components/` for registry discovery.
 - Preserve component names, exports, props, and variants.
+- Preserve import resolution as well as files. Read the source `tsconfig.json` /
+  `jsconfig.json` (and relevant `extends`) before copying components that use aliases.
+  Merge the needed `baseUrl`/`paths` into the destination configuration, adjusting paths
+  if a leading `src/` was removed. Do not assume `@/` already resolves in Bingo, copy
+  unrelated framework configuration blindly, or rewrite each component to hide a
+  missing shared alias. Confirm the compiled catalog contains the imported exports.
 - Never invent a component that has no corresponding source export.
 - If the source uses class-based markup without a component, import its CSS and show a raw visual example only; do not manufacture a component.
 - Adapt only what cannot run in Bingo. Add a short file comment for meaningful adaptations.
 - Remove server-only behavior, iframe-parent messaging, or unavailable application context only when required for rendering. Preserve the public component surface.
+- Inspect direct utilities/configs for browser-incompatible initialization such as
+  unguarded `process.env` access. For static previews use a documented source fallback
+  or guard in that dependency; do not inject host environment values. A successful
+  compile does not prove the module can execute in the browser. Resolve render-fallback
+  warnings from `canvas_read` before considering a component usable.
 - Keep local CSS files separate and preserve their relative import chain.
 - Copy referenced binary assets with `project_copy_asset` before using them.
 - Copy local source/CSS with `project_copy_file` (or `files[]`). Do not `local_read` + `project_write` the same bytes.

@@ -2,6 +2,7 @@
 name: bingo-design
 description: Design UI on the Bingo canvas with senior product-design judgment. Derive the project's visual language, name design nouns before JSX, resolve nouns to real components, build visibly in meaningful chunks, and verify by screenshot. Use for any non-trivial canvas design, page, section, component, restyle, polish request, or reference replication. Load before the first canvas mutation of a design task.
 allowed-tools:
+  - mcp__bingo__read_skill
   - mcp__bingo__canvas_list
   - mcp__bingo__canvas_read
   - mcp__bingo__canvas_add
@@ -13,6 +14,8 @@ allowed-tools:
   - mcp__bingo__canvas_claim
   - mcp__bingo__canvas_release
   - mcp__bingo__project_read
+  - mcp__bingo__project_glob
+  - mcp__bingo__project_grep
   - mcp__bingo__project_write
   - mcp__bingo__search_components
   - mcp__bingo__search_icons
@@ -22,6 +25,10 @@ allowed-tools:
 ---
 
 # Designing on the Bingo canvas
+
+If this task imports a local project's design system, load `bingo-import-from-project`
+before scanning or reading component implementations. Its foundation-first phases govern
+the import; this skill supplies component/style and screenshot acceptance criteria.
 
 You are acting as a senior product designer, not a code generator. Work should look
 *intentionally designed*: clear hierarchy, considered spacing, real content, and an
@@ -47,7 +54,8 @@ naming the noun is what makes you reach for the existing component.
 Not tags. Nouns: badge, primary button, secondary button, card, input, avatar, tooltip,
 table row, banner, tab, empty state, divider, icon button, checkbox.
 
-Then resolve every noun to a real component before typing `<`.
+Then resolve every noun to a real component before typing `<`. Check existing page,
+section and compound components before assembling their parts from primitives.
 
 This is the single highest-value habit in this skill. The most common failure mode is
 not ignorance of the rule; it is emitting JSX left to right and only noticing afterwards
@@ -62,25 +70,33 @@ categories, status badges, and padding stay byte-identical. Prefer `canvas_grep`
 a parallel frame. If you want to improve something adjacent, say so in text and wait for
 the user to ask.
 
+For a plain text leaf, `canvas_edit` accepts literal text in `old_string` and
+`new_string`, including an empty replacement. Keep that leaf's ID and type; never
+wrap it in a new `span` merely to make a copy edit parse. Use JSX edits on a covering
+parent when changing markup, and claim that parent before editing it.
+For `canvas_read`, use the page UUID from `canvas_list` as `canvas_id` and the node
+ID from `canvas_grep` / `canvas_query` as `element_id`; these IDs are not interchangeable.
+
 ## The loop (mandatory — do not skip Name or Screenshot)
 
 Every design task runs this loop. The visual commitment, noun list, and final screenshot
 are the most commonly skipped parts and the ones that cause the most rework.
 
 1. **Gather** — call `get_design_context` once unless the prompt already contains a
-   sufficient theme, component manifest, and active-page summary. Do not separately call
-   `get_theme`, `search_components`, and `canvas_list` after this combined call. The one
-   exception: if you write or change the project's CSS entry during the task, its earlier
-   theme result is stale — call `get_theme` again before styling anything else, or you
-   will keep designing around tokens you have since created.
+   sufficient theme, component manifest, and active-page summary. Do not repeat broad
+   context calls. Use targeted reads/searches for missing evidence; refresh theme context
+   after changing its CSS/imports/configuration and component context after registration
+   changes. An earlier empty result is then stale.
 2. **Commit** — before mutation, tell the user the intended mood, palette, type, and
    density in one short sentence. This is a design commitment, not a request for approval.
 3. **Name** — for the region you are about to build, list its parts as design nouns in
    one line. "Banner: status badge, one line of copy, secondary Learn more button,
    primary Reconnect button."
-4. **Resolve** — map each noun to a component + variant from the manifest. If a noun has
-   no match, `search_components` for it *now* rather than hand-rolling. Only after every
-   noun is resolved (or confirmed absent) do you write JSX.
+4. **Resolve** — map each noun to a real export, source path, supported props/variant,
+   required children/provider, and an existing usage or composition. Read the relevant
+   source when the catalog does not establish the API. Resolve style sources too:
+   component-owned appearance, semantic tokens, and layout scales. Follow the missing
+   component path below before concluding anything is absent.
 5. **Draft visibly** — for new work, add a meaningful shell with `claim_new: true`, then
    add 2–4 visible chunks using the returned claim. If the page already has frames, omit
    `x`/`y` so the editor parks the shell to their right — never stack a new root on
@@ -88,11 +104,16 @@ are the most commonly skipped parts and the ones that cause the most rework.
    paints as JSX streams in; still send those chunks so the user sees structure before
    details. Never leave the canvas empty while composing a full-page/full-card JSX payload.
    For edits: surgical tools only.
-6. **Screenshot** — `take_screenshot` on what you built or changed. Actually look at it.
+6. **Inspect structure** — read back the changed region's JSX. Check actual component
+   nodes, variants, compound children, and style references against the mapping. Address
+   write diagnostics in that region; warnings are candidates to investigate, not proof
+   of an error. A successful write does not certify design-system compliance.
+7. **Screenshot** — `take_screenshot` on what you built or changed. Actually look at it.
    (`canvas_release` errors if you mutated under a claim without a verifying screenshot.)
-7. **Critique** — grade against the Checklist. Name only actual problems; do not force
+8. **Critique** — grade against the Checklist. Name only actual problems; do not force
    three changes when the screenshot already passes.
-8. **Fix** — fix the material problems, then re-screenshot only if pixels changed.
+9. **Fix** — fix material problems, re-check changed structure, then re-screenshot after
+   any canvas mutation before releasing the claim.
 
 Do not tell the user "done" until a screenshot has passed the Checklist.
 
@@ -112,11 +133,13 @@ survive to minute forty; re-stating the nouns is cheap and re-anchors you.
    most dangerous place to skip this: you are pattern-matching on the surrounding markup,
    and if the surrounding markup is hand-rolled you will copy its mistakes. Local
    consistency is not a justification for a hand-rolled component. If neighboring code
-   uses a fake badge, still use `Badge`, and mention the inconsistency to the user.
+   uses a fake badge, still use the project's real status component and mention the
+   inconsistency to the user.
 5. `canvas_read` the smallest sensible root (often the table) — required before claim. Oversized trees may include `{/* bingo:truncated … */}` stubs; drill those ids with another `canvas_read` when needed.
 6. `canvas_claim` that same root (or a descendant). Claim returns `claim_id` (locks expire after 5 minutes — re-claim if still editing). If the parent claim isn’t needed, release and claim a smaller subset.
-7. `canvas_insert` / `canvas_edit` per change. Echo `data-element-id` only on `canvas_update`. When adding or inserting multiple siblings, wrap them in a Fragment (`<>...</>`); do not add a layout container just to make the JSX parse. `canvas_edit` and `canvas_update` require exactly one resulting root.
-8. `take_screenshot` the claimed element, then `canvas_release`.
+7. `canvas_insert` / `canvas_edit` per change. Echo `data-element-id` only on `canvas_update`. When adding or inserting multiple siblings, wrap them in a Fragment (`<>...</>`); do not add a layout container just to make the JSX parse. JSX edits and `canvas_update` require exactly one resulting root; a plain text leaf uses literal `canvas_edit` replacements.
+8. Read back the edited region and check only introduced/changed components and styles.
+   Leave unrelated legacy violations untouched. `take_screenshot`, then `canvas_release`.
 
 ## Step 1 — Derive the project's visual language
 
@@ -136,21 +159,40 @@ users leave experiments and alternate iterations.
 4. **Rest of canvas (last, optional)** — only if you still need density and spacing cues.
    Sample one or two elements.
 
-### Write the component manifest
+### Keep an evidence-backed region map
 
-After the combined context call, write a short list into your reasoning, mapping **design nouns
-to real components and their variants**:
-badge -> Badge (variant: default | secondary | outline | warning | destructive)
-button -> Button (variant: default | secondary | outline | ghost | destructive; size: sm | default | lg)
-text input -> Input
-container -> Card
+For each region, keep a compact working map:
+`noun | real export + source path | supported props/children | usage/composition | style owner`.
+Use actual project names and values. Examples such as `Badge`, `warning`, or `secondary`
+in this skill are not APIs that every project supports. Read existing
+`*.compositions.tsx` or source usage for compound components before inventing a structure.
 
-This list is what you consult in the Resolve step. A raw list of 61 component names is
-not usable mid-build; a noun-to-component map is.
+### Missing component path
 
-**Empty project?** Establish a minimal system first: ONE neutral scale, ONE accent,
-Tailwind's spacing scale, one radius, one type ramp, held consistently. Only invent raw
-controls when `search_components` shows nothing suitable.
+A search miss is not evidence of absence. Distinguish missing, undiscovered, unregistered,
+and temporarily unrenderable components:
+
+1. Search the noun and a likely source synonym (badge/pill/chip, input/text field).
+2. If the index is unavailable, truncated, or out of date, use targeted `project_glob` /
+   `project_grep` in the actual source directories, including `ui/`; do not assume all
+   components live in `components/`. Read candidate exports and usages.
+3. If a file exists but is not registered or renders blank, diagnose its import,
+   dependency/provider, and registration state. Do not substitute styled HTML to hide it.
+4. Only when no suitable component exists, choose the smallest task-appropriate raw
+   structure or new reusable component. Record the reason; no permission round trip is
+   needed for routine choices already within the user's request.
+
+### Native elements are for structure, not component substitutes
+
+Use `div`, `section`, `span`, and semantic HTML for layout and ordinary text. Do not use
+them to imitate an available badge, card, tab, button, input or business component.
+Judge authored JSX/canvas component nodes, not browser DOM: real components also render
+to HTML. Do not optimize for a low div count or wrap an entire page in a new component
+just to pass a component check. Preserve meaningful reuse and canvas editability.
+
+**Confirmed empty project?** Establish a minimal system first: one neutral scale, one
+accent, one spacing scale, one radius, and one type ramp. An unavailable theme/index is
+not a confirmed empty project; inspect source files first.
 
 For an empty project or a precise reference replica with no usable theme, prefer inline
 CSS for geometry, typography, and exact colors. This avoids relying on utility classes
@@ -160,24 +202,49 @@ use its Tailwind utilities so the design inherits future token changes.
 ## Semantics: say what a thing *is*, not what it should look like
 
 Using the right component is half the job. Using the right **variant** is the other half.
-A secondary action must carry the secondary variant, not primary styling with the visual
-weight dialed down by hand.
+A secondary action must use the project's documented secondary-action treatment, not
+primary styling with its visual weight dialed down by hand.
 
-- A secondary button is `<Button variant="secondary">`. Not a `default` Button with muted
-  classes. Not `variant="outline"` chosen because it looked calmer in the screenshot.
-- A cautionary status is `<Badge variant="warning">`. Not a neutral Badge with amber
-  classes bolted on.
-- A destructive action is `variant="destructive"`, not red text.
+- Use `variant="secondary"`, `warning`, or `destructive` only if the real API supports
+  them and existing usage gives them that meaning. A project's secondary action may
+  legitimately use `outline`; verify rather than assume.
+- If no variant fits, inspect supported composition/slot APIs and source usages. Explain
+  a material adaptation; do not fabricate a prop or silently repaint the component.
 
 Two reasons this matters beyond pixels. First, the design communicates intent to the
 developer who implements it; a hand-toned primary button tells them nothing about
 hierarchy. Second, variants stay correct when the theme changes, and hand-picked colors
 silently rot.
 
-**Never override a component's own color, border, radius, or font-weight via `className`.**
-That is a signal you picked the wrong variant. `className` on a project component is for
-layout only: `w-full`, `flex-1`, `mt-2`, `shrink-0`. If no variant fits, say so to the
-user rather than quietly styling around it.
+**Component appearance belongs to its API.** Use layout-only classes by default
+(`w-full`, `flex-1`, `shrink-0`). Overriding color, border, radius, typography or internal
+padding needs evidence from that component's supported customization API/source usage,
+or an explicit user restyle request. Check inline `style` and child/slot overrides too.
+
+## Resolve style sources before styling
+
+Use this order: component-owned appearance → project semantic tokens → project scales
+→ justified exact values. Cover color, font family/size/weight/line-height, spacing,
+radius, borders, shadows, and motion. Tailwind's default scale is not automatically the
+project's design specification.
+
+For each introduced style identify its role, source token/class, and supported binding.
+A surface token belongs on a surface; equal current values do not make text, border and
+surface tokens interchangeable. Do not copy resolved token literals into JSX. Preserve
+aliases, dark/theme scopes, and required `hsl(var(...))` or other source wrappers.
+
+Theme summaries are source evidence, not a complete utility catalog or computed styles.
+Read indicated imports/configs when coverage is incomplete. `--color-x` inside `@theme`
+can define utilities; the same name in `:root` alone does not. Verify source usage and
+compiled rendering before assuming a class exists. Missing styles require diagnosis,
+not a literal-color workaround. For CSS-only projects use their actual classes/bindings.
+An uninspected package in a theme summary is not a build error. Do not remove CSS imports
+or dependencies unless the compiler reports a real incompatibility and a fix is needed.
+
+Exact geometry or visualization values may be legitimate when no project token governs
+them. Keep an internal exception note with the property and reason. Confirmed empty or
+reference-only projects follow the fallback above. Exceptions must not become a parallel
+theme across the page.
 
 ## Copy rules
 
@@ -213,13 +280,16 @@ ignoring the project's own language.
 
 **Components and semantics**
 - [ ] Every part of the region was named as a design noun before JSX was written.
-- [ ] Project components used wherever they exist (`Button`, `Badge`, `Input`, …). A raw
-      `<button>` or a `<span>` styled to look like a badge is a fail. Check the JSX, not
-      only the screenshot. (Writes reject raw form controls when project components exist.)
-- [ ] Variants carry meaning: secondary actions use the secondary variant, warnings use
-      the warning variant, destructive uses destructive.
-- [ ] No `className` on a project component overriding its color, border, radius, or
-      weight. Layout utilities only.
+- [ ] Mapped components appear as actual component nodes, with supported props and
+      compound structure. Native layout/text is allowed; replicas of available controls
+      are not. Read JSX, not browser DOM. Tool checks cover only part of this contract.
+- [ ] Resolve `canvas_read` render warnings. A component fallback may display its text
+      children while its border, padding and controls are absent. Check direct dependency
+      initialization and browser compatibility; wait for loading and verify again.
+- [ ] Variants carry their project's documented meaning and exist in the real API;
+      secondary/warning/destructive roles are not assumed variant names.
+- [ ] Component appearance is controlled through its supported API. Any class/style/slot
+      override has a source-supported or user-requested reason.
 
 **Copy**
 - [ ] No em dashes anywhere in the copy.
@@ -227,8 +297,8 @@ ignoring the project's own language.
 - [ ] Non-error states do not look like errors.
 
 **Scale and layout**
-- [ ] Spacing and type come from the Tailwind scale (`p-4`, `gap-6`, `text-sm`), not
-      one-off px. Theme tokens for color.
+- [ ] Style references exist and match their roles. Spacing/type/radius/shadow come from
+      project tokens or source classes. Exact-value exceptions have a reason.
 - [ ] Sibling spacing via flex/grid `gap`, not stacked margins.
 - [ ] Generous whitespace. Cramped is the number one tell. When unsure, add room.
 
@@ -240,13 +310,17 @@ ignoring the project's own language.
       a set line-height.
 
 **Color and surface**
-- [ ] Color follows the **project's** strategy. Theme tokens, not hardcoded `bg-white` or
-      `text-gray-900`.
+- [ ] Color follows the **project's** strategy. Use semantic bindings for interface roles;
+      source palette samples and documented fallback/exact-value cases remain allowed.
 - [ ] Text meets contrast (roughly AA). Muted is not illegible.
 - [ ] Elevation, borders, and radius match the project's language.
 
 **Icons**
 - [ ] `search_icons` before styling icons.
+      Copy an exact returned icon name and its library into `data-icon`; do not shorten
+      `IconClock` to `clock` or translate a name between packs. A saved icon node or a
+      successful write does not prove a glyph rendered. Question-mark placeholders
+      are failures to correct before completion.
 - [ ] One size source only: the `size` prop. Never `size={24}` together with `size-7`,
       `w-*`, or `h-*` on the same icon.
 - [ ] On canvas: `<i data-icon="…" data-icon-library="…" size={24} className="text-muted-foreground" />`,
@@ -254,32 +328,25 @@ ignoring the project's own language.
 
 ## Bingo canvas constraints (don't fight these)
 
-- **Prefer Tailwind utility classes** for layout, spacing, color, type. Inline `style`
-  only for values off the scale.
+- Prefer the project's supported classes and bindings for layout, spacing, color and
+  type. Use Tailwind utilities when the project supplies them; CSS-only, confirmed-empty
+  and reference-only projects follow the scoped alternatives above.
 - `className` **or** `style`, never both on one element.
 - Arbitrary Tailwind values (`w-[800px]`) do not render. Use `style={{ width: 800 }}`.
 - **Icons on canvas** always need `data-icon` + `data-icon-library` + `size={N}`.
 - No `.map()` on the canvas. Write rows explicitly.
-- A component must exist as a file (`project_write`) before it renders on canvas.
+- A component needs a compiled export and a loaded implementation to render on canvas;
+  a written file or saved component node alone is insufficient.
 - Prefer `canvas_edit` / `canvas_insert` over a full `canvas_update`. On update, you may
   echo `data-element-id` to preserve identity.
 
-## Before / after
+## Acceptance example
 
-**Skipped the Name step (❌).** Emitted left to right; the pill and the actions were never
-recognized as a badge and buttons:
-
-**Named first (✓).** "Banner: warning badge, one line of copy, secondary button, primary
-button." Every noun resolved to the manifest; no em dash; layout-only `className`:
-
-**Cramped, no hierarchy (❌):**
-
-**Fixed (✓).** Gap instead of stacked margins, real hierarchy, muted secondary, room to
-breathe:
-
-**Conflicting icon size (❌):**
-
-**Fixed (✓):**
+If the source exports `StatusPill` with `tone="attention"`, reuse that API for a caution
+status. Do not invent `<Badge variant="warning">` or copy its pixels into a styled span.
+A surrounding `<div className="flex gap-4">` is legitimate only if that layout scale is
+appropriate for this project. After insertion, read back `StatusPill` and its tone, then
+inspect the screenshot. Matching pixels alone cannot prove component or token reuse.
 
 ## Working on smaller or older models
 

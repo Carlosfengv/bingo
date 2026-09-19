@@ -10,6 +10,8 @@ allowed-tools:
   - mcp__bingo__search_components
   - mcp__bingo__search_icons
   - mcp__bingo__take_screenshot
+  - mcp__bingo__get_theme
+  - mcp__bingo__canvas_read
 ---
 
 # Authoring Bingo compositions
@@ -73,7 +75,7 @@ To turn `<Badge variant="secondary">` into canvas elements, the parser has to kn
 
 Two consequences you must respect:
 
-1. **Import everything you reference, explicitly.** An unimported or lowercase-named symbol will not resolve. There is no ambient scope.
+1. **Import everything you reference, explicitly.** An unimported or lowercase-named symbol will not resolve. There is no ambient scope. Use the real source export; do not invent a familiar component name.
 2. **Keep the file self-describing.** These imports are what let a composition file be parsed standalone, with no editor session — which is exactly how the bulk canvas generator works. Don't rely on anything outside the file.
 
 Use the same import style the paired component uses — `@/components/ui/...` for components, the project's established icon library for icons.
@@ -97,12 +99,34 @@ Convention is `<Component><Variant>`. This means **naming is a design decision, 
 - [ ] 2. project_read the existing *.compositions.tsx if there is one — match its imports and style
 - [ ] 3. search_icons before referencing any icon; search_components before assuming a component exists
 - [ ] 4. Write exports into the project with `project_write` / `project_edit` (never `local_write`): static JSX only, uppercase names, everything imported
-- [ ] 5. Verify each new export appears in the Assets panel under the paired component
+- [ ] 5. Verify each new export appears in the Assets panel under the paired component. When inserting a sample as part of the task, read back its canvas JSX: referenced components, props and compound children must survive as component nodes. Do not create a verification page unrelated to the request.
 ```
 
 Cover the component's **real** surface: each meaningful variant, the states that matter (disabled, loading), and the common compositions (with icon, as link, inside a group). Prefer several focused exports over one kitchen-sink export — each export is a separate thing the user can drag, so a single export containing every variant is one unusable blob.
 
 Compositions must reflect props the component **actually has**. If `variant="ghost"` isn't in the component source, a composition using it is a broken template, not a feature request.
+
+## Compositions are canonical usage examples
+
+Later design tasks can use these files to learn the real API. Include focused examples
+of common variants and required compound structure/provider setup. Start from source
+usage, preserving names and supported props; do not recreate an available component's
+appearance with div/span markup. Native wrappers may supply layout and ordinary text.
+
+The static-JSX restriction applies to the example expression, not to a component's
+internal implementation. Keep real component references; never flatten them to HTML to
+make an example static. If a runtime dependency prevents a valid static example, record
+the limitation rather than replacing the component with a lookalike.
+
+Let component variants own appearance. For example layout, use project semantic tokens
+and spacing/type scales. Read the theme/source usage when needed; preserve aliases and
+theme scopes, and do not copy current token values into literals. Check both className
+and inline style for appearance overrides. Source-supported customization and exact
+preview geometry are allowed when their reason is clear.
+
+Acceptance has two parts: the parser recognizes each export with real imports, and its
+JSX uses the supported component API and style bindings. A matching preview alone does
+not establish either API correctness or token reuse.
 
 ## Hard constraints
 
