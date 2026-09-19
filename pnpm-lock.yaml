@@ -80,6 +80,9 @@ importers:
       path-browserify:
         specifier: ^1.0.1
         version: 1.0.1
+      postcss:
+        specifier: 8.5.28
+        version: 8.5.28
       prosemirror-collab:
         specifier: '*'
         version: 1.3.1

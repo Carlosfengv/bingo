@@ -5,7 +5,7 @@ import { toWire } from "../store/wire";
 import { applyOps } from "../store/apply";
 import { generateJSX } from "../codegen/generateJSX";
 import { parseJSX } from "../codegen/parseJSX";
-import { bindElementVariable, detachElementVariable, prepareVariableStore, resolveCollectionModes, resolveVariableValues, setElementVariableMode, validateVariableLibrary, variableExpression } from "./variables";
+import { bindElementVariable, detachElementVariable, findElementVariableBinding, prepareVariableStore, resolveCollectionModes, resolveVariableValues, setElementVariableMode, validateVariableLibrary, variableExpression } from "./variables";
 import { applyOperationsToStore, createSetStylesOperation, invertOperations } from "../../../editor/src/shared/utils/operations";
 
 export const variableFixture = {
@@ -79,6 +79,13 @@ test("detaching snapshots each consumer's value and keeps the definition unchang
   const detached = detachElementVariable(bound, variableFixture, "backgroundColor", { bg: "#06293b" });
   assert.equal(detached.styles.backgroundColor, "#06293b"); assert.equal(detached.theme.bindings.length, 0);
   assert.equal(bound.theme.bindings.length, 1); assert.equal(variableFixture.tokens[0].valuesByMode.light.value, "#fff");
+});
+test("existing CSS variable references are recognized and can detach without binding metadata", () => {
+  const element = { id: "card", styles: { backgroundColor: "var(--surface-page)" } };
+  assert.deepEqual(findElementVariableBinding(element, variableFixture, "backgroundColor"), { target: "style", property: "backgroundColor", tokenId: "bg", inferred: true });
+  const detached = detachElementVariable(element, variableFixture, "backgroundColor", { bg: "#111827" });
+  assert.equal(detached.styles.backgroundColor, "#111827");
+  assert.equal(detached.theme, undefined);
 });
 test("render-only values differ across roots without modifying saved variable expressions", () => {
   const store = fixture();

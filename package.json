@@ -63,7 +63,8 @@
     "tailwindcss": "^4.3.3",
     "tinyglobby": "*",
     "unist-util-visit": "5.1.0",
-    "yaml": "*"
+    "yaml": "*",
+    "postcss": "8.5.28"
   },
   "pnpm": {
     "overrides": {

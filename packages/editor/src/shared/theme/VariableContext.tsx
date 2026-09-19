@@ -1,5 +1,5 @@
 import * as React from "react";
-import { emptyVariableLibrary, bindElementVariable, detachElementVariable, resolveCollectionModes, resolveVariableValues, setElementVariableMode, prepareVariableStore, validateVariableLibrary, literalForProperty } from "../../../../compiler/src/runtime/variables";
+import { emptyVariableLibrary, bindElementVariable, detachElementVariable, findElementVariableBinding, resolveCollectionModes, resolveVariableValues, setElementVariableMode, prepareVariableStore, validateVariableLibrary, literalForProperty } from "../../../../compiler/src/runtime/variables";
 import { createSetStylesOperation } from "../utils/operations";
 
 export const VariableLibraryContext = React.createContext<any>(null);
@@ -12,7 +12,7 @@ export function useResolvedVariableStyle(property, fallback) {
   const editor = useVariableEditor();
   if (!editor?.ids.length || !variables) return fallback;
   const element = editor.store.byId.get(editor.ids[0]);
-  const binding = element?.theme?.bindings?.find(binding => binding.target === "style" && binding.property === property);
+  const binding = findElementVariableBinding(element, variables.library, property);
   const token = variables.library.tokens.find(token => token.id === binding?.tokenId);
   const value = token && editor.resolve(element.id).values[token.id];
   return value === undefined || !token ? fallback : literalForProperty(value, token, property, binding.alpha);
@@ -26,6 +26,9 @@ export function VariableLibraryProvider({ projectPath, children }) {
   const [focusTokenId, setFocusTokenId] = React.useState<string | null>(null);
   const snapshotRef = React.useRef(snapshot);
   const busy = React.useRef(false);
+  const reading = React.useRef(false);
+  const reloadQueued = React.useRef(false);
+  const reloadTimer = React.useRef<number | null>(null);
   const generation = React.useRef(0);
   const undo = React.useRef<any[]>([]);
   const redo = React.useRef<any[]>([]);
@@ -37,27 +40,45 @@ export function VariableLibraryProvider({ projectPath, children }) {
   }, [root]);
   const accept = React.useCallback(next => { snapshotRef.current = next; setSnapshot(next); }, []);
   const reload = React.useCallback(async () => {
-    if (busy.current) return;
+    if (busy.current || reading.current) { reloadQueued.current = true; return; }
+    reading.current = true;
     const request = ++generation.current;
     try {
-      const next = await invoke("read-variable-library");
+      let next = await invoke("read-variable-library");
       if (request !== generation.current || busy.current) return;
       if (!next?.library) throw new Error("Could not read project variables.");
       if (snapshotRef.current.revision !== next.revision) { undo.current = []; redo.current = []; }
       accept(next); setError(""); setStatus("ready");
     } catch (error) { if (request === generation.current) { setError(error.message); setStatus("error"); } }
+    finally {
+      reading.current = false;
+      if (reloadQueued.current && !busy.current) {
+        reloadQueued.current = false;
+        window.setTimeout(() => void reload(), 0);
+      }
+    }
   }, [invoke, accept]);
+  const scheduleReload = React.useCallback(() => {
+    if (reloadTimer.current !== null) window.clearTimeout(reloadTimer.current);
+    reloadTimer.current = window.setTimeout(() => { reloadTimer.current = null; void reload(); }, 75);
+  }, [reload]);
   React.useEffect(() => {
     void reload();
     const offFile = window.api?.on?.("file_changed", event => {
-      if (String(event?.projectId) === String(root) && (!snapshotRef.current.source || String(event.filePath).replace(/\\/g, "/").endsWith(snapshotRef.current.source))) void reload();
+      const changed = String(event?.filePath || "").replace(/\\/g, "/").replace(/^\.\//, "");
+      const watched = snapshotRef.current.watchedFiles || [snapshotRef.current.source];
+      if (String(event?.projectId) === String(root) && watched.some(file => changed === String(file || "").replace(/\\/g, "/").replace(/^\.\//, "") || changed.endsWith(`/${String(file || "").replace(/\\/g, "/").replace(/^\.\//, "")}`))) scheduleReload();
     });
-    const offSettings = window.api?.on?.("settings_changed", event => { if (String(event?.projectId) === String(root)) void reload(); });
-    const offDesign = window.api?.on?.("design_storage_changed", event => { if (String(event?.projectId) === String(root)) void reload(); });
+    const offSettings = window.api?.on?.("settings_changed", event => { if (String(event?.projectId) === String(root)) scheduleReload(); });
+    const offDesign = window.api?.on?.("design_storage_changed", event => { if (String(event?.projectId) === String(root)) scheduleReload(); });
     const focus = () => { if (!busy.current) void reload(); };
     window.addEventListener("focus", focus);
-    return () => { generation.current++; offFile?.(); offSettings?.(); offDesign?.(); window.removeEventListener("focus", focus); };
-  }, [reload, root]);
+    return () => {
+      generation.current++;
+      if (reloadTimer.current !== null) window.clearTimeout(reloadTimer.current);
+      offFile?.(); offSettings?.(); offDesign?.(); window.removeEventListener("focus", focus);
+    };
+  }, [reload, scheduleReload, root]);
   const write = React.useCallback(async (library, historyAction = "edit") => {
     if (busy.current || !snapshotRef.current.source) return false;
     try { validateVariableLibrary(library); } catch (error) { setError(error.message); return false; }
@@ -72,8 +93,14 @@ export function VariableLibraryProvider({ projectPath, children }) {
       if (historyAction === "redo") { redo.current.pop(); undo.current.push(before.library); }
       setStatus("ready"); refreshHistory(value => value + 1); return true;
     } catch (error) { accept(before); setStatus("error"); setError(error.message); return false; }
-    finally { busy.current = false; }
-  }, [accept, invoke]);
+    finally {
+      busy.current = false;
+      if (reloadQueued.current) {
+        reloadQueued.current = false;
+        scheduleReload();
+      }
+    }
+  }, [accept, invoke, scheduleReload]);
   const value = React.useMemo(() => ({
     ...snapshot, status, error, reload, managerOpen, focusTokenId,
     openManager: (tokenId = null) => { setFocusTokenId(tokenId); setManagerOpen(true); },
@@ -108,6 +135,8 @@ export function VariableEditorProvider({ store, selectedIds, onCommit, readOnly,
   };
   const value = {
     store, ids, readOnly, pageModes, resolve,
+    resolveModes: id => resolveCollectionModes(store, id, variables.library, pageModes),
+    bindingFor: (id, property) => findElementVariableBinding(store.byId.get(id), variables.library, property),
     setMode: (collectionId, modeId, page = false) => {
       if (readOnly) return;
       if (!page) return changeElements(element => setElementVariableMode(element, variables.library, collectionId, modeId));

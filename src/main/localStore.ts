@@ -258,7 +258,7 @@ function ensureDesignWatcher(root) {
         ...(error ? { error } : {}),
       });
     }, { onFileChange: filePath => {
-      if (filePath === variableSources.get(projectRoot)) broadcastToEditors("file_changed", { projectId: projectRoot, filePath });
+      if (variableSources.get(projectRoot)?.has(filePath)) broadcastToEditors("file_changed", { projectId: projectRoot, filePath });
     } });
     designWatchers.set(projectRoot, watcher);
   } catch {}
@@ -1027,7 +1027,7 @@ const OPS = {
   "read-variable-library": (root) => {
     root = assertRegisteredProjectRoot(root);
     const result = readProjectVariables(root, readEffectiveConfiguration(root, app.getPath("userData")).settings.prototypeTheme);
-    variableSources.set(canonicalPath(root), result.source.replace(/\\/g, "/").replace(/^\.\//, ""));
+    variableSources.set(canonicalPath(root), new Set((result.watchedFiles || [result.source]).map(file => file.replace(/\\/g, "/").replace(/^\.\//, ""))));
     ensureDesignWatcher(root);
     return result;
   },

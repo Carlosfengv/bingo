@@ -10,7 +10,7 @@ export const variableButtonClass = "inline-flex h-7 shrink-0 items-center justif
 export function VariableField({ property, children }) {
   const editor = useVariableEditor();
   if (!editor || !variableTypeForProperty(property)) return children;
-  const bound = editor.ids.some(id => editor.store.byId.get(id)?.theme?.bindings?.some(binding => binding.target === "style" && binding.property === property));
+  const bound = editor.ids.some(id => editor.bindingFor(id, property));
   return bound ? <VariableBindingControl property={property} /> : <div className="flex min-w-0 items-center gap-1"><div className="min-w-0 flex-1">{children}</div><VariableBindingControl property={property} compact /></div>;
 }
 
@@ -27,46 +27,28 @@ export function VariableModeControls({ page = false }) {
   const { t } = useTranslation("editor");
   if (!variables || !editor) return null;
   const selected = page ? [] : editor.ids;
-  const relevant = new Set<string>();
-  if (!page) {
-    const inspect = (id, seen = new Set()) => {
-      if (seen.has(id)) return; seen.add(id);
-      const element = editor.store.byId.get(id);
-      Object.keys(element?.theme?.localCollectionModes || {}).forEach(key => relevant.add(key));
-      for (const binding of element?.theme?.bindings || []) {
-        const token = variables.library.tokens.find(token => token.id === binding.tokenId);
-        if (token) relevant.add(token.collectionId);
-      }
-      // Existing CSS variable expressions also count as consumers.
-      const styles = JSON.stringify(element?.styles || {});
-      variables.library.tokens.forEach(token => { if (token.cssName && styles.includes(`var(--${token.cssName})`)) relevant.add(token.collectionId); });
-      (editor.store.childrenByParent.get(id) || []).forEach(child => inspect(child, seen));
-    };
-    selected.forEach(id => inspect(id));
-  }
-  const collections = variables.library.collections.filter(collection => page || relevant.has(collection.id));
+  const colorCollectionIds = new Set(variables.library.tokens.filter(token => token.type === "color").map(token => token.collectionId));
+  const colorCollections = variables.library.collections.filter(collection => colorCollectionIds.has(collection.id));
+  const collection = colorCollections.find(collection => collection.id === "project-styles") || colorCollections.find(collection => collection.sourceRef?.kind === "css") || colorCollections[0];
+  if (!collection) return null;
+  const explicit = page ? [editor.pageModes[collection.id] || ""] : selected.map(id => editor.store.byId.get(id)?.theme?.localCollectionModes?.[collection.id] || "");
+  const mixed = new Set(explicit).size > 1;
+  const resolved = page ? { modes: { [collection.id]: collection.defaultModeId }, sources: { [collection.id]: null } } : editor.resolveModes(editor.store.parentByChild.get(selected[0]) || null);
+  const modeName = collection.modes.find(mode => mode.id === resolved.modes[collection.id])?.name || collection.modes.find(mode => mode.id === resolved.modes[collection.id])?.label || resolved.modes[collection.id];
+  const sourceId = resolved.sources[collection.id];
+  const source = sourceId === "PAGE" ? t("variables.page") : editor.store.byId.get(sourceId)?.name || sourceId || t("variables.default");
+  const value = mixed ? "__mixed" : explicit[0] || "";
   return <div className="flex min-w-0 flex-col gap-2" data-variable-mode-controls="">
-    <div className="flex items-center justify-between gap-2"><span className="text-xs text-ed-foreground-secondary">{t("variables.modes")}</span><VariablesButton /></div>
     {variables.error && <div role="alert" className="text-xs text-red-500">{variables.error} <button type="button" onClick={variables.reload}>{t("variables.reload")}</button></div>}
-    {collections.map(collection => {
-      const explicit = page ? [editor.pageModes[collection.id] || ""] : selected.map(id => editor.store.byId.get(id)?.theme?.localCollectionModes?.[collection.id] || "");
-      const mixed = new Set(explicit).size > 1;
-      const resolved = page ? { modes: { [collection.id]: collection.defaultModeId }, sources: { [collection.id]: null } } : editor.resolve(editor.store.parentByChild.get(selected[0]) || null);
-      const modeName = collection.modes.find(mode => mode.id === resolved.modes[collection.id])?.name || collection.modes.find(mode => mode.id === resolved.modes[collection.id])?.label || resolved.modes[collection.id];
-      const sourceId = resolved.sources[collection.id];
-      const source = sourceId === "PAGE" ? t("variables.page") : editor.store.byId.get(sourceId)?.name || sourceId || t("variables.default");
-      const value = mixed ? "__mixed" : explicit[0] || "";
-      return <label key={collection.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.3fr)" }} className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] items-center gap-2 text-xs" title={`${t("variables.inherit")} ${source}`}>
-        <span className="truncate text-ed-foreground-secondary">{collection.name || collection.id}</span>
-        <select aria-label={`${t("variables.modes")} · ${collection.name || collection.id}`} className={`${variableInputClass} w-full`} value={value} disabled={editor.readOnly || variables.status === "loading"} onChange={event => editor.setMode(collection.id, event.target.value || null, page)}>
-          {mixed && <option value="__mixed" disabled>{t("variables.mixed")}</option>}
-          <option value="">{t(page ? "variables.default" : "variables.auto")} · {modeName}</option>
-          {value && value !== "__mixed" && !collection.modes.some(mode => mode.id === value) && <option value={value} disabled>{t("variables.unavailable")}</option>}
-          {collection.modes.map(mode => <option key={mode.id} value={mode.id}>{mode.name || mode.label || mode.id}</option>)}
-        </select>
-      </label>;
-    })}
-    {!collections.length && <p className="text-[11px] leading-4 text-ed-muted-foreground">{t(page ? "variables.empty" : "variables.emptyModes")}</p>}
+    <label style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.3fr)" }} className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] items-center gap-2 text-xs" title={`${t("variables.inherit")} ${source}`}>
+      <span className="truncate text-ed-foreground-secondary">{t("variables.colorMode")}</span>
+      <select aria-label={t("variables.colorMode")} className={`${variableInputClass} w-full`} value={value} disabled={editor.readOnly || variables.status === "loading"} onChange={event => editor.setMode(collection.id, event.target.value || null, page)}>
+        {mixed && <option value="__mixed" disabled>{t("variables.mixed")}</option>}
+        <option value="">{t(page ? "variables.default" : "variables.auto")} · {modeName}</option>
+        {value && value !== "__mixed" && !collection.modes.some(mode => mode.id === value) && <option value={value} disabled>{t("variables.unavailable")}</option>}
+        {collection.modes.map(mode => <option key={mode.id} value={mode.id}>{mode.name || mode.label || mode.id}</option>)}
+      </select>
+    </label>
   </div>;
 }
 
@@ -78,11 +60,11 @@ export function VariableBindingControl({ property, compact = false }) {
   const [query, setQuery] = React.useState("");
   const [collectionId, setCollectionId] = React.useState("");
   if (!variables || !editor?.ids.length || !variableTypeForProperty(property)) return null;
-  const bindings = editor.ids.map(id => editor.store.byId.get(id)?.theme?.bindings?.find(binding => binding.target === "style" && binding.property === property));
+  const bindings = editor.ids.map(id => editor.bindingFor(id, property));
   const binding = bindings[0];
   const mixed = new Set(bindings.map(binding => `${binding?.tokenId || ""}:${binding?.alpha ?? 1}`)).size > 1;
   const token = variables.library.tokens.find(token => token.id === binding?.tokenId);
-  const values = editor.ids.map(id => editor.resolve(id).values[binding?.tokenId]);
+  const values = binding ? editor.ids.map(id => editor.resolve(id).values[binding.tokenId]) : [];
   const valuesMixed = new Set(values).size > 1;
   const resolved = editor.resolve(editor.ids[0]);
   const candidates = variables.library.tokens.filter(token => canBindVariable(token, property) && (!collectionId || token.collectionId === collectionId) && (token.name || token.id).toLowerCase().includes(query.toLowerCase()));
