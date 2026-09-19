@@ -1,4 +1,5 @@
 import { app } from "electron";
+import { AgentStatusCache } from "./agentStatusCache";
 import { broadcastToEditors } from "./windowManager";
 import fs from "node:fs";
 import path from "node:path";
@@ -34,6 +35,7 @@ function readConfig() {
 }
 
 function writeConfig(patch) {
+  agentCatalogCache.invalidate();
   const next = { ...readConfig(), ...patch };
   // An empty string means "stop overriding", so drop the key entirely.
   for (const key of Object.keys(next)) {
@@ -54,10 +56,11 @@ function writeConfig(patch) {
 // Older override fields remain on disk for recovery, but are no longer injected.
 function withAiEnv(env) { return env; }
 
-async function getLocalAgents() {
+const agentCatalogCache = new AgentStatusCache(async () => {
   const agents = await discoverAgents();
   return { agents, selectedAgent: selectInstalledAgent(agents, readConfig().agent) };
-}
+}, value => value.agents.some(agent => agent.installed));
+async function getLocalAgents(force = false) { return agentCatalogCache.get(force); }
 
 async function testProvider() {
   const { selectedAgent } = await getLocalAgents();
@@ -74,7 +77,7 @@ function registerAiConfig(ipcMainRef, options = {}) {
   // on the application. It is a deliberate, single seam — see RECOVERY.md.
   globalThis.__lunaAiEnv = withAiEnv;
 
-  ipcMainRef.handle("agent:list", () => getLocalAgents());
+  ipcMainRef.handle("agent:list", (_event, args) => getLocalAgents(args?.force === true));
 
   ipcMainRef.handle("agent:models", async (_event, args) => {
     if (!AGENT_IDS.includes(args?.agent)) throw new Error("Unsupported coding agent.");

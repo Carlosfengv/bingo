@@ -62,9 +62,9 @@ async function generateChatTitle(input) {
   if (!title) throw new Error("Empty chat title");
   return title;
 }
-/** Re-resolves the binary each call so a freshly-installed CLI is picked up while the wizard polls. */
-async function isClaudeInstalled() {
-  await findClaudeBinary(true);
+/** Forced setup-wizard probes discover newly installed binaries immediately. */
+async function isClaudeInstalled(force = false) {
+  await findClaudeBinary(force);
   return resolvedClaudeBinary() !== null;
 }
 /**
@@ -110,8 +110,8 @@ async function getClaudeAccount() {
   }
 }
 /** Snapshot of Claude Code setup state for the setup wizard + chat empty state. */
-async function getClaudeStatus() {
-  if (!(await isClaudeInstalled())) return {
+async function getClaudeStatus(force = false) {
+  if (!(await isClaudeInstalled(force))) return {
     installed: false,
     loggedIn: false
   };

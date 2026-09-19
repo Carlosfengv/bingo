@@ -123,7 +123,8 @@ function ClaudeCodeSetupModal(t0) {
   let t1;
   if ($[0] !== open) {
     t1 = {
-      poll: open
+      poll: open,
+      enabled: open
     };
     $[0] = open;
     $[1] = t1;

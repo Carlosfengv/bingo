@@ -1,3 +1,4 @@
+import { useSharedAgentQuery } from "./useSharedAgentQuery";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AGENT_IDS, AGENT_INFO, type AgentId, type AgentModel, type InstalledAgent } from "../../../../../src/shared/codingAgents";
 
@@ -43,14 +44,13 @@ function writeModelPreference(agent: AgentId, model: string) {
 }
 
 export function useLocalAgents({ includeModels = false } = {}) {
-  const [agents, setAgents] = useState<InstalledAgent[]>(AGENT_IDS.map(agent => ({
-    agent, displayName: AGENT_INFO[agent].name, installed: false,
-    installCommand: AGENT_INFO[agent].install, loginCommand: AGENT_INFO[agent].login,
-  })));
-  const [selectedAgent, setSelectedAgent] = useState<AgentId | null>(null);
-  const [loading, setLoading] = useState(true);
+  const catalog = useSharedAgentQuery("agent:list");
+  const agents = catalog.value?.agents ?? [];
+  const selectedAgent: AgentId | null = catalog.value?.selectedAgent ?? null;
+  const loading = catalog.loading;
+  const error = catalog.error;
+  const refresh = catalog.refresh;
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(false);
   const [models, setModels] = useState<AgentModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState(false);
@@ -59,38 +59,12 @@ export function useLocalAgents({ includeModels = false } = {}) {
     try { return localStorage.getItem("bingo-ai-effort") || "high"; }
     catch { return "high"; }
   });
-  const generation = useRef(0);
   const modelGeneration = useRef(0);
   const mounted = useRef(false);
-  const refresh = useCallback(async () => {
-    const request = ++generation.current;
-    setLoading(true);
-    try {
-      const result = await window.api.invoke("agent:list");
-      if (!mounted.current || request !== generation.current) return;
-      setAgents(result.agents);
-      setSelectedAgent(result.selectedAgent);
-      setError(false);
-    } catch {
-      if (mounted.current && request === generation.current) setError(true);
-    } finally {
-      if (mounted.current && request === generation.current) setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     mounted.current = true;
-    void refresh();
-    const onFocus = () => void refresh();
-    window.addEventListener("focus", onFocus);
-    const off = window.api?.on?.("ai-config:changed", onFocus);
-    return () => {
-      mounted.current = false;
-      ++generation.current;
-      window.removeEventListener("focus", onFocus);
-      off?.();
-    };
-  }, [refresh]);
+    return () => { mounted.current = false; ++modelGeneration.current; };
+  }, []);
 
   const loadModels = useCallback(async (agent: AgentId, force: boolean) => {
     const request = ++modelGeneration.current;

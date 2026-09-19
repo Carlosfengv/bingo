@@ -8,6 +8,7 @@
  */
 import { cancelAllSessions, cancelSession, cancelSessionsForProject, generateChatTitle, getClaudeStatus, handleChat } from "./aiChat";
 import { resolvedUserDataPath } from "./appDataPath";
+import { AgentStatusCache } from "./agentStatusCache";
 import { listClaudeConnections, listClaudeSlashCommands } from "./claudeContext";
 import { abandonClaimsForProject, cancelApprovalsForProject, checkMcpHealth, ensureMcpServerReady, getMcpUrl, getSystemSkills, isExistingPathAllowed, mcpEvents, orphanCanvasOperationsForWebContents, resolveApproval, resolveFolderAccess, setExternalMcpAutoApproveFileEdits, setProjectAllowedPaths, setSkillOverrides, startMcpServer, stopMcpServer } from "./mcpServer";
 import { getAllowedLocalPaths, validatePromptFolders, withPromptFolders } from "./promptFolders";
@@ -435,7 +436,8 @@ function registerIPC() {
       success: true
     };
   });
-  electron.ipcMain.handle("claude:check-status", () => getClaudeStatus());
+  const claudeStatusCache = new AgentStatusCache(force => getClaudeStatus(force), value => value.installed && value.loggedIn);
+  electron.ipcMain.handle("claude:check-status", (_event, args) => claudeStatusCache.get(args?.force === true));
   electron.ipcMain.handle("claude:list-connections", (_, args) => listClaudeConnections(typeof args?.cwd === "string" ? args.cwd : void 0));
   electron.ipcMain.handle("claude:list-commands", (_, args) => listClaudeSlashCommands(typeof args?.cwd === "string" ? args.cwd : void 0));
   electron.ipcMain.handle("mcp_tool_approval", (_, args) => {
