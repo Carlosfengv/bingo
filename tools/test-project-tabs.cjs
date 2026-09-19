@@ -20,6 +20,12 @@ for (let index = 0; index < projectIds.length; index++) {
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({name: path.basename(dir), version:'1.0.0',type:'module',dependencies:{react:'19.2.8','react-dom':'19.2.8'}}));
   fs.writeFileSync(path.join(dir, 'src', 'App.tsx'), `import React from 'react'; export default function App(){return <main style={{padding:48,background:'${['#e9eef5','#f5e9eb','#e8f0eb'][index]}',color:'#20252e',width:640,height:400}}><h1>${names[index]}</h1><p>Project tab isolation test</p></main>}`);
   if (!fs.existsSync(path.join(dir, 'node_modules'))) fs.symlinkSync(path.join(root, 'node_modules'), path.join(dir, 'node_modules'));
+  // Explicit canvas fixture: opening source files no longer auto-populates Page 1.
+  const pageId = require('node:crypto').randomUUID();
+  const design = path.join(dir, '.bingo/design');
+  fs.mkdirSync(path.join(design, 'pages'), { recursive: true });
+  fs.writeFileSync(path.join(design, 'manifest.json'), JSON.stringify({ schemaVersion:1, documentId:require('node:crypto').randomUUID(), pages:[{id:pageId}] }));
+  fs.writeFileSync(path.join(design, 'pages', pageId+'.json'), JSON.stringify({ schemaVersion:1,id:pageId,name:'Page 1',canvas:{elements:{schemaVersion:2,byId:{'el-app-root':{id:'el-app-root',type:'html',tag:'main',name:'App',styles:{width:640,height:400,backgroundColor:'#e9eef5'},canvasPosition:{x:0,y:0}}},childrenByParent:{ROOT:['el-app-root']}}},newClasses:[] }));
 }
 fs.writeFileSync(path.join(data, 'local-projects.json'), JSON.stringify(projectIds.map((id,index)=>({id,rootPath:id,canonicalRoot:id,name:names[index],addedAt:Date.now()}))));
 fs.writeFileSync(path.join(data,'preferences.json'), JSON.stringify({schemaVersion:1,localePreference:'zh-CN'}));
@@ -58,6 +64,38 @@ app.whenReady().then(async()=>{
     check('Three projects open as separate tabs',state.tabs.length===3&&targets().length===3);
     await waitFor(async()=>{const s=await invoke(shell,'project-tabs:get');return s.tabs.every(t=>t.status==='idle');},'project editors ready',90000);
     const first=getProject(projectIds[0]);const second=getProject(projectIds[1]);const third=getProject(projectIds[2]);
+    check('Background project receives explicit inactive state',!(await invoke(first,'project-tabs:activity-get')).active);
+    check('Selected project receives explicit active state',(await invoke(third,'project-tabs:activity-get')).active);
+    const sameRevision=(await invoke(shell,'project-tabs:get')).revision;
+    await invoke(shell,'project-tabs:activate',{projectId:projectIds[2]});
+    check('Re-selecting the current tab does not republish state',(await invoke(shell,'project-tabs:get')).revision===sameRevision);
+    const variables=await invoke(first,'bingo:store',{op:'read-variable-library',root:projectIds[0]});
+    check('Unchanged variables use the lightweight snapshot response',(await invoke(first,'bingo:store',{op:'read-variable-library',root:projectIds[0],knownSnapshotKey:variables.snapshotKey})).unchanged===true);
+    await evaluate(first,`window.__variableInvalidated=false;window.__offVariable=window.api.on('variable-library:invalidated',()=>{window.__variableInvalidated=true});void 0`);
+    fs.writeFileSync(path.join(projectIds[0],'src','new-theme.css'),':root{--background:#123456}');
+    await waitFor(()=>evaluate(first,'window.__variableInvalidated'),'new CSS invalidation');
+    const updatedVariables=await invoke(first,'bingo:store',{op:'read-variable-library',root:projectIds[0],knownSnapshotKey:variables.snapshotKey});
+    check('New CSS sources invalidate a cached variable library',!updatedVariables.unchanged&&updatedVariables.library.tokens.some(t=>t.cssName==='background'));
+    await evaluate(first,'window.__offVariable();void 0');
+    await sleep(2000); // Let the preceding CSS rebuild finish before the capture fixture.
+    // This fixture uses no text. Remove external font rules so the DOM-capture
+    // assertion is independent of network access and the app's font CSP.
+    await evaluate(first,`(()=>{const clean=doc=>{for(const sheet of doc.styleSheets){try{for(let i=sheet.cssRules.length-1;i>=0;i--)if([CSSRule.FONT_FACE_RULE,CSSRule.IMPORT_RULE].includes(sheet.cssRules[i].type))sheet.deleteRule(i)}catch{}}for(const frame of doc.querySelectorAll('iframe')){try{if(frame.contentDocument)clean(frame.contentDocument)}catch{}}};clean(document)})();void 0`);
+    const backgroundCapture = new Promise((resolve,reject)=>{
+      const listener=(event,result)=>{if(event.sender.id!==first.id||result.requestId!=='tabs-background-capture')return;clearTimeout(timer);require('electron').ipcMain.removeListener('screenshot_result',listener);resolve(result);};
+      const timer=setTimeout(()=>{require('electron').ipcMain.removeListener('screenshot_result',listener);reject(Error('Background capture timeout'));},15000);
+      require('electron').ipcMain.on('screenshot_result',listener);
+      first.send('screenshot_request_mcp',{requestId:'tabs-background-capture',elementId:'el-app-root'});
+    });
+    const captured=await backgroundCapture;
+    const captureImage=captured.dataUrl ? require('electron').nativeImage.createFromDataURL(captured.dataUrl)
+      : captured.nativeCaptureRect ? await first.capturePage(captured.nativeCaptureRect) : null;
+    check('Background screenshots still render',captureImage&&!captureImage.isEmpty());
+    fs.writeFileSync(path.join(qa,'background-capture.png'),captureImage.toPNG());
+    const pixels=captureImage.toBitmap();let fixturePixels=0;
+    for(let i=0;i<pixels.length;i+=4)if(pixels[i]===245&&pixels[i+1]===238&&pixels[i+2]===233)fixturePixels++;
+    check('Background screenshot contains the current canvas fixture',fixturePixels>100);
+    check('Background capture does not select its project',(await invoke(shell,'project-tabs:get')).activeId===projectIds[2]);
     check('Every editor has its own document',new Set([first.id,second.id,third.id]).size===3);
     for (const [name,contents] of [['shell',shell],['project',first]]) {
       let prevented=false;
