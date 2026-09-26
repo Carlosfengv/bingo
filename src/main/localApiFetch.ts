@@ -4,18 +4,18 @@
  * The app's MCP server uses Response-shaped calls internally. This router maps
  * those calls onto the local store without opening a network connection.
  *
- * A project id is an absolute folder path in local mode, and it is interpolated
- * raw into the URL, so paths are parsed by suffix rather than by a segment
- * regex.
+ * A project id is an absolute folder path in local mode. It is encoded as one
+ * URL segment so project directory names cannot be mistaken for API routes.
  */
 
-import path from "node:path";
+import { parseProjectApiPath } from "./projectApiPath";
 
 import {
   listProjectFiles,
   deleteProjectFile,
   projectEntry,
-  readProjectFile,
+  resolveRegisteredProjectRoot,
+  readProjectFileSnapshot,
   readProjectSettings,
   addProjectIconLibrarySettings,
   listProjectCanvases,
@@ -35,36 +35,7 @@ function respond(status, body) {
 }
 
 const notFound = (what) => respond(404, { error: `${what} not found` });
-
-/** Split `/projects/<absolute/path><tail>` into its two halves. */
-const TAILS = [
-  "/settings/icon-libraries",
-  "/assets/by-path",
-  "/files/by-path",
-  "/pages/reorder",
-  "/pages/",
-  "/pages",
-  "/files/",
-  "/settings",
-  "/files",
-];
-
-function parseProjectPath(p) {
-  if (!p.startsWith("/projects/")) return null;
-  const rest = p.slice("/projects/".length);
-  for (const tail of TAILS) {
-    const at = rest.lastIndexOf(tail);
-    // `at > 0` matters: an empty project id means the URL was not what we think.
-    if (at > 0) {
-      return {
-        projectId: rest.slice(0, at),
-        tail,
-        rest: rest.slice(at + tail.length).replace(/^\?path=/, ""),
-      };
-    }
-  }
-  return { projectId: rest, tail: "", rest: "" };
-}
+const writeConflict = (error) => respond(409, { error: error.message, reason: "SOURCE_CONFLICT", details: error.details });
 
 const decode = (value) => {
   try {
@@ -83,15 +54,19 @@ function readBody(init) {
 }
 
 async function routeProjects(pathname, init) {
-  const parsed = parseProjectPath(pathname);
+  let parsed;
+  try { parsed = parseProjectApiPath(pathname); } catch (error) {
+    return respond(400, { error: error.message });
+  }
   if (!parsed) return null;
-  const { projectId, tail, rest } = parsed;
+  const { projectId, route: tail, query } = parsed;
   const method = (init?.method || "GET").toUpperCase();
-  const entry = projectEntry(projectId);
-  const root = entry?.rootPath || projectId;
+  const root = resolveRegisteredProjectRoot(projectId);
+  if (!root) return notFound(`Project ${projectId}`);
+  const entry = projectEntry(root);
 
   if (tail === "") {
-    return respond(200, { id: entry?.id ?? projectId, name: entry?.name ?? path.basename(root), rootPath: root });
+    return respond(200, { id: entry.id, name: entry.name, rootPath: root });
   }
 
   if (tail === "/files" && method === "GET") {
@@ -103,11 +78,15 @@ async function routeProjects(pathname, init) {
     if (!body.path || body.content == null) {
       return respond(400, { error: "path and content are required" });
     }
-    writeProjectFile(root, body.path, body.content);
+    let result;
+    try { result = writeProjectFile(root, body.path, body.content, { createOnly: true }); }
+    catch (error) { if (error?.code === "SOURCE_CONFLICT") return writeConflict(error); throw error; }
     return respond(201, {
       id: encodeURIComponent(body.path),
       path: body.path,
       fileType: body.fileType ?? "other",
+      hash: result.hash,
+      changed: result.changed,
     });
   }
 
@@ -116,32 +95,45 @@ async function routeProjects(pathname, init) {
   }
 
   if (tail === "/files/by-path") {
-    const rel = decode(rest);
-    const content = readProjectFile(root, rel);
+    const rel = query.get("path") || "";
+    const snapshot = readProjectFileSnapshot(root, rel);
     if (method === "PATCH") {
-      if (content == null) return notFound(`File ${rel}`);
-      writeProjectFile(root, rel, readBody(init).content ?? "");
-      return respond(200, { id: encodeURIComponent(rel), path: rel });
+      if (!snapshot) return notFound(`File ${rel}`);
+      const body = readBody(init);
+      if (typeof body.expectedHash !== "string") return respond(400, { error: "expectedHash is required" });
+      let result;
+      try { result = writeProjectFile(root, rel, body.content ?? "", { expectedHash: body.expectedHash }); }
+      catch (error) { if (error?.code === "SOURCE_CONFLICT") return writeConflict(error); throw error; }
+      return respond(200, { id: encodeURIComponent(rel), path: rel, hash: result.hash, changed: result.changed });
     }
-    if (content == null) return notFound(`File ${rel}`);
+    if (!snapshot) return notFound(`File ${rel}`);
     // The caller reads `id` and PATCHes by it, so the id has to round-trip.
-    return respond(200, { id: encodeURIComponent(rel), path: rel, content });
+    return respond(200, { id: encodeURIComponent(rel), path: rel, ...snapshot });
   }
 
-  if (tail === "/files/" && rest && !rest.includes("/")) {
+  if (tail.startsWith("/files/") && tail !== "/files/by-path" && !tail.slice("/files/".length).includes("/")) {
+    const rest = tail.slice("/files/".length);
     const rel = decode(rest);
-    const content = readProjectFile(root, rel);
+    const snapshot = readProjectFileSnapshot(root, rel);
     if (method === "DELETE") {
-      const result = deleteProjectFile(root, rel);
+      const body = readBody(init);
+      if (typeof body.expectedHash !== "string") return respond(400, { error: "expectedHash is required" });
+      let result;
+      try { result = deleteProjectFile(root, rel, body.expectedHash); }
+      catch (error) { if (error?.code === "SOURCE_CONFLICT") return writeConflict(error); throw error; }
       return result.success ? respond(200, result) : notFound(`File ${rel}`);
     }
     if (method === "PATCH") {
-      if (content == null) return notFound(`File ${rel}`);
-      writeProjectFile(root, rel, readBody(init).content ?? "");
-      return respond(200, { id: rest, path: rel });
+      if (!snapshot) return notFound(`File ${rel}`);
+      const body = readBody(init);
+      if (typeof body.expectedHash !== "string") return respond(400, { error: "expectedHash is required" });
+      let result;
+      try { result = writeProjectFile(root, rel, body.content ?? "", { expectedHash: body.expectedHash }); }
+      catch (error) { if (error?.code === "SOURCE_CONFLICT") return writeConflict(error); throw error; }
+      return respond(200, { id: rest, path: rel, hash: result.hash, changed: result.changed });
     }
-    if (content == null) return notFound(`File ${rel}`);
-    return respond(200, { id: rest, path: rel, content });
+    if (!snapshot) return notFound(`File ${rel}`);
+    return respond(200, { id: rest, path: rel, ...snapshot });
   }
 
   // `/settings` reads return the project's own settings file, which is what the
@@ -178,7 +170,7 @@ async function routeImport(pathname, init) {
     const failed = [];
     for (const file of body.files || []) {
       try {
-        writeProjectFile(root, file.path, file.content ?? "");
+        writeProjectFile(root, file.path, file.content ?? "", { createOnly: true });
         written.push(file.path);
       } catch {
         failed.push(file.path);

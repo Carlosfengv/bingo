@@ -9,7 +9,7 @@ const catalog = {
   Button: { path: "ui/button.tsx", props: { variant: { type: '"default" | "outline" | undefined' } } },
   StatusPill: { path: "ui/status-pill.tsx", props: { tone: { type: '"neutral" | "attention"' } } },
   TextField: { path: "ui/text-field.tsx" },
-  Card: { path: "ui/card.tsx" },
+  Card: { path: "ui/card.tsx", editing: { rootStyle: "supported" } },
 };
 
 test("discovery finds source synonyms and keeps direct matches first", () => {
@@ -76,4 +76,40 @@ test("syntax errors stay with the parser and text examples are never evaluated a
   assert.deepEqual(lintCanvasDesign('<div>{"<Button variant=bad />"}</div>', catalog), []);
   assert.deepEqual(lintCanvasDesign('<Button variant="bad"', catalog), []);
   assert.equal(lintCanvasDesign('<Button variant="outline" /><StatusPill tone="invalid" />', catalog)[0].element, "StatusPill");
+});
+
+test("required parameters and static nonprimitive values cannot bypass the component contract", () => {
+  const index = { Field: { props: { text: { type: "string", required: true }, count: { type: "number", required: true, default: 0 } } } };
+  assert.equal(lintCanvasDesign('<Field />', index).filter(issue => issue.code === "MISSING_COMPONENT_PROP").length, 1);
+  for (const value of ['{{}}', '{[]}', '{() => 1}', '{<div/>}']) {
+    assert.equal(lintCanvasDesign(`<Field text=${value}/>`, index).filter(issue => issue.code === "INVALID_COMPONENT_PROP").length, 1);
+  }
+  assert.deepEqual(lintCanvasDesign('<Field text={runtimeText} />', index), []);
+  assert.deepEqual(lintCanvasDesign('<Field {...runtimeProps} />', index), []);
+  assert.deepEqual(lintCanvasDesign('<Field text="" count={+0} />', index), []);
+});
+
+test("new style declarations require a verified component target, including non-appearance properties", () => {
+  const index = { ...catalog, Opaque: { editing: { rootStyle: "unsupported" } } };
+  for (const name of ["Opaque", "TextField"]) {
+    assert.ok(lintCanvasDesign(`<${name} style={{width: 90, backgroundColor: 'red'}}/>`, index).some(issue => issue.code === "UNSUPPORTED_COMPONENT_STYLE"));
+  }
+  assert.ok(!lintCanvasDesign('<Card style={{width: 90}}/>', index).some(issue => issue.severity === "error"));
+  assert.ok(lintCanvasDesign('<Card asChild style={{width: 90}}/>', index).some(issue => issue.code === "UNSUPPORTED_COMPONENT_STYLE"));
+  for (const jsx of ['<Card {...props} style={{width: 90}}/>', '<Card style={sharedStyle}/>', '<Card asChild={condition} style={{width: 90}}/>', '<Card style={{width: getWidth()}}/>']) {
+    assert.ok(lintCanvasDesign(jsx, index).some(issue => issue.code === "UNSUPPORTED_COMPONENT_STYLE"));
+    assert.deepEqual(lintCanvasDesign(jsx.replace('/>', ' title="Unrelated"/>'), index, jsx), []);
+  }
+});
+
+test("unrelated edits retain legacy invalid values and unsupported styles but cannot change those styles", () => {
+  const before = '<TextField data-element-id="field" style={{width: 90}} label="Before"/>';
+  assert.deepEqual(lintCanvasDesign(before.replace('Before', 'After'), catalog, before), []);
+  assert.ok(lintCanvasDesign(before.replace('90', '100'), catalog, before).some(issue => issue.code === "UNSUPPORTED_COMPONENT_STYLE"));
+});
+
+test("complete selection-editor TSX files receive the same parameter checks as AI snippets", () => {
+  const source = `import { Button } from './ui/button'; export function Selected() { return <Button variant="missing"/>; }`;
+  assert.equal(lintCanvasDesign(source, catalog)[0].code, "INVALID_COMPONENT_VARIANT");
+  assert.deepEqual(lintCanvasDesign(source.replace('missing', 'outline'), catalog), []);
 });

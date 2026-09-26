@@ -6,7 +6,7 @@
  * this is build output with the build's own rewrites undone -- not the
  * author's original file. See luna/RECOVERY.md.
  */
-import { applyOperationsToStore, invertOperations } from "../../shared/utils/operations";
+import { applyOperationsToStore, invertOperations, mergeStyleOperations } from "../../shared/utils/operations";
 import * as import_react from "react";
 import * as import_compiler_runtime from "react/compiler-runtime";
 
@@ -32,12 +32,7 @@ function mergeScrubOps(prev, curr) {
     if (c.type === "set_props" && p.type === "set_props") result[idx] = {
       ...p,
       newProps: c.newProps
-    };else if (c.type === "set_styles" && p.type === "set_styles") result[idx] = {
-      ...p,
-      newStyles: c.newStyles,
-      oldTheme: p.oldTheme ?? c.oldTheme,
-      newTheme: c.newTheme ?? p.newTheme
-    };else if (c.type === "set_position" && p.type === "set_position") result[idx] = {
+    };else if (c.type === "set_styles" && p.type === "set_styles") result[idx] = mergeStyleOperations(p, c);else if (c.type === "set_position" && p.type === "set_position") result[idx] = {
       ...p,
       newPosition: c.newPosition
     };

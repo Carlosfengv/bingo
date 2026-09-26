@@ -13,7 +13,7 @@ import { extractIconNames, searchIcons } from "../../utils/iconUtils";
 import { SidebarSectionHeader } from "../SidebarSectionHeader";
 import { buildRequiredComponentProps } from "./AssetsPanel";
 import { IconsPanel } from "./IconsPanel";
-import { CompositionPreview, collectCompositionPreviewNames, getCompositionParseContext, getCompositionParseSignature, parseCompositionImports, parseCompositionRootsByExport } from "./compositionDrag";
+import { CompositionPreview, collectCompositionPreviewNames, getCompositionParseContext, getCompositionParseSignature, parseCompositionImports, parseCompositionRootsByExport, readCompositionSnapshot } from "./compositionDrag";
 import { IconBtn } from "./styles/primitives";
 import { buildCompositionTemplates, componentDisplayName, getCompositionPathForBase, parseCompositionFile } from "@bingo/compiler";
 import { Button, CaretDownIcon, CaretLeftIcon, CaretRightIcon, CodeIcon, DesktopIcon, DeviceMobileIcon, DeviceTabletIcon, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, FileCodeIcon, FilePlusIcon, FolderIcon, GlobeIcon, InputGroup, InputGroupAddon, InputGroupInput, PackageIcon, PaletteIcon, PlusIcon, ScrollArea, SearchIcon, SparkleIcon, Text$4, TextTIcon, Tooltip, TooltipContent, TooltipTrigger, XIcon, cn$2 } from "@bingo/ui";
@@ -399,6 +399,7 @@ var AssetsSidebarTabV2 = (0, import_react.forwardRef)(function AssetsSidebarTabV
   const [expandedIconLibraries, setExpandedIconLibraries] = (0, import_react.useState)({});
   const [selectedComponentFile, setSelectedComponentFile] = (0, import_react.useState)(null);
   const [compositionContent, setCompositionContent] = (0, import_react.useState)(null);
+  const [editableCompositionJsx, setEditableCompositionJsx] = (0, import_react.useState)(null);
   const [compositionLoading, setCompositionLoading] = (0, import_react.useState)(false);
   const compositionReadRef = (0, import_react.useRef)(null);
   const [searchQuery, setSearchQuery] = (0, import_react.useState)("");
@@ -468,7 +469,7 @@ var AssetsSidebarTabV2 = (0, import_react.forwardRef)(function AssetsSidebarTabV
   const compositionImports = (0, import_react.useMemo)(() => parseCompositionImports(compositionContent), [compositionContent]);
   const compositionParseContext = (0, import_react.useMemo)(() => getCompositionParseContext(compositionImports, iconLibraries, componentIndex, allIconLibraries), [compositionImports, iconLibraries, componentIndex, allIconLibraries]);
   const compositionParseSignature = (0, import_react.useMemo)(() => getCompositionParseSignature(compositionJsxByExport.values(), compositionParseContext), [compositionJsxByExport, compositionParseContext]);
-  const compositionRootsByExport = (0, import_react.useMemo)(() => parseCompositionRootsByExport(compositionJsxByExport, compositionParseContext), [compositionJsxByExport, compositionParseSignature]);
+  const compositionRootsByExport = (0, import_react.useMemo)(() => parseCompositionRootsByExport(editableCompositionJsx ?? compositionJsxByExport, compositionParseContext), [editableCompositionJsx, compositionJsxByExport, compositionParseSignature]);
   (0, import_react.useEffect)(() => {
     if (selectedComponentFile || selectedIconLibrary) return;
     requestAnimationFrame(() => searchInputRef.current?.focus());
@@ -478,7 +479,7 @@ var AssetsSidebarTabV2 = (0, import_react.forwardRef)(function AssetsSidebarTabV
     const key = `${sourceId}:${path}:${refreshKey}`;
     if (compositionReadRef.current?.key !== key) compositionReadRef.current = {
       key,
-      promise: readCompositionFile(path)
+      promise: readCompositionSnapshot(readCompositionFile, path)
     };
     return compositionReadRef.current.promise;
   });
@@ -489,6 +490,7 @@ var AssetsSidebarTabV2 = (0, import_react.forwardRef)(function AssetsSidebarTabV
   (0, import_react.useEffect)(() => {
     if (!selectedComponentFile || !canReadComposition) {
       setCompositionContent(null);
+      setEditableCompositionJsx(null);
       setCompositionLoading(false);
       return;
     }
@@ -496,16 +498,18 @@ var AssetsSidebarTabV2 = (0, import_react.forwardRef)(function AssetsSidebarTabV
     ensureComponentNames(selectedFile.components);
     let cancelled = false;
     setCompositionLoading(true);
-    loadComposition(getCompositionPathForBase(selectedFile.path), compositionSourceId, compositionRefreshKey).then(content => {
+    loadComposition(getCompositionPathForBase(selectedFile.path), compositionSourceId, compositionRefreshKey).then(snapshot => {
       if (cancelled) return;
+      const content = snapshot?.content;
       setCompositionContent(content ?? null);
+      setEditableCompositionJsx(snapshot?.editableJsxByExport ?? null);
       if (!content) return;
       const {
         jsxByExport
       } = parseCompositionFile(content);
       ensureComponentNames(collectCompositionPreviewNames(selectedFile.components, jsxByExport.values()));
     }).catch(() => {
-      if (!cancelled) setCompositionContent(null);
+      if (!cancelled) { setCompositionContent(null); setEditableCompositionJsx(null); }
     }).finally(() => {
       if (!cancelled) setCompositionLoading(false);
     });

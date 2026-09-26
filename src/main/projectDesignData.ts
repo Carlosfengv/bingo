@@ -52,7 +52,8 @@ function checkPath(root, target) {
   }
 }
 
-function atomicWrite(file, bytes) {
+function atomicWrite(file, bytes, beforeCreate) {
+  beforeCreate?.(file, Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes));
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const temporary = `${file}.${crypto.randomUUID()}.tmp`;
   try {
@@ -64,7 +65,7 @@ function atomicWrite(file, bytes) {
 }
 
 /** Copy once, retaining the original app data as a recovery copy. Project files win. */
-export function ensureProjectDesignData(root, userDataRoot) {
+export function ensureProjectDesignData(root, userDataRoot, beforeCreate) {
   root = fs.realpathSync(root);
   const directory = projectDesignDataPath(root);
   const marker = path.join(directory, MARKER);
@@ -127,19 +128,19 @@ export function ensureProjectDesignData(root, userDataRoot) {
       const bytes = transform && from.endsWith(".json")
         ? Buffer.from(JSON.stringify(convert(JSON.parse(fs.readFileSync(from, "utf8"))), null, 2) + "\n")
         : fs.readFileSync(from);
-      if (!fs.existsSync(to)) atomicWrite(to, bytes);
+      if (!fs.existsSync(to)) atomicWrite(to, bytes, beforeCreate);
       else if (!fs.readFileSync(to).equals(bytes)) {
         // Preserve a conflicting legacy record without replacing repository data.
         const backup = path.join(directory, "design-backups", "legacy-import", path.relative(source, from));
         checkPath(root, backup);
-        if (!fs.existsSync(backup)) atomicWrite(backup, bytes);
+        if (!fs.existsSync(backup)) atomicWrite(backup, bytes, beforeCreate);
       }
     };
     for (const entry of ENTRIES) copy(path.join(source, entry), path.join(directory, entry), ["canvases", "drafts"].includes(entry));
     for (const asset of assets.values()) {
       const target = path.join(directory, "assets", asset.name);
       checkPath(root, target);
-      if (!fs.existsSync(target)) atomicWrite(target, asset.bytes);
+      if (!fs.existsSync(target)) atomicWrite(target, asset.bytes, beforeCreate);
     }
     if (!hasPortableDesign(root)) {
       const canvases = path.join(directory, "canvases");
@@ -155,15 +156,15 @@ export function ensureProjectDesignData(root, userDataRoot) {
             if (fs.existsSync(oldVersions)) for (const version of fs.readdirSync(oldVersions).filter(name => name.endsWith(".json"))) {
               const target = path.join(canvases, `${page.id}.versions`, version);
               checkPath(root, target);
-              if (!fs.existsSync(target)) atomicWrite(target, JSON.stringify({ ...JSON.parse(fs.readFileSync(path.join(oldVersions, version), "utf8")), pageId: page.id }, null, 2) + "\n");
+              if (!fs.existsSync(target)) atomicWrite(target, JSON.stringify({ ...JSON.parse(fs.readFileSync(path.join(oldVersions, version), "utf8")), pageId: page.id }, null, 2) + "\n", beforeCreate);
             }
           }
           return page;
         })
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)) : [];
-      createPortableDesign(root, pages);
+      createPortableDesign(root, pages, { beforeCreate });
     } else listPortablePages(root); // Fail visibly on corrupt repository data.
-    atomicWrite(marker, JSON.stringify({ schemaVersion: DATA_VERSION }, null, 2) + "\n");
+    atomicWrite(marker, JSON.stringify({ schemaVersion: DATA_VERSION }, null, 2) + "\n", beforeCreate);
     return directory;
   } finally {
     fs.closeSync(descriptor);

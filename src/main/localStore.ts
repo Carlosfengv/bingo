@@ -49,9 +49,11 @@ import {
   savePortablePage,
 } from "./projectDesignStore";
 import { tNative } from "./localization";
+import { readSourceSnapshot, sourceConflict, writeSourceFile } from "./sourceFileWrite";
 import { watchPortableDesign } from "./projectDesignWatcher";
 import { deleteProjectDesignData, ensureProjectDesignData, legacyProjectDataPath, projectDesignDataPath } from "./projectDesignData";
 import { ensureProjectDesignIgnored } from "./projectGitIgnore";
+import { beginProjectRegistration, recoverProjectRegistrations } from "./projectRegistrationTransaction";
 import { discoverProjectIconLibraries } from "./projectIconDiscovery";
 import { discoverProjectCandidates } from "./projectDiscovery";
 import { getProjectAccessContext, getProjectAllowedPaths, setProjectAccessMode, setProjectAllowedPaths } from "./projectAccess";
@@ -368,6 +370,10 @@ function nowId() {
   return `${new Date().toISOString().replace(/[:.]/g, "-")}-${crypto.randomBytes(3).toString("hex")}`;
 }
 
+function validVersionId(versionId) {
+  return typeof versionId === "string" && versionId.length > 0 && versionId.length <= 255 && !/[/\\\0]/.test(versionId);
+}
+
 // ---------------------------------------------------------------------------
 // project registry
 // ---------------------------------------------------------------------------
@@ -414,7 +420,7 @@ function canonicalPath(root) {
   }
 }
 
-function registerProjectCandidate(candidate) {
+function registerProjectCandidate(candidate, transaction) {
   const root = canonicalPath(candidate.projectRoot);
   const rows = listProjects();
   const existing = rows.find((row) => {
@@ -427,8 +433,11 @@ function registerProjectCandidate(candidate) {
     existing.relativePath = candidate.relativePath || existing.relativePath;
     existing.kind = candidate.kind || existing.kind;
     existing.framework = candidate.framework || existing.framework;
-    saveProjects(rows);
-    stampProject(existing.rootPath || existing.id);
+    const stamp = stampProject(existing.rootPath || existing.id, transaction);
+    try { saveProjects(rows); } catch (error) {
+      rollbackProjectStamp(stamp);
+      throw error;
+    }
     return existing;
   }
 
@@ -444,16 +453,48 @@ function registerProjectCandidate(candidate) {
     addedAt: Date.now(),
   };
   rows.push(row);
-  saveProjects(rows);
-  stampProject(root);
+  const stamp = stampProject(root, transaction);
+  try { saveProjects(rows); } catch (error) {
+    rollbackProjectStamp(stamp);
+    throw error;
+  }
   return row;
 }
 
 /** Keep project identity with its design data. */
-function stampProject(root) {
+function stampProject(root, transaction) {
   const file = metaPath(root, "project.json");
-  if (!fs.existsSync(file)) {
-    writeJson(file, { id: root, name: path.basename(root), createdAt: Date.now() });
+  if (fs.existsSync(file)) return null;
+  const value = { id: root, name: path.basename(root), createdAt: Date.now() };
+  transaction?.recordStamp(Buffer.from(`${JSON.stringify(value, null, 2)}\n`));
+  writeJson(file, value);
+  return { file, bytes: fs.readFileSync(file) };
+}
+
+function rollbackProjectStamp(stamp) {
+  if (!stamp) return;
+  try {
+    if (fs.readFileSync(stamp.file).equals(stamp.bytes)) fs.unlinkSync(stamp.file);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+}
+
+async function registerSelectedProject(candidate, ignoreDesignInGit) {
+  const root = canonicalPath(candidate.projectRoot);
+  const transaction = beginProjectRegistration(app.getPath("userData"), root,
+    target => readRegistry().some(row => canonicalPath(row.canonicalRoot || row.rootPath || row.id) === target));
+  try {
+    if (ignoreDesignInGit) await ensureProjectDesignIgnored(root, change => transaction.recordIgnore(change));
+    ensureProjectDesignData(root, app.getPath("userData"), (file, bytes) => transaction.recordCreatedFile(file, bytes));
+    transaction.recordDesign();
+    const row = registerProjectCandidate(candidate, transaction);
+    transaction.finish();
+    return row;
+  } catch (error) {
+    try { transaction.rollback(); }
+    catch (recoveryError) { throw new Error(`Project registration failed and needs review before retrying: ${recoveryError.message}`, { cause: error }); }
+    throw error;
   }
 }
 
@@ -496,10 +537,16 @@ function readFile(root, rel) {
   try {
     root = assertRegisteredProjectRoot(root);
     if (getProjectAccessContext(root).mode === "disabled") return null;
-    return fs.readFileSync(safeJoin(root, rel), "utf8");
+    return readSourceSnapshot(safeJoin(root, rel))?.content ?? null;
   } catch {
     return null;
   }
+}
+
+function readFileSnapshot(root, rel) {
+  root = assertRegisteredProjectRoot(root);
+  if (getProjectAccessContext(root).mode === "disabled") return null;
+  return readSourceSnapshot(safeJoin(root, rel));
 }
 
 /**
@@ -511,27 +558,16 @@ function writeFile(root, rel, content, options = {}) {
   root = assertRegisteredProjectRoot(root);
   assertProjectWriteAllowed(root);
   const abs = safeJoin(root, rel);
-  if (options.expectedHash) {
-    let current;
-    try { current = fs.readFileSync(abs); } catch (error) {
-      if (error?.code !== "ENOENT") throw error;
-      current = Buffer.alloc(0);
-    }
-    const currentHash = crypto.createHash("sha256").update(current).digest("hex");
-    if (currentHash !== options.expectedHash) {
-      const error = new Error(`Source changed while the edit was being prepared: ${rel}`);
-      error.code = "SOURCE_CONFLICT";
-      error.details = { path: rel, expectedHash: options.expectedHash, actualHash: currentHash };
-      throw error;
-    }
-  }
-  if (fs.existsSync(abs)) {
-    snapshotFileVersion(root, rel, fs.readFileSync(abs, "utf8"));
-  }
-  fs.mkdirSync(path.dirname(abs), { recursive: true });
-  safeJoin(root, rel);
-  fs.writeFileSync(abs, content ?? "");
-  return { success: true };
+  return writeSourceFile(abs, content ?? "", {
+    expectedHash: options.expectedHash,
+    createOnly: options.createOnly,
+    validate: () => {
+      assertRegisteredProjectRoot(root);
+      assertProjectWriteAllowed(root);
+      safeJoin(root, rel);
+    },
+    beforeWrite: oldContent => snapshotFileVersion(root, rel, oldContent),
+  });
 }
 
 function writeBinaryFile(root, rel, content) {
@@ -540,15 +576,26 @@ function writeBinaryFile(root, rel, content) {
   const abs = safeJoin(root, rel);
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   safeJoin(root, rel);
-  fs.writeFileSync(abs, content, { flag: "w", mode: 0o600 });
+  const temporary = path.join(path.dirname(abs), `.${path.basename(abs)}.${process.pid}.${crypto.randomUUID()}.tmp`);
+  try {
+    fs.writeFileSync(temporary, content, { flag: "wx", mode: 0o600 });
+    safeJoin(root, rel);
+    fs.linkSync(temporary, abs); // create-only publication; never replace an existing source file
+  } finally { try { fs.unlinkSync(temporary); } catch {} }
   return { success: true, path: rel };
 }
 
-function deleteFile(root, rel) {
+function deleteFile(root, rel, expectedHash) {
+  root = assertRegisteredProjectRoot(root);
   assertProjectWriteAllowed(root);
+  if (typeof expectedHash !== "string") throw new Error("expectedHash is required to delete a source file");
   const abs = safeJoin(root, rel);
-  if (!fs.existsSync(abs)) return { success: false, error: "File not found" };
-  snapshotFileVersion(root, rel, fs.readFileSync(abs, "utf8"));
+  const previous = readSourceSnapshot(abs);
+  if (!previous) return { success: false, error: "File not found" };
+  if (previous.hash !== expectedHash) throw sourceConflict(abs, expectedHash, previous.hash);
+  snapshotFileVersion(root, rel, previous.content);
+  const latest = readSourceSnapshot(safeJoin(root, rel));
+  if (latest?.hash !== expectedHash) throw sourceConflict(abs, expectedHash, latest?.hash ?? null);
   fs.unlinkSync(abs);
   return { success: true };
 }
@@ -577,18 +624,19 @@ function fileVersions(root, rel) {
 }
 
 function fileVersionContent(root, rel, versionId) {
+  if (!validVersionId(versionId)) return null;
   return readJson(path.join(versionDir(root, rel), `${versionId}.json`), null)?.content ?? null;
 }
 
-function restoreFileVersion(root, rel, versionId) {
+function restoreFileVersion(root, rel, versionId, options = {}) {
+  root = assertRegisteredProjectRoot(root);
   assertProjectWriteAllowed(root);
   const content = fileVersionContent(root, rel, versionId);
   if (content == null) return { success: false, error: "Version not found" };
-  const abs = safeJoin(root, rel);
-  snapshotFileVersion(root, rel, fs.existsSync(abs) ? fs.readFileSync(abs, "utf8") : "");
-  fs.mkdirSync(path.dirname(abs), { recursive: true });
-  fs.writeFileSync(abs, content);
-  return { success: true };
+  return writeFile(root, rel, content, {
+    expectedHash: options.expectedHash,
+    createOnly: options.createOnly,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -646,17 +694,16 @@ function saveCanvas(root, params) {
     },
     newClasses: params.newClasses ?? existing.newClasses ?? [],
   };
-  if (existing.canvas) {
-    snapshotCanvasVersion(root, params.id, existing);
-  }
   try {
     const saved = savePortablePage(root, {
       id: next.id,
       name: next.name,
       ...(next.canvas || {}),
       newClasses: next.newClasses,
-    }, params._expectedRevision);
-    acknowledgeDesignState(root);
+    }, params._expectedRevision, previous => {
+      if (previous?.canvas) snapshotCanvasVersion(root, params.id, previous);
+    });
+    if (saved.changed) acknowledgeDesignState(root);
     return saved;
   } catch (error) {
     if (error?.code === "DESIGN_CONFLICT") {
@@ -670,6 +717,7 @@ function saveCanvas(root, params) {
 }
 
 function canvasVersions(root, pageId) {
+  if (!CANVAS_ID_RE.test(String(pageId || ""))) throw new Error("Canvas id must be a UUID");
   const dir = metaPath(root, "canvases", `${pageId}.versions`);
   if (!fs.existsSync(dir)) return [];
   return fs
@@ -694,6 +742,8 @@ function snapshotCanvasVersion(root, pageId, canvas) {
 }
 
 function canvasVersion(root, pageId, versionId) {
+  if (!CANVAS_ID_RE.test(String(pageId || ""))) throw new Error("Canvas id must be a UUID");
+  if (!validVersionId(versionId)) return null;
   return readJson(
     metaPath(root, "canvases", `${pageId}.versions`, `${versionId}.json`),
     null
@@ -756,6 +806,7 @@ function draftVersions(root, componentName) {
 }
 
 function draftVersion(root, componentName, versionId) {
+  if (!validVersionId(versionId)) return null;
   return readJson(
     metaPath(root, "drafts", `${hashKey(componentName)}.versions`, `${versionId}.json`),
     null
@@ -912,11 +963,13 @@ const OPS = {
 
   "list-files": (root, args) => listFiles(root, args),
   "read-file": (root, args, a) => readFile(root, a.rel),
-  "write-file": (root, args, a) => writeFile(root, a.rel, a.content),
-  "delete-file": (root, args, a) => deleteFile(root, a.rel),
+  "read-file-snapshot": (root, args, a) => readFileSnapshot(root, a.rel),
+  "write-file": (root, args, a) => writeFile(root, a.rel, a.content, { expectedHash: a.expectedHash, createOnly: a.createOnly }),
+  "delete-file": (root, args, a) => deleteFile(root, a.rel, a.expectedHash),
   "file-versions": (root, args, a) => fileVersions(root, a.rel),
   "file-version-content": (root, args, a) => fileVersionContent(root, a.rel, a.versionId),
-  "restore-file-version": (root, args, a) => restoreFileVersion(root, a.rel, a.versionId),
+  "restore-file-version": (root, args, a) => restoreFileVersion(root, a.rel, a.versionId,
+    { expectedHash: a.expectedHash, createOnly: a.createOnly }),
 
   "list-canvases": (root) => {
     root = assertRegisteredProjectRoot(root);
@@ -1070,7 +1123,7 @@ const OPS = {
   },
   "create-component": (root, args, a) => {
     const rel = a.path || a.filePath;
-    writeFile(root, rel, a.content ?? a.code ?? "");
+    writeFile(root, rel, a.content ?? a.code ?? "", { createOnly: true });
     return { success: true, path: rel, componentName: a.componentName };
   },
 };
@@ -1132,6 +1185,8 @@ function assertRendererOwnsProject(event, root) {
 }
 
 function registerHandlers({ prepareProjectRemoval = async () => true } = {}) {
+  recoverProjectRegistrations(app.getPath("userData"),
+    target => readRegistry().some(row => canonicalPath(row.canonicalRoot || row.rootPath || row.id) === target));
   configureProjectAccessForLocalMode();
   ipcMain.handle("bingo:save-feedback", async (_event, args) => {
     const message = typeof args?.message === "string" ? args.message.trim() : "";
@@ -1384,13 +1439,11 @@ function registerHandlers({ prepareProjectRemoval = async () => true } = {}) {
       throw new Error("This project changed and can no longer be opened. Scan the folder again.");
     }
     if (args?.ignoreDesignInGit != null && typeof args.ignoreDesignInGit !== "boolean") throw new Error("Invalid Git ignore option.");
-    if (args?.ignoreDesignInGit === true) await ensureProjectDesignIgnored(candidate.projectRoot);
-    metaDir(candidate.projectRoot);
-    const row = registerProjectCandidate({
+    const row = await registerSelectedProject({
       ...validatedCandidate,
       workspaceRoot: candidate.workspaceRoot,
       relativePath: candidate.relativePath,
-    });
+    }, args?.ignoreDesignInGit === true);
     discoveryRequests.delete(request.requestId);
     return row;
   });
@@ -1418,15 +1471,7 @@ function registerHandlers({ prepareProjectRemoval = async () => true } = {}) {
       noLink: true,
     });
     if (storage.response !== 0) return null;
-    if (storage.checkboxChecked) await ensureProjectDesignIgnored(root);
-    metaDir(root);
-    const rows = listProjects();
-    if (!rows.some((p) => p.id === root)) {
-      rows.push({ id: root, name: path.basename(root), rootPath: root, addedAt: Date.now() });
-      saveProjects(rows);
-    }
-    stampProject(root);
-    return projectEntry(root);
+    return registerSelectedProject({ projectRoot: root, name: path.basename(root) }, storage.checkboxChecked);
   });
 
   ipcMain.handle("bingo:list-projects", async () => listProjects());
@@ -1497,6 +1542,7 @@ export {
   invokeLocalStore,
   // Used by the save-to-code path (src/main/localSaveToCode.ts).
   readFile as readProjectFile,
+  readFileSnapshot as readProjectFileSnapshot,
   writeFile as writeProjectFile,
   writeBinaryFile as writeProjectBinaryFile,
   deleteFile as deleteProjectFile,

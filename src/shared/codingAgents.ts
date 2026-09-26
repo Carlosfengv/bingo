@@ -39,6 +39,11 @@ export function normalizeAgentId(value: unknown): AgentId {
   return AGENT_IDS.includes(value as AgentId) ? (value as AgentId) : "claude";
 }
 
+/** The current in-app adapters that can wait for a user decision and resume a tool. */
+export function supportsAskFirst(agent: AgentId | null | undefined) {
+  return agent === "claude" || agent === "grok";
+}
+
 export type InstalledAgent = {
   agent: AgentId;
   displayName: string;

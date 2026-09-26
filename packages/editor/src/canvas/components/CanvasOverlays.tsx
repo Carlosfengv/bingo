@@ -1665,6 +1665,7 @@ function useOverlayGeoms(t0) {
             if (!tracked_5) return false;
             const oneView_0 = currentMeasureView();
             if (oneView_0) geomByIdRef.current.set(id_5, readElementGeom(tracked_5, oneView_0));
+            else geomRecomputePendingRef.current = true;
             return true;
           }
           cur = cur.parentElement;
@@ -1794,9 +1795,12 @@ function useOverlayGeoms(t0) {
     $[32] = t14;
   } else t14 = $[32];
   (0, import_react.useLayoutEffect)(t13, t14);
+  const gestureWasActiveRef = (0, import_react.useRef)(false);
   let t15;
   if ($[33] !== dragActive || $[34] !== recomputeAllGeoms || $[35] !== resizeActive) {
     t15 = () => {
+      const gestureEnded = gestureWasActiveRef.current && !dragActive && !resizeActive;
+      gestureWasActiveRef.current = dragActive || resizeActive;
       if (!isProjectVisualActive()) { geomRecomputePendingRef.current = true; return; }
       if (dragActive) return;
       if (rotateDrag) return;
@@ -1804,7 +1808,9 @@ function useOverlayGeoms(t0) {
       if (geomRafRef.current !== null) cancelAnimationFrame(geomRafRef.current);
       geomRafRef.current = requestAnimationFrame(() => {
         geomRafRef.current = null;
-        recomputeAllGeoms(variableGeometryRef.current?.takeRoots());
+        const refreshAll = gestureEnded || geomRecomputePendingRef.current;
+        geomRecomputePendingRef.current = false;
+        recomputeAllGeoms(refreshAll ? undefined : variableGeometryRef.current?.takeRoots());
         setGeomVersion(_temp4$27);
       });
       return () => {
@@ -1830,49 +1836,9 @@ function useOverlayGeoms(t0) {
     $[42] = t16;
   } else t16 = $[42];
   (0, import_react.useEffect)(t15, t16);
-  const prevDraggingRef = (0, import_react.useRef)(dragActive);
-  let t17;
-  let t18;
-  if ($[43] !== dragActive || $[44] !== recomputeAllGeoms) {
-    t17 = () => {
-      if (prevDraggingRef.current && !dragActive) requestAnimationFrame(() => {
-        recomputeAllGeoms();
-        setGeomVersion(_temp5$22);
-      });
-      prevDraggingRef.current = dragActive;
-    };
-    t18 = [dragActive, recomputeAllGeoms];
-    $[43] = dragActive;
-    $[44] = recomputeAllGeoms;
-    $[45] = t17;
-    $[46] = t18;
-  } else {
-    t17 = $[45];
-    t18 = $[46];
-  }
-  (0, import_react.useEffect)(t17, t18);
-  const prevResizingRef = (0, import_react.useRef)(resizeActive);
-  let t19;
-  let t20;
-  if ($[47] !== recomputeAllGeoms || $[48] !== resizeActive) {
-    t19 = () => {
-      if (prevResizingRef.current && !resizeActive) {
-        recomputeAllGeoms();
-        setGeomVersion(_temp6$19);
-      }
-      prevResizingRef.current = resizeActive;
-    };
-    t20 = [resizeActive, recomputeAllGeoms];
-    $[47] = recomputeAllGeoms;
-    $[48] = resizeActive;
-    $[49] = t19;
-    $[50] = t20;
-  } else {
-    t19 = $[49];
-    t20 = $[50];
-  }
-  (0, import_react.useLayoutEffect)(t19, t20);
-  // Selection geometry is refreshed once in the layout effect above.
+  // The effect above refreshes all boxes after a drag or resize ends. The
+  // selected boxes are already refreshed in the layout effect above, so a
+  // second full traversal here only blocks the first editable frame.
   let t23;
   if ($[55] !== geomVersion) {
     t23 = {
@@ -1883,12 +1849,6 @@ function useOverlayGeoms(t0) {
     $[56] = t23;
   } else t23 = $[56];
   return t23;
-}
-function _temp6$19(v_3) {
-  return v_3 + 1;
-}
-function _temp5$22(v_2) {
-  return v_2 + 1;
 }
 function _temp4$27(v_1) {
   return v_1 + 1;

@@ -44,6 +44,28 @@ test("creates, reopens and updates a portable design using project files", async
   });
 });
 
+test("an unchanged page keeps its revision and does not request a version snapshot", async () => {
+  await fixture(async root => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    createPortableDesign(root, [page(id)]);
+    const opened = readPortablePage(root, id);
+    let snapshots = 0;
+    const unchanged = savePortablePage(root, {
+      id, name: opened.name, elements: opened.canvas.elements,
+      newClasses: opened.newClasses,
+    }, opened._revision, () => { snapshots++; });
+    assert.equal(unchanged.changed, false);
+    assert.equal(unchanged._revision, opened._revision);
+    assert.equal(snapshots, 0);
+
+    const changed = savePortablePage(root, { id, name: "Renamed" }, opened._revision,
+      previous => { assert.equal(previous._revision, opened._revision); snapshots++; });
+    assert.equal(changed.changed, true);
+    assert.notEqual(changed._revision, opened._revision);
+    assert.equal(snapshots, 1);
+  });
+});
+
 test("reorders and removes pages through the manifest", async () => {
   await fixture(async root => {
     const first = "11111111-1111-4111-8111-111111111111";
@@ -143,5 +165,21 @@ test("does not write through another process design lock", async () => {
     );
     assert.equal(readPortablePage(root, id).name, `Page ${id.slice(0, 4)}`);
     assert.equal(JSON.parse(await fs.readFile(lock, "utf8")).token, "other-process");
+  });
+});
+
+test("recovers a lock only when its local owning process is confirmed dead", async () => {
+  await fixture(async root => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    createPortableDesign(root, [page(id)]);
+    const lock = path.join(root, ".bingo/design/.write.lock");
+    await fs.writeFile(lock, JSON.stringify({ token: "dead", hostname: os.hostname(), pid: 2147483647 }));
+    savePortablePage(root, { id, name: "Recovered" });
+    assert.equal(readPortablePage(root, id).name, "Recovered");
+    await assert.rejects(fs.stat(lock), { code: "ENOENT" });
+
+    await fs.writeFile(lock, JSON.stringify({ token: "alive", hostname: os.hostname(), pid: process.pid }));
+    assert.throws(() => savePortablePage(root, { id, name: "Blocked" }), { code: "WRITE_IN_PROGRESS" });
+    assert.equal(JSON.parse(await fs.readFile(lock, "utf8")).token, "alive");
   });
 });

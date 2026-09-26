@@ -158,12 +158,12 @@ function parseJSX(code, iconLibraries, components, defaultIconLibrary, options) 
     const forceNewIds = options?.forceNewIds ?? false;
     const walk = node => {
       if (import_lib$3.isJSXElement(node)) {
-        const element = parseJSXElement(node, iconLibraries, components, defaultIconLibrary, forceNewIds);
+        const element = parseJSXElement(node, iconLibraries, components, defaultIconLibrary, forceNewIds, false, wrappedCode);
         if (element) jsxElements.push(element);
         return;
       }
       if (import_lib$3.isJSXFragment(node)) {
-        const children = node.children.flatMap(child => parseJSXChild(child, iconLibraries, components, defaultIconLibrary, forceNewIds)).filter(el => el !== null);
+        const children = node.children.flatMap(child => parseJSXChild(child, iconLibraries, components, defaultIconLibrary, forceNewIds, false, wrappedCode)).filter(el => el !== null);
         jsxElements.push(...children);
         return;
       }
@@ -176,6 +176,16 @@ function parseJSX(code, iconLibraries, components, defaultIconLibrary, options) 
     };
     walk(ast);
     const result = storeFromNested(jsxElements);
+    for (const [id, element] of result.byId) {
+      const encoded = element.props?.["data-bingo-callsite"];
+      if (element.type !== "component" || typeof encoded !== "string") continue;
+      const binding = JSON.parse(encoded);
+      if (binding.schemaVersion !== 1 || binding.tag !== element.componentName || !/^[a-f0-9]{64}$/.test(binding.sourceHash)) throw new Error("Invalid component source association.");
+      const { ["data-bingo-callsite"]: ignored, ...props } = element.props;
+      const sourceExpressions = { ...element.sourceExpressions, props: { ...element.sourceExpressions?.props, ...binding.boundProps }, spread: binding.spread, attributes: binding.attributes };
+      const { boundProps, attributes, spread, ...sourceBinding } = binding;
+      result.byId.set(id, { ...element, props, sourceExpressions, componentEditing: { ...element.componentEditing, schemaVersion: 1, sourceBinding: { ...sourceBinding, baseProps: structuredClone(props), baseStyles: structuredClone(element.styles ?? {}) } } });
+    }
     for (const [id, element] of result.byId) {
       const metadata = element.props?.["data-bingo-variables"];
       if (typeof metadata !== "string") continue;
@@ -252,15 +262,16 @@ function normalizeSvgPropKeys(props) {
   } else next[key] = value;
   return changed ? next : props;
 }
-function parseJSXElement(node, iconLibraries, components, defaultIconLibrary, forceNewIds = false, inSvg = false) {
+function parseJSXElement(node, iconLibraries, components, defaultIconLibrary, forceNewIds = false, inSvg = false, sourceCode = "") {
   const openingElement = node.openingElement;
   const tagName = getTagName(openingElement.name);
   if (!tagName) return null;
   const isComponent = /^[A-Z]/.test(tagName);
   const {
     styles,
-    props: rawProps
-  } = parseAttributes$1(openingElement.attributes);
+    props: rawProps,
+    sourceExpressions
+  } = parseAttributes$1(openingElement.attributes, isComponent ? sourceCode : "");
   let props = rawProps;
   const isSvgElement = inSvg || tagName.toLowerCase() === "svg";
   const dataElementId = !forceNewIds && props ? props["data-element-id"] ?? props.dataElementId : void 0;
@@ -285,7 +296,8 @@ function parseJSXElement(node, iconLibraries, components, defaultIconLibrary, fo
       styles: styles && Object.keys(styles).length > 0 ? styles : void 0
     };
   }
-  const rawChildren = node.children.flatMap(child => parseJSXChild(child, iconLibraries, components, defaultIconLibrary, forceNewIds, isSvgElement)).filter(el => el !== null);
+  const dynamicChildren = isComponent && sourceCode && node.children.some(child => import_lib$3.isJSXSpreadChild(child) || import_lib$3.isJSXExpressionContainer(child) && !import_lib$3.isJSXEmptyExpression(child.expression) && !import_lib$3.isStringLiteral(child.expression) && !import_lib$3.isNumericLiteral(child.expression));
+  const rawChildren = dynamicChildren ? [] : node.children.flatMap(child => parseJSXChild(child, iconLibraries, components, defaultIconLibrary, forceNewIds, isSvgElement, sourceCode)).filter(el => el !== null);
   const children = isFlexOrGridContainer(styles, props?.className) ? rawChildren : tryFoldInlineChildren(rawChildren) ?? rawChildren;
   if (isComponent) {
     if (!(components && tagName in components) && iconLibraries) {
@@ -306,8 +318,10 @@ function parseJSXElement(node, iconLibraries, components, defaultIconLibrary, fo
       id: elementId,
       type: "component",
       componentName: tagName,
-      props,
+      props: styles && Object.keys(styles).length === 0 ? { ...props, style: {} } : props,
       styles,
+      ...(sourceExpressions || dynamicChildren ? { sourceExpressions: { ...sourceExpressions, ...(dynamicChildren ? { children: sourceCode.slice(openingElement.end, node.closingElement.start) } : {}) } } : {}),
+      ...(styles ? { componentEditing: { schemaVersion: 1, styleRecords: Object.fromEntries(Object.keys(styles).filter(property => !property.startsWith("__")).map(property => [property, { target: "root", scope: "base", origin: "source" }])) } } : {}),
       children: children.length > 0 ? children : void 0
     };
   } else return {
@@ -319,8 +333,8 @@ function parseJSXElement(node, iconLibraries, components, defaultIconLibrary, fo
     children: children.length > 0 ? children : void 0
   };
 }
-function parseJSXChild(child, iconLibraries, components, defaultIconLibrary, forceNewIds = false, inSvg = false) {
-  if (import_lib$3.isJSXElement(child)) return parseJSXElement(child, iconLibraries, components, defaultIconLibrary, forceNewIds, inSvg);
+function parseJSXChild(child, iconLibraries, components, defaultIconLibrary, forceNewIds = false, inSvg = false, sourceCode = "") {
+  if (import_lib$3.isJSXElement(child)) return parseJSXElement(child, iconLibraries, components, defaultIconLibrary, forceNewIds, inSvg, sourceCode);
   if (import_lib$3.isJSXText(child)) {
     const trimmed = child.value.replace(/\s*\n\s*/g, " ").trim();
     if (!trimmed) return null;
@@ -352,7 +366,7 @@ function parseJSXChild(child, iconLibraries, components, defaultIconLibrary, for
     };
     return null;
   }
-  if (import_lib$3.isJSXFragment(child)) return child.children.flatMap(node => parseJSXChild(node, iconLibraries, components, defaultIconLibrary, forceNewIds, inSvg)).filter(el => el !== null);
+  if (import_lib$3.isJSXFragment(child)) return child.children.flatMap(node => parseJSXChild(node, iconLibraries, components, defaultIconLibrary, forceNewIds, inSvg, sourceCode)).filter(el => el !== null);
   return null;
 }
 function getTagName(name) {
@@ -369,21 +383,42 @@ function getTagName(name) {
   }
   return null;
 }
-function parseAttributes$1(attributes) {
+function parseAttributes$1(attributes, sourceCode = "") {
   const styles = {};
   const props = {};
+  const expressions = {};
+  const ordered = [];
+  let spread = false;
+  let explicitStyle = false;
   for (const attr of attributes) {
     if (import_lib$3.isJSXAttribute(attr)) {
       const name = import_lib$3.isJSXIdentifier(attr.name) ? attr.name.name : null;
       if (!name) continue;
+      let dynamic = false;
+      if (sourceCode && import_lib$3.isJSXExpressionContainer(attr.value)) {
+        try { validateRecoveryContent(attr.value, attr); } catch { dynamic = true; }
+      }
+      if (dynamic) {
+        const code = sourceCode.slice(attr.start, attr.end);
+        expressions[name] = code;
+        ordered.push({ name, code });
+        continue;
+      }
+      ordered.push({ name });
       const value = parseAttributeValue(attr.value);
-      if (name === "style" && typeof value === "object") Object.assign(styles, value);else if (name !== "style") props[name] = value;
+      if (name === "style" && value && typeof value === "object" && !Array.isArray(value)) { Object.assign(styles, value); explicitStyle = true; }
+      else if (name === "style" && value === null && sourceCode) props.style = null;
+      else if (name !== "style") props[name] = value;
     }
-    if (import_lib$3.isJSXSpreadAttribute(attr)) continue;
+    if (import_lib$3.isJSXSpreadAttribute(attr) && sourceCode) {
+      spread = true;
+      ordered.push({ code: sourceCode.slice(attr.start, attr.end) });
+    }
   }
   return {
-    styles: Object.keys(styles).length > 0 ? styles : void 0,
-    props: Object.keys(props).length > 0 ? props : void 0
+    styles: Object.keys(styles).length > 0 || explicitStyle && sourceCode ? styles : void 0,
+    props: Object.keys(props).length > 0 ? props : void 0,
+    ...(spread || Object.keys(expressions).length ? { sourceExpressions: { props: expressions, spread, attributes: ordered } } : {})
   };
 }
 function parseStaticExpression(expression) {

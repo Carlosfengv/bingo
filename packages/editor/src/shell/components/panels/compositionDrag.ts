@@ -9,7 +9,7 @@
 import { ElementErrorBoundary } from "../../../canvas/components/ErrorBoundary";
 import { renderElement } from "../../../canvas/utils/renderElement";
 import { useAssetResolver } from "../../../shared/contexts/AssetContext";
-import { buildParseContextFromImports, getRootIds, normalizeIconLibrarySpecifier, parseCompositionJsx, parseCompositionJsxToNestedRoots } from "@bingo/compiler";
+import { buildParseContextFromImports, getRootIds, normalizeIconLibrarySpecifier, parseCompositionJsx, parseCompositionJsxToNestedRoots, parseCompositionFile } from "@bingo/compiler";
 import { ImageIcon } from "@bingo/ui";
 import * as import_react from "react";
 import * as import_compiler_runtime from "react/compiler-runtime";
@@ -18,6 +18,14 @@ var EMPTY_IMPORTS = {
   iconNames: new Set(),
   aliasesBySpecifier: new Map()
 };
+export async function readCompositionSnapshot(readFile, filePath) {
+  const content = await readFile(filePath);
+  if (!content) return { content: null, editableJsxByExport: new Map() };
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
+  const sourceHash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+  const { editableJsxByExport } = parseCompositionFile(content, { filePath, sourceHash });
+  return { content, editableJsxByExport };
+}
 var UPPERCASE_JSX_TAG_RE = /<\s*([A-Z][A-Za-z0-9_$]*)\b/g;
 function uppercaseJsxTagNames(jsx) {
   return [...jsx.matchAll(UPPERCASE_JSX_TAG_RE)].map(match => match[1]);

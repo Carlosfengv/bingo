@@ -38,6 +38,7 @@ import { TypographySection } from "../sections/TypographySection";
 import { getById, getChildren$2, getParentId, isTextOwner } from "@bingo/compiler";
 import { CropIcon, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger, GapIcon, LockAspectRatioIcon, MaxWidthIcon, OverflowSettingsIcon, ZIndexIcon, cn$2 } from "@bingo/ui";
 import { useTranslation } from "@bingo/i18n";
+import { updateComponentStyleProperties } from "../../../../../../../compiler/src/store/componentStyleProperties";
 import { ArrowsInLineHorizontalIcon as r$8 } from "@phosphor-icons/react/dist/icons/ArrowsInLineHorizontal";
 import { ArrowsInLineVerticalIcon as e$15 } from "@phosphor-icons/react/dist/icons/ArrowsInLineVertical";
 import { ArrowsOutLineVerticalIcon as e$14 } from "@phosphor-icons/react/dist/icons/ArrowsOutLineVertical";
@@ -494,40 +495,33 @@ function DesignTab(t0) {
     $[28] = t7;
   } else t7 = $[28];
   const reconcileTextDescendants = t7;
+  const applyStyleUpdates = (base, updates, id) => {
+    if (getById(store, id)?.type === "component") return updateComponentStyleProperties(base, updates);
+    const merged = { ...base, ...updates };
+    for (const key of Object.keys(merged)) if (merged[key] === undefined) delete merged[key];
+    return merged;
+  };
   const set = (p_8, v) => {
     if (readOnly) return;
     if (isMultiSelect && onUpdateMultipleElementsStyles && selectedElements) {
       const ids_2 = new Set(selectedElements.map(_temp10$3));
-      onUpdateMultipleElementsStyles(ids_2, currentStyles => ({
-        ...currentStyles,
-        [p_8]: v
-      }));
+      onUpdateMultipleElementsStyles(ids_2, (currentStyles, id) => applyStyleUpdates(currentStyles, { [p_8]: v }, id));
     } else {
       const base = textSelectionState && TEXT_STYLE_KEYS.has(p_8) ? styles : rawStyles;
-      onUpdateElementStyles(selectedElementId, {
-        ...base,
-        [p_8]: v
-      });
+      onUpdateElementStyles(selectedElementId, applyStyleUpdates(base, { [p_8]: v }, selectedElementId));
       reconcileTextDescendants(selectedElementId, [p_8]);
     }
   };
   const setMultiple = updates => {
     if (readOnly) return;
-    const applyUpdates = base_0 => {
-      const merged_2 = {
-        ...base_0,
-        ...updates
-      };
-      for (const k_2 of Object.keys(merged_2)) if (merged_2[k_2] === void 0) delete merged_2[k_2];
-      return merged_2;
-    };
+    const applyUpdates = (base_0, id) => applyStyleUpdates(base_0, updates, id);
     if (isMultiSelect && onUpdateMultipleElementsStyles && selectedElements) {
       const ids_3 = new Set(selectedElements.map(_temp11$2));
-      onUpdateMultipleElementsStyles(ids_3, currentStyles_0 => applyUpdates(currentStyles_0));
+      onUpdateMultipleElementsStyles(ids_3, (currentStyles_0, id) => applyUpdates(currentStyles_0, id));
     } else {
       const updateKeys = Object.keys(updates);
       const base_1 = textSelectionState && updateKeys.every(_temp12$1) ? styles : rawStyles;
-      onUpdateElementStyles(selectedElementId, applyUpdates(base_1));
+      onUpdateElementStyles(selectedElementId, applyUpdates(base_1, selectedElementId));
       reconcileTextDescendants(selectedElementId, updateKeys);
     }
   };
@@ -536,18 +530,9 @@ function DesignTab(t0) {
     if (readOnly) return;
     if (isMultiSelect && onUpdateMultipleElementsStyles && selectedElements) {
       const ids_4 = new Set(selectedElements.map(_temp13$1));
-      onUpdateMultipleElementsStyles(ids_4, currentStyles_1 => {
-        const newStyles = {
-          ...currentStyles_1
-        };
-        props_2.forEach(p_9 => delete newStyles[p_9]);
-        return newStyles;
-      });
+      onUpdateMultipleElementsStyles(ids_4, (currentStyles_1, id) => applyStyleUpdates(currentStyles_1, Object.fromEntries(props_2.map(property => [property, undefined])), id));
     } else {
-      const newStyles_0 = {
-        ...(textSelectionState && props_2.every(_temp14$1) ? styles : rawStyles)
-      };
-      props_2.forEach(p_11 => delete newStyles_0[p_11]);
+      const newStyles_0 = applyStyleUpdates(textSelectionState && props_2.every(_temp14$1) ? styles : rawStyles, Object.fromEntries(props_2.map(property => [property, undefined])), selectedElementId);
       onUpdateElementStyles(selectedElementId, newStyles_0);
       reconcileTextDescendants(selectedElementId, props_2);
     }

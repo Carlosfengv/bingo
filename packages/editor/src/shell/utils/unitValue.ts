@@ -26,6 +26,7 @@ function parseInspectorUnitValue(value) {
   if (raw.toLowerCase() === "auto") return {
     kind: "auto"
   };
+  if (/^var\(\s*--[\w-]+\s*\)$/.test(raw)) return { kind: "variable", raw };
   const match = raw.match(UNIT_VALUE_RE);
   if (!match) return {
     kind: "unsupported",
@@ -78,6 +79,7 @@ function commitInspectorUnitValue(draft, fallbackUnit = "px", constraints = {}) 
       unit: null
     };
   }
+  if (parsed.kind === "variable") return { valid: true, cssValue: parsed.raw, inputValue: parsed.raw, unit: null };
   if (parsed.kind !== "number") return {
     valid: false,
     message: "Use px, %, em, rem, ch, or Auto"

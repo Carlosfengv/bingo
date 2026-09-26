@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 
-import { ensureProjectConfigIgnored, ensureProjectDesignIgnored, inspectProjectGit } from "./projectGitIgnore";
+import { ensureProjectConfigIgnored, ensureProjectDesignIgnored, inspectProjectGit, restoreIgnoreRule } from "./projectGitIgnore";
 
 const execFileAsync = promisify(execFile);
 
@@ -20,6 +20,28 @@ test("design ignore works before Git init, preserves existing rules and is idemp
     await initGit(root);
     assert.equal((await ensureProjectDesignIgnored(root)).changed, false);
     await execFileAsync("git", ["check-ignore", "-q", ".bingo/design/chats/chat.json"], { cwd: root });
+  });
+});
+
+test("design ignore rollback restores original bytes and preserves later user edits", async () => {
+  await withDirectory(async root => {
+    const file = path.join(root, ".gitignore");
+    const original = Buffer.from("node_modules/\r\ndist/\r\n");
+    await fs.writeFile(file, original);
+    const change = await ensureProjectDesignIgnored(root);
+    assert.equal(restoreIgnoreRule(change), true);
+    assert.deepEqual(await fs.readFile(file), original);
+
+    const second = await ensureProjectDesignIgnored(root);
+    await fs.appendFile(file, "user-rule/\n");
+    assert.equal(restoreIgnoreRule(second), false);
+    assert.match(await fs.readFile(file, "utf8"), /user-rule\//);
+  });
+  await withDirectory(async root => {
+    const file = path.join(root, ".gitignore");
+    const change = await ensureProjectDesignIgnored(root);
+    assert.equal(restoreIgnoreRule(change), true);
+    await assert.rejects(fs.stat(file), { code: "ENOENT" });
   });
 });
 

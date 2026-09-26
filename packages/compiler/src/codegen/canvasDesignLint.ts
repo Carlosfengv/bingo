@@ -1,6 +1,7 @@
-import { parseExpression } from "@babel/parser";
+import { parse, parseExpression } from "@babel/parser";
 import { findComponentCandidates } from "./componentSemantics";
 import type { ComponentCatalog } from "./componentSemantics";
+import { canResetComponentProp, componentPropControl, componentStyleSupport, isPublicComponentProp, validateComponentProp } from "../store/componentEditing";
 
 export type DesignDiagnostic = {
   code: string;
@@ -15,16 +16,15 @@ export type DesignDiagnostic = {
 const APPEARANCE_PROPERTIES = /^(?:color|background(?:Color)?|border(?:Color|Width|Style|Radius|Top.*|Bottom.*|Left.*|Right.*)?|boxShadow|font(?:Size|Family|Weight|Style)?|lineHeight|letterSpacing|padding(?:Top|Bottom|Left|Right|Inline|Block)?|gap|rowGap|columnGap|margin(?:Top|Bottom|Left|Right|Inline|Block)?)$/;
 
 function attributeValue(attribute: any) {
+  if (attribute?.type === "JSXAttribute" && attribute.value === null) return true;
   const value = attribute?.value?.type === "JSXExpressionContainer" ? attribute.value.expression : attribute?.value;
+  if (value?.type === "NullLiteral") return null;
+  if (value?.type === "UnaryExpression" && ["-", "+"].includes(value.operator) && value.argument.type === "NumericLiteral") return value.operator === "-" ? -value.argument.value : value.argument.value;
+  if (value?.type === "TemplateLiteral" && value.expressions.length === 0) return value.quasis[0].value.cooked;
+  // These shapes are statically incompatible with primitive controls. Their
+  // contents are never evaluated; runtime expressions remain source bindings.
+  if (["ObjectExpression", "ArrayExpression", "ArrowFunctionExpression", "FunctionExpression", "JSXElement", "JSXFragment", "BigIntLiteral", "RegExpLiteral"].includes(value?.type)) return {};
   return value && ["StringLiteral", "NumericLiteral", "BooleanLiteral"].includes(value.type) ? value.value : undefined;
-}
-
-function literalOptions(type: string | undefined) {
-  if (typeof type !== "string" || !type) return null;
-  const parts = type.split("|").map(part => part.trim());
-  // Open types, intersections and inferred expressions cannot support a hard rejection.
-  if (!parts.every(part => /^(?:"[^"\\]*"|'[^'\\]*'|undefined|null)$/.test(part))) return null;
-  return parts.filter(part => part !== "undefined" && part !== "null").map(part => part.slice(1, -1));
 }
 
 function classBase(token: string) {
@@ -47,7 +47,12 @@ function appearanceClass(token: string) {
 function collectDiagnostics(jsx: string, catalog: ComponentCatalog): DesignDiagnostic[] {
   let root: any;
   try { root = parseExpression(`<>${jsx}</>`, { plugins: ["jsx", "typescript"] }); }
-  catch { return []; } // Syntax/recovery errors belong to the canvas parser.
+  catch {
+    // The selection editor accepts complete generated TSX files as well as
+    // snippets. Inspect their JSX without executing imports or expressions.
+    try { root = parse(jsx, { sourceType: "module", plugins: ["jsx", "typescript"] }); }
+    catch { return []; } // Syntax/recovery errors belong to the canvas parser.
+  }
   const diagnostics: DesignDiagnostic[] = [];
   function visit(node: any) {
     if (!node || typeof node !== "object") return;
@@ -60,11 +65,30 @@ function collectDiagnostics(jsx: string, catalog: ComponentCatalog): DesignDiagn
         const add = (code: string, severity: "error" | "warning", property: string, value: string, message: string) => diagnostics.push({ code, severity, element: name, ...(typeof id === "string" ? { elementId: id } : {}), property, value, message });
         const component = catalog[name];
         if (component) {
-          for (const prop of ["variant", "size", "tone"]) {
+          for (const [prop, descriptor] of Object.entries(component.props ?? {})) {
+            if (!isPublicComponentProp(prop)) continue;
             const value = attributeValue(attrs[prop]);
-            const options = literalOptions(component.props?.[prop]?.type);
-            if (typeof value === "string" && options?.length && !options.includes(value)) {
-              add("INVALID_COMPONENT_VARIANT", "error", prop, value, `<${name}> ${prop}=${JSON.stringify(value)} is outside the indexed API (${options.map(option => JSON.stringify(option)).join(" | ")}). Read ${component.path ?? "the component source"} and use a supported value; refresh the index if stale.`);
+            const specification = { ...descriptor, type: descriptor.type ?? "unknown" };
+            if (!attrs[prop] && !opening.attributes.some(attr => attr.type === "JSXSpreadAttribute") && !canResetComponentProp(specification)) {
+              add("MISSING_COMPONENT_PROP", "error", prop, "missing", `<${name}> requires ${prop}. Provide a value supported by its component API.`);
+            }
+            if (value !== undefined && componentPropControl(specification).kind !== "readonly" && !validateComponentProp(specification, value)) {
+              add(["variant", "size", "tone"].includes(prop) ? "INVALID_COMPONENT_VARIANT" : "INVALID_COMPONENT_PROP", "error", prop, String(value), `<${name}> ${prop}=${JSON.stringify(value)} is outside the indexed API (${specification.type}). Read ${component.path ?? "the component source"} and use a supported value; refresh the index if stale.`);
+            }
+          }
+          if (attrs.style) {
+            const expression = attrs.style.value?.expression;
+            const boundStyle = expression && expression.type !== "NullLiteral" && (expression.type !== "ObjectExpression" || expression.properties.some(property => {
+              if (property.type !== "ObjectProperty" || property.computed) return true;
+              const value = attributeValue({ value: { type: "JSXExpressionContainer", expression: property.value } });
+              return value !== null && typeof value !== "string" && typeof value !== "number";
+            }));
+            const supportsStyle = componentStyleSupport({ type: "component", props: { asChild: attrs.asChild ? attributeValue(attrs.asChild) ?? true : component.props?.asChild?.default }, styles: {}, sourceExpressions: { ...(opening.attributes.some(attr => attr.type === "JSXSpreadAttribute") ? { spread: ["binding"] } : {}), ...(boundStyle ? { props: { style: "binding" } } : {}) } }, component);
+            if (!supportsStyle) {
+              // Ignore formatting/locations when comparing a preserved legacy
+              // declaration with the replacement JSX.
+              const value = JSON.stringify(attrs.style.value, (key, item) => ["start", "end", "loc", "extra", "leadingComments", "trailingComments", "innerComments"].includes(key) ? undefined : item);
+              add("UNSUPPORTED_COMPONENT_STYLE", "error", "style", value, `<${name}> has no verified root style target for this configuration. Keep existing styles unchanged or adapt ${component.path ?? "the component source"} before adding overrides.`);
             }
           }
         }

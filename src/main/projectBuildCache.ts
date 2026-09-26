@@ -1,15 +1,17 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { readLocalModuleBytes, registerCachedModule } from "./localModuleServer";
 
 const CACHE_SCHEMA_VERSION = 1;
-const COMPILER_SIGNATURE = "local-compiler-v4-component-props-react-require";
+const COMPILER_SIGNATURE = "local-compiler-v12-skip-test-styles";
 const MAX_IDLE_PROJECTS = 3;
 const MAX_CACHE_BYTES = 256 * 1024 * 1024;
-const MAX_DISK_CACHE_BYTES = 1024 * 1024 * 1024;
+const MAX_DISK_CACHE_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_DISK_CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 const entries = new Map();
+const pendingLoads = new Map();
 let diskCacheRoot = null;
 let cacheEpoch = 0;
 
@@ -166,7 +168,7 @@ async function persistProjectBuildCache(root, snapshot, fingerprint) {
   try {
     await fs.mkdir(path.join(temporaryDirectory, "modules"), { recursive: true });
     for (const module of snapshot.modules || []) {
-      const contents = decodeDataUrl(module.codeUrl);
+      const contents = await readLocalModuleBytes(module.codeUrl);
       const hash = contentHash(contents);
       await fs.writeFile(path.join(temporaryDirectory, "modules", `${hash}.js`), contents);
       moduleRecords.push({ path: module.path, hash, cssImports: module.cssImports || [] });
@@ -240,13 +242,14 @@ async function loadProjectBuildCache(root) {
       manifest.snapshotId !== current.snapshotId ||
       manifest.complete !== true
     ) return null;
-    const modules = await mapWithConcurrency(manifest.modules || [], 16, async (module) => {
+    const modules = await mapWithConcurrency(manifest.modules || [], 2, async (module) => {
       if (!/^[a-f0-9]{64}$/.test(module.hash || "")) throw new Error("Invalid cached module hash");
-      const contents = await fs.readFile(path.join(snapshotDirectory, "modules", `${module.hash}.js`));
+      const file = path.join(snapshotDirectory, "modules", `${module.hash}.js`);
+      const contents = await fs.readFile(file);
       if (contentHash(contents) !== module.hash) throw new Error("Cached module checksum mismatch");
       return {
         path: module.path,
-        codeUrl: dataUrl(contents, "text/javascript"),
+        codeUrl: await registerCachedModule(file, module.hash),
         cssImports: module.cssImports || [],
       };
     });
@@ -274,7 +277,10 @@ async function loadProjectBuildCache(root) {
       lastUsedAt: Date.now(),
     }, cacheEpoch).catch(() => {});
     return restored;
-  } catch {
+  } catch (error) {
+    if (error?.code !== "ENOENT" || !String(error?.path || "").endsWith("current.json")) {
+      console.warn(`[projectBuildCache] Could not restore build cache: ${error?.message || error}`);
+    }
     await fs.rm(projectDirectory, { recursive: true, force: true }).catch(() => {});
     return null;
   }
@@ -290,7 +296,14 @@ async function getProjectBuildCache(root) {
     entry.lastUsedAt = Date.now();
     return entry;
   }
-  return loadProjectBuildCache(root);
+  let pending = pendingLoads.get(root);
+  if (!pending) {
+    pending = loadProjectBuildCache(root).finally(() => {
+      if (pendingLoads.get(root) === pending) pendingLoads.delete(root);
+    });
+    pendingLoads.set(root, pending);
+  }
+  return pending;
 }
 
 async function setProjectBuildCache(root, snapshot, fingerprint) {

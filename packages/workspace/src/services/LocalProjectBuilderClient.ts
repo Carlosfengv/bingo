@@ -24,6 +24,7 @@ class LocalProjectBuilderClient {
     this.lastCssReady = null;
     this.lastFailure = null;
     this.lastProgress = null;
+    this.localAssetBase = null;
     this.unsubscribe = null;
   }
 
@@ -49,9 +50,17 @@ class LocalProjectBuilderClient {
     this.lastFailure = null;
     this.lastProgress = null;
     this.lastBootstrapProjectId = null;
+    this.localAssetBase = null;
   }
 
   emit(event) {
+    if (event.type === "modules:ready" || event.type === "modules:updated") {
+      const codeUrl = event.payload?.modules?.[0]?.codeUrl;
+      const match = typeof codeUrl === "string"
+        ? /^(http:\/\/127\.0\.0\.1:\d+)\/module\/([a-f0-9]{48})\/[a-f0-9]{64}\.js$/.exec(codeUrl)
+        : null;
+      if (match) this.localAssetBase = `${match[1]}/asset/${match[2]}`;
+    }
     if (event.type === "modules:build_started") { this.lastFailure = null; this.lastProgress = event; }
     if (event.type === "modules:build_progress") this.lastProgress = event;
     if (event.type === "modules:ready") this.lastFailure = null;
@@ -77,6 +86,10 @@ class LocalProjectBuilderClient {
       (projectId === void 0 || this.projectId === projectId) &&
       this.connected === true
     );
+  }
+
+  assetBaseUrl(projectId) {
+    return projectId === this.projectId ? this.localAssetBase : null;
   }
 
   async connect(projectId) {
@@ -133,10 +146,13 @@ class LocalProjectBuilderClient {
     this.clearBootstrapEvents();
   }
 
-  // The server analyses component props to drive the inspector. Locally the
-  // props come from the rendered element instead, so this is a no-op.
+  // The local compiler extracts static parameter metadata during a build.
+  // A requested scan must actually refresh it, even for unsupported components.
   async scanComponents(options = {}) {
-    if (options.forceRescan && this.projectId && this.sessionId) {
+    if (options.forceRescan || options.componentKey) {
+      if (!this.projectId || !this.sessionId || options.projectId && options.projectId !== this.projectId) {
+        throw new Error("Project builder session is not connected");
+      }
       const result = await window.api.invoke("bingo:builder-rebuild", {
         root: this.projectId,
         sessionId: this.sessionId,
@@ -144,7 +160,7 @@ class LocalProjectBuilderClient {
       if (!result?.ok) throw new Error(result?.error || "Could not rebuild project");
       return { success: true, status: "rebuilt" };
     }
-    return { success: true };
+    return { success: true, status: "cached" };
   }
 
   // Snapshot previews are rendered server-side in the shipped app.

@@ -25,6 +25,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { defaultRangeExtractor } from "@tanstack/virtual-core";
 import * as import_react from "react";
 import * as import_compiler_runtime from "react/compiler-runtime";
+import { isInteractiveTarget } from "../../../shared/shortcuts/matchShortcut";
 
 function expandCollapsedAncestors(collapsed, store, ids, expandTextOwners) {
   if (collapsed.size === 0) return collapsed;
@@ -396,8 +397,7 @@ function LayersPanel(t0) {
         if (renamingId || selectedElementIds.size !== 1) return;
         const isEnter = e_1.key === "Enter" && !e_1.shiftKey && !e_1.metaKey && !e_1.ctrlKey && !e_1.altKey;
         if (e_1.key !== "F2" && !isEnter) return;
-        const target_0 = e_1.target;
-        if (target_0.tagName === "INPUT" || target_0.tagName === "TEXTAREA" || target_0.isContentEditable) return;
+        if (isInteractiveTarget(e_1)) return;
         const element_1 = getById(store, Array.from(selectedElementIds)[0]);
         if (!element_1) return;
         e_1.preventDefault();
@@ -532,8 +532,7 @@ function LayersPanel(t0) {
       const handleKeyDown_0 = e_4 => {
         if (!e_4.altKey || e_4.metaKey || e_4.ctrlKey) return;
         if (e_4.code !== "KeyL") return;
-        const target_1 = e_4.target;
-        if (target_1.tagName === "INPUT" || target_1.tagName === "TEXTAREA" || target_1.isContentEditable) return;
+        if (isInteractiveTarget(e_4)) return;
         e_4.preventDefault();
         if (headerVariant === "sidebar-v2") toggleAll();else collapseAll();
       };

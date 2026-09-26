@@ -49,7 +49,7 @@ function StyleLayoutInput(t0) {
   } else t5 = $[2];
   let t6;
   if ($[3] !== allowedUnits || $[4] !== f.addClass || $[5] !== f.isMixed || $[6] !== f.source || $[7] !== icon || $[8] !== inputClassName || $[9] !== modeOptions || $[10] !== placeholder || $[11] !== property || $[12] !== t3 || $[13] !== t4 || $[14] !== t5 || $[15] !== unit) {
-    t6 = <LayoutValueInput icon={icon} value={t3} onChange={t4} placeholder={placeholder} unit={unit} allowedUnits={allowedUnits} inputClassName={inputClassName} modeOptions={modeOptions} isMixedValue={f.isMixed} {...f.source} cssProperty={property} tooltipLabel={t5} onSelectClass={f.addClass} />;
+    t6 = <LayoutValueInput icon={icon} value={t3} onChange={t4} placeholder={placeholder} unit={unit} allowedUnits={allowedUnits} inputClassName={inputClassName} modeOptions={modeOptions} isMixedValue={f.isMixed} {...f.source} cssProperty={property} ariaLabel={styleFieldLabel(property)} tooltipLabel={t5} onSelectClass={f.addClass} />;
     $[3] = allowedUnits;
     $[4] = f.addClass;
     $[5] = f.isMixed;

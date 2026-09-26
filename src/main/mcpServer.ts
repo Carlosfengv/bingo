@@ -7,6 +7,9 @@
  * author's original file. See luna/RECOVERY.md.
  */
 import { localApiFetch } from "./localApiFetch";
+import { projectApiPath } from "./projectApiPath";
+import { resolveRegisteredProjectRoot, writeProjectFile } from "./localStore";
+import { readSourceSnapshot, writeSourceFile } from "./sourceFileWrite";
 import { getCreatedCanvasElementIds } from "./canvasToolResult";
 import { CanvasOperationRegistry } from "./canvasOperationRegistry";
 import { toPngBase64 } from "./captureImage";
@@ -26,6 +29,7 @@ import * as crypto$1 from "crypto";
 import * as electron from "electron";
 import * as events from "events";
 import * as fs_promises from "fs/promises";
+import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
 import * as util from "util";
@@ -621,7 +625,7 @@ function resolveMcpSessionForRequest(sessionId, rpcId) {
 }
 async function fetchProjectName(projectId) {
   try {
-    const res = await apiFetch$1(`/projects/${projectId}`);
+    const res = await apiFetch$1(`${projectApiPath(projectId)}`);
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
       if (typeof data.name === "string" && data.name.trim()) return data.name.trim();
@@ -867,6 +871,7 @@ function isChatCancelled(projectId, chatTabId) {
   return cancelledChats.has(projectId);
 }
 async function requestToolApproval(projectId, toolName, args, options) {
+  if (isChatCancelled(projectId, options?.chatTabId)) return { approved: false, reason: "cancelled" };
   const approvalId = (0, crypto$1.randomUUID)();
   return new Promise(resolve => {
     const timeout = setTimeout(() => {
@@ -876,7 +881,7 @@ async function requestToolApproval(projectId, toolName, args, options) {
         approved: false,
         reason: "timeout"
       });
-    }, APPROVAL_TIMEOUT_MS);
+    }, Number.isFinite(options?.timeoutMs) ? Math.max(1, Math.min(APPROVAL_TIMEOUT_MS, options.timeoutMs)) : APPROVAL_TIMEOUT_MS);
     pendingApprovals.set(approvalId, {
       resolve,
       toolName,
@@ -969,7 +974,7 @@ var CACHE_TTL = 3e4;
 async function getFileMetadata(projectId) {
   const cached = metadataCache.get(projectId);
   if (cached && Date.now() - cached.time < CACHE_TTL) return cached.files;
-  const res = await apiFetch$1(`/projects/${projectId}/files`);
+  const res = await apiFetch$1(`${projectApiPath(projectId)}/files`);
   if (!res.ok) throw new Error(`Failed to list files: ${res.status}`);
   const files = await res.json();
   metadataCache.set(projectId, {
@@ -1073,7 +1078,7 @@ function resolveGlobScope(pattern, allowed) {
 /** Try to read a project file, return content or null */
 async function tryReadProjectFile(projectId, filePath) {
   try {
-    const res = await apiFetch$1(`/projects/${projectId}/files/by-path?path=${encodeURIComponent(filePath)}`);
+    const res = await apiFetch$1(`${projectApiPath(projectId)}/files/by-path?path=${encodeURIComponent(filePath)}`);
     if (!res.ok) return null;
     return (await res.json()).content || null;
   } catch {
@@ -1109,7 +1114,7 @@ async function handleRead(projectId, args) {
       text: "file_path is required"
     }]
   };
-  const res = await apiFetch$1(`/projects/${projectId}/files/by-path?path=${encodeURIComponent(filePath)}`);
+  const res = await apiFetch$1(`${projectApiPath(projectId)}/files/by-path?path=${encodeURIComponent(filePath)}`);
   if (!res.ok) return {
     isError: true,
     content: [{
@@ -1121,13 +1126,13 @@ async function handleRead(projectId, args) {
   if (!file.content) return {
     content: [{
       type: "text",
-      text: "(empty file)"
+      text: `(empty file)\nSHA-256: ${file.hash}`
     }]
   };
   return {
     content: [{
       type: "text",
-      text: sliceLines(file.content, filePath, args.offset, args.limit)
+      text: `SHA-256: ${file.hash}\n${sliceLines(file.content, filePath, args.offset, args.limit)}`
     }]
   };
 }
@@ -1177,7 +1182,7 @@ async function handleGrep(projectId, args) {
     const batch = searchList.slice(b, b + BATCH_SIZE);
     const contents = await Promise.all(batch.map(async fp => {
       try {
-        const res = await apiFetch$1(`/projects/${projectId}/files/by-path?path=${encodeURIComponent(fp)}`);
+        const res = await apiFetch$1(`${projectApiPath(projectId)}/files/by-path?path=${encodeURIComponent(fp)}`);
         if (!res.ok) return null;
         const file = await res.json();
         return file.content ? {
@@ -1289,37 +1294,44 @@ async function handleWrite(projectId, args) {
     }]
   };
   content = fixComponentJSX(filePath, content);
-  const getRes = await apiFetch$1(`/projects/${projectId}/files/by-path?path=${encodeURIComponent(filePath)}`);
+  const getRes = await apiFetch$1(`${projectApiPath(projectId)}/files/by-path?path=${encodeURIComponent(filePath)}`);
   if (getRes.ok) {
-    const patchRes = await apiFetch$1(`/projects/${projectId}/files/${(await getRes.json()).id}`, {
+    if (typeof args.expected_hash !== "string") return {
+      isError: true,
+      content: [{ type: "text", text: `Read ${filePath} again and pass its SHA-256 as expected_hash before overwriting.` }]
+    };
+    const file = await getRes.json();
+    const patchRes = await apiFetch$1(`${projectApiPath(projectId)}/files/${file.id}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        content
+        content,
+        expectedHash: args.expected_hash,
       })
     });
     if (!patchRes.ok) return mcpResultFromFailedResponse(patchRes, `Failed to write ${filePath} (${patchRes.status})`);
-    invalidateCache(projectId);
-    mergeWrittenComponentsIntoIndex(projectId, [{
-      path: filePath,
-      content
-    }]);
-    mcpEvents.emit("file_changed", {
-      projectId,
-      filePath,
-      content
-    });
+    const written = await patchRes.json();
+    if (written.changed) {
+      invalidateCache(projectId);
+      mergeWrittenComponentsIntoIndex(projectId, [{ path: filePath, content }]);
+      mcpEvents.emit("file_changed", { projectId, filePath, content });
+    }
     return {
       content: [{
         type: "text",
-        text: `Updated: ${filePath}`
+        text: `${written.changed ? "Updated" : "Unchanged"}: ${filePath}`
       }]
     };
   } else {
+    if (getRes.status !== 404) return mcpResultFromFailedResponse(getRes, `Failed to inspect ${filePath} (${getRes.status})`);
+    if (args.create_only !== true) return {
+      isError: true,
+      content: [{ type: "text", text: `Set create_only=true to create ${filePath}; read it first if it may already exist.` }]
+    };
     const ext = filePath.split(".").pop() || "";
-    const createRes = await apiFetch$1(`/projects/${projectId}/files`, {
+    const createRes = await apiFetch$1(`${projectApiPath(projectId)}/files`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -1396,7 +1408,7 @@ async function handleWriteBatch(projectId, args) {
       fileType: typeMap[ext] || "other"
     });
   }
-  const existingRes = await apiFetch$1(`/projects/${projectId}/files`);
+  const existingRes = await apiFetch$1(`${projectApiPath(projectId)}/files`);
   if (!existingRes.ok) return {
     isError: true,
     content: [{
@@ -1408,6 +1420,8 @@ async function handleWriteBatch(projectId, args) {
   const existingPaths = new Set(existingFiles.map(f => f.path).filter(Boolean));
   const skippedExisting = filesPayload.filter(f => existingPaths.has(f.path));
   const newFiles = filesPayload.filter(f => !existingPaths.has(f.path));
+  let writtenFiles = [];
+  let failedFiles = [];
   if (newFiles.length > 0) {
     const res = await apiFetch$1(`/import/files`, {
       method: "POST",
@@ -1420,19 +1434,25 @@ async function handleWriteBatch(projectId, args) {
       })
     });
     if (!res.ok) return mcpResultFromFailedResponse(res, `Batch write failed (${res.status})`);
+    const result = await res.json();
+    const writtenPaths = new Set(Array.isArray(result.written) ? result.written : []);
+    writtenFiles = newFiles.filter(file => writtenPaths.has(file.path));
+    failedFiles = Array.isArray(result.failed) ? result.failed : newFiles.filter(file => !writtenPaths.has(file.path)).map(file => file.path);
     invalidateCache(projectId);
-    mergeWrittenComponentsIntoIndex(projectId, newFiles);
-    for (const f of newFiles) mcpEvents.emit("file_changed", {
+    mergeWrittenComponentsIntoIndex(projectId, writtenFiles);
+    for (const f of writtenFiles) mcpEvents.emit("file_changed", {
       projectId,
       filePath: f.path,
       content: f.content,
       isNew: true
     });
   }
-  const parts = [`Batch wrote ${newFiles.length} new file${newFiles.length === 1 ? "" : "s"}`];
-  if (newFiles.length > 0) parts.push(newFiles.map(f => f.path).join(", "));
+  const parts = [`Batch wrote ${writtenFiles.length} new file${writtenFiles.length === 1 ? "" : "s"}`];
+  if (writtenFiles.length > 0) parts.push(writtenFiles.map(f => f.path).join(", "));
+  if (failedFiles.length > 0) parts.push(`Failed ${failedFiles.length} file(s): ${failedFiles.join(", ")}`);
   if (skippedExisting.length > 0) parts.push(`Skipped ${skippedExisting.length} existing file${skippedExisting.length === 1 ? "" : "s"} (use project_write/project_edit to update): ${skippedExisting.map(f => f.path).join(", ")}`);
   return {
+    ...(failedFiles.length > 0 ? { isError: true } : {}),
     content: [{
       type: "text",
       text: parts.join(". ")
@@ -1457,7 +1477,7 @@ async function handleEdit(projectId, args) {
       text: "old_string and new_string are identical — nothing to change"
     }]
   };
-  const getRes = await apiFetch$1(`/projects/${projectId}/files/by-path?path=${encodeURIComponent(filePath)}`);
+  const getRes = await apiFetch$1(`${projectApiPath(projectId)}/files/by-path?path=${encodeURIComponent(filePath)}`);
   if (!getRes.ok) return {
     isError: true,
     content: [{
@@ -1478,26 +1498,26 @@ async function handleEdit(projectId, args) {
     const parts = file.content.split(oldText);
     const count = parts.length - 1;
     updated = fixComponentJSX(filePath, parts.join(newText));
-    const patchRes = await apiFetch$1(`/projects/${projectId}/files/${file.id}`, {
+    const patchRes = await apiFetch$1(`${projectApiPath(projectId)}/files/${file.id}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        content: updated
+        content: updated,
+        expectedHash: file.hash,
       })
     });
     if (!patchRes.ok) return mcpResultFromFailedResponse(patchRes, `Failed to save ${filePath} (${patchRes.status})`);
-    invalidateCache(projectId);
-    mcpEvents.emit("file_changed", {
-      projectId,
-      filePath,
-      content: updated
-    });
+    const written = await patchRes.json();
+    if (written.changed) {
+      invalidateCache(projectId);
+      mcpEvents.emit("file_changed", { projectId, filePath, content: updated });
+    }
     return {
       content: [{
         type: "text",
-        text: `Edited: ${filePath} (replaced ${count} occurrences)`
+        text: `${written.changed ? "Edited" : "Unchanged"}: ${filePath} (replaced ${count} occurrences)`
       }]
     };
   }
@@ -1511,39 +1531,39 @@ async function handleEdit(projectId, args) {
     }]
   };
   updated = fixComponentJSX(filePath, file.content.replace(oldText, newText));
-  const patchRes = await apiFetch$1(`/projects/${projectId}/files/${file.id}`, {
+  const patchRes = await apiFetch$1(`${projectApiPath(projectId)}/files/${file.id}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      content: updated
+      content: updated,
+      expectedHash: file.hash,
     })
   });
   if (!patchRes.ok) return mcpResultFromFailedResponse(patchRes, `Failed to save ${filePath} (${patchRes.status})`);
-  invalidateCache(projectId);
-  mcpEvents.emit("file_changed", {
-    projectId,
-    filePath,
-    content: updated
-  });
+  const written = await patchRes.json();
+  if (written.changed) {
+    invalidateCache(projectId);
+    mcpEvents.emit("file_changed", { projectId, filePath, content: updated });
+  }
   return {
     content: [{
       type: "text",
-      text: `Edited: ${filePath}`
+      text: `${written.changed ? "Edited" : "Unchanged"}: ${filePath}`
     }]
   };
 }
 async function handleDelete(projectId, args) {
   const filePath = args.file_path;
-  if (!filePath) return {
+  if (!filePath || typeof args.expected_hash !== "string") return {
     isError: true,
     content: [{
       type: "text",
-      text: "file_path is required"
+      text: "file_path and expected_hash from project_read are required"
     }]
   };
-  const getRes = await apiFetch$1(`/projects/${projectId}/files/by-path?path=${encodeURIComponent(filePath)}`);
+  const getRes = await apiFetch$1(`${projectApiPath(projectId)}/files/by-path?path=${encodeURIComponent(filePath)}`);
   if (!getRes.ok) return {
     isError: true,
     content: [{
@@ -1551,16 +1571,11 @@ async function handleDelete(projectId, args) {
       text: `File not found: ${filePath}`
     }]
   };
-  const delRes = await apiFetch$1(`/projects/${projectId}/files/${(await getRes.json()).id}`, {
-    method: "DELETE"
+  const delRes = await apiFetch$1(`${projectApiPath(projectId)}/files/${(await getRes.json()).id}`, {
+    method: "DELETE",
+    body: JSON.stringify({ expectedHash: args.expected_hash })
   });
-  if (!delRes.ok) return {
-    isError: true,
-    content: [{
-      type: "text",
-      text: `Failed to delete: ${delRes.status}`
-    }]
-  };
+  if (!delRes.ok) return mcpResultFromFailedResponse(delRes, `Failed to delete ${filePath} (${delRes.status})`);
   invalidateCache(projectId);
   return {
     content: [{
@@ -1736,20 +1751,44 @@ async function isExistingPathAllowed(filePath, projectId, chatTabId) {
     return false;
   }
 }
-/** Validate a write destination. Existing files use their target realpath; new files use parent dir realpath. */
+/** New descendants inherit the nearest existing ancestor's real path. */
 async function isWritePathAllowed(filePath, projectId, chatTabId) {
   if (getProjectAccessContext(projectId).mode !== "edit") return false;
   if (!isPathLexicallyAllowed(filePath, projectId, chatTabId)) return false;
   const roots = await getAllowedRealRoots(projectId, chatTabId);
-  try {
-    return isWithinRealRoots(await (0, fs_promises.realpath)(filePath), roots);
-  } catch {
-    try {
-      return isWithinRealRoots(await (0, fs_promises.realpath)((0, path.dirname)(filePath)), roots);
-    } catch {
-      return false;
-    }
+  let existing = (0, path.resolve)(filePath);
+  while (true) {
+    try { return isWithinRealRoots(await (0, fs_promises.realpath)(existing), roots); }
+    catch (error) { if (error?.code !== "ENOENT") return false; }
+    const parent = (0, path.dirname)(existing);
+    if (parent === existing) return false;
+    existing = parent;
   }
+}
+
+async function writeAllowedLocalFile(projectId, filePath, content, options, chatTabId) {
+  const roots = await getAllowedRealRoots(projectId, chatTabId);
+  const validate = () => {
+    if (getProjectAccessContext(projectId).mode !== "edit" || !isPathLexicallyAllowed(filePath, projectId, chatTabId)) {
+      throw new Error("File access is no longer allowed");
+    }
+    let existing = path.resolve(filePath);
+    while (!fs.existsSync(existing)) {
+      const parent = path.dirname(existing);
+      if (parent === existing) throw new Error("File path has no existing allowed ancestor");
+      existing = parent;
+    }
+    if (!isWithinRealRoots(fs.realpathSync(existing), roots)) throw new Error("File path leaves the allowed folders");
+  };
+  validate();
+  await fs_promises.mkdir(path.dirname(filePath), { recursive: true });
+  validate();
+  const root = getProjectAccessContext(projectId).projectRoot;
+  const relative = root ? path.relative(root, path.resolve(filePath)) : "";
+  if (root && resolveRegisteredProjectRoot(projectId) && relative && !relative.startsWith(".." + path.sep) && relative !== ".." && !path.isAbsolute(relative)) {
+    return writeProjectFile(root, relative, content, options);
+  }
+  return writeSourceFile(filePath, content, { ...options, validate });
 }
 /** Recursively list files in a directory (respecting gitignore-like patterns). Fallback only — prefer ripgrep. */
 async function walkDir(dir, base, results, maxFiles = 5e4) {
@@ -1804,17 +1843,19 @@ export async function handleLocalRead(_projectId, args, chatTabId, _sessionId?, 
   if (denied) return denied;
   if (!(await isExistingPathAllowed(filePath, _projectId, chatTabId))) return denyPath(filePath);
   try {
-    const content = await (0, fs_promises.readFile)(filePath, "utf-8");
+    const bytes = await (0, fs_promises.readFile)(filePath);
+    const content = bytes.toString("utf-8");
+    const hash = crypto$1.createHash("sha256").update(bytes).digest("hex");
     if (!content) return {
       content: [{
         type: "text",
-        text: "(empty file)"
+        text: `(empty file)\nSHA-256: ${hash}`
       }]
     };
     return {
       content: [{
         type: "text",
-        text: sliceLines(content, filePath, args.offset, args.limit)
+        text: `SHA-256: ${hash}\n${sliceLines(content, filePath, args.offset, args.limit)}`
       }]
     };
   } catch (err) {
@@ -1877,8 +1918,10 @@ export async function handleLocalReadBatch(_projectId, args, chatTabId, _session
         texts.push(result.text);
       } else {
         try {
-          const content = await (0, fs_promises.readFile)(filePath, "utf-8");
-          texts.push(content ? sliceLines(content, filePath, args.offset, args.limit) : `File: ${filePath}\n(empty file)`);
+          const bytes = await (0, fs_promises.readFile)(filePath);
+          const content = bytes.toString("utf-8");
+          const hash = crypto$1.createHash("sha256").update(bytes).digest("hex");
+          texts.push(`SHA-256: ${hash}\n${content ? sliceLines(content, filePath, args.offset, args.limit) : `File: ${filePath}\n(empty file)`}`);
         } catch (error) { texts.push(`File: ${filePath}\n[read failed: ${error.message}]`); }
       }
     }
@@ -1901,21 +1944,25 @@ export async function handleLocalWrite(_projectId, args, chatTabId) {
   if (internalDenied) return internalDenied;
   const filePath = args.file_path;
   const content = args.content;
-  if (!filePath || content === void 0) return {
+  if (typeof filePath !== "string" || !path.isAbsolute(filePath) || content === void 0) return {
     isError: true,
     content: [{
       type: "text",
-      text: "file_path and content are required"
+      text: "An absolute file_path and content are required"
     }]
   };
   const denied = await ensureLocalAccess(_projectId, filePath, chatTabId);
   if (denied) return denied;
   if (!(await isWritePathAllowed(filePath, _projectId, chatTabId))) return denyPath(filePath);
+  if ((args.create_only === true) === (typeof args.expected_hash === "string")) return {
+    isError: true,
+    content: [{ type: "text", text: "Set create_only=true for a new file, or pass the SHA-256 from local_read as expected_hash to overwrite." }]
+  };
   try {
-    await (0, fs_promises.mkdir)((0, path.dirname)(filePath), {
-      recursive: true
-    });
-    await (0, fs_promises.writeFile)(filePath, content, "utf-8");
+    await writeAllowedLocalFile(_projectId, filePath, content, {
+      createOnly: args.create_only === true,
+      expectedHash: args.expected_hash,
+    }, chatTabId);
     return {
       content: [{
         type: "text",
@@ -1927,7 +1974,7 @@ export async function handleLocalWrite(_projectId, args, chatTabId) {
       isError: true,
       content: [{
         type: "text",
-        text: `Failed to write: ${err.message}`
+        text: `Failed to write${err.code === "SOURCE_CONFLICT" ? " (SOURCE_CONFLICT; re-read the file before retrying)" : ""}: ${err.message}`
       }]
     };
   }
@@ -1938,11 +1985,11 @@ async function handleLocalEdit(_projectId, args, chatTabId) {
   const filePath = args.file_path;
   const oldText = args.old_string;
   const newText = args.new_string;
-  if (!filePath || oldText === void 0 || newText === void 0) return {
+  if (typeof filePath !== "string" || !path.isAbsolute(filePath) || oldText === void 0 || newText === void 0) return {
     isError: true,
     content: [{
       type: "text",
-      text: "file_path, old_string, and new_string are required"
+      text: "An absolute file_path, old_string, and new_string are required"
     }]
   };
   if (oldText === newText) return {
@@ -1956,7 +2003,9 @@ async function handleLocalEdit(_projectId, args, chatTabId) {
   if (denied) return denied;
   if (!(await isWritePathAllowed(filePath, _projectId, chatTabId))) return denyPath(filePath);
   try {
-    const content = await (0, fs_promises.readFile)(filePath, "utf-8");
+    const snapshot = readSourceSnapshot(filePath);
+    if (!snapshot) throw new Error(`File not found: ${filePath}`);
+    const content = snapshot.content;
     if (!content.includes(oldText)) return {
       isError: true,
       content: [{
@@ -1967,7 +2016,7 @@ async function handleLocalEdit(_projectId, args, chatTabId) {
     if (args.replace_all) {
       const parts = content.split(oldText);
       const count = parts.length - 1;
-      await (0, fs_promises.writeFile)(filePath, parts.join(newText), "utf-8");
+      await writeAllowedLocalFile(_projectId, filePath, parts.join(newText), { expectedHash: snapshot.hash }, chatTabId);
       return {
         content: [{
           type: "text",
@@ -1984,7 +2033,7 @@ async function handleLocalEdit(_projectId, args, chatTabId) {
         text: `old_string is not unique in ${filePath} (found at lines ${content.slice(0, firstIdx).split("\n").length} and ${content.slice(0, secondIdx).split("\n").length}). Include more surrounding context to make it unique, or use replace_all to replace all occurrences.`
       }]
     };
-    await (0, fs_promises.writeFile)(filePath, content.replace(oldText, newText), "utf-8");
+    await writeAllowedLocalFile(_projectId, filePath, content.replace(oldText, newText), { expectedHash: snapshot.hash }, chatTabId);
     return {
       content: [{
         type: "text",
@@ -1996,7 +2045,7 @@ async function handleLocalEdit(_projectId, args, chatTabId) {
       isError: true,
       content: [{
         type: "text",
-        text: `Failed to edit: ${err.message}`
+        text: `Failed to edit${err.code === "SOURCE_CONFLICT" ? " (SOURCE_CONFLICT; re-read the file before retrying)" : ""}: ${err.message}`
       }]
     };
   }
@@ -2693,7 +2742,7 @@ async function iconLibraryRequestIsNoop(projectId, args) {
   try {
     const requested = requestedIconLibraries(args);
     if (requested.length === 0) return false;
-    const settingsRes = await apiFetch$1(`/projects/${projectId}/settings`);
+    const settingsRes = await apiFetch$1(`${projectApiPath(projectId)}/settings`);
     if (!settingsRes.ok) return false;
     const settings = await settingsRes.json().catch(() => ({}));
     const enabled = Array.isArray(settings.effectiveIconLibraries) ? settings.effectiveIconLibraries : settings.iconLibraries;
@@ -2703,7 +2752,7 @@ async function iconLibraryRequestIsNoop(projectId, args) {
   }
 }
 async function handleGetIconLibraries(projectId) {
-  const settingsRes = await apiFetch$1(`/projects/${projectId}/settings`);
+  const settingsRes = await apiFetch$1(`${projectApiPath(projectId)}/settings`);
   if (!settingsRes.ok) return {
     isError: true,
     content: [{ type: "text", text: `Failed to inspect icon libraries: ${settingsRes.status}` }],
@@ -2744,7 +2793,7 @@ async function handleSetIconLibrary(projectId, args) {
     }],
     structuredContent: { code: "ICON_LIBRARY_INVALID", libraries: invalid }
   };
-  const settingsRes = await apiFetch$1(`/projects/${projectId}/settings`);
+  const settingsRes = await apiFetch$1(`${projectApiPath(projectId)}/settings`);
   const settings = settingsRes.ok ? await settingsRes.json().catch(() => ({})) : {};
   const effectiveLibs = Array.isArray(settings.effectiveIconLibraries) ? settings.effectiveIconLibraries : settings.iconLibraries;
   if (Array.isArray(effectiveLibs) && requestedLibs.every(library => effectiveLibs.includes(library))) return {
@@ -2766,7 +2815,7 @@ async function handleSetIconLibrary(projectId, args) {
       libraries: requestedLibs
     }
   };
-  const res = await apiFetch$1(`/projects/${projectId}/settings/icon-libraries`, {
+  const res = await apiFetch$1(`${projectApiPath(projectId)}/settings/icon-libraries`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json"
@@ -2790,7 +2839,7 @@ async function handleSetIconLibrary(projectId, args) {
     projectId,
     key: "iconLibraries"
   });
-  const updatedRes = await apiFetch$1(`/projects/${projectId}/settings`);
+  const updatedRes = await apiFetch$1(`${projectApiPath(projectId)}/settings`);
   const updated = updatedRes.ok ? await updatedRes.json().catch(() => ({})) : {};
   const effectiveIconLibraries = Array.isArray(updated.effectiveIconLibraries)
     ? updated.effectiveIconLibraries
@@ -2931,7 +2980,9 @@ async function handleProjectCopyFile(projectId, args, chatTabId) {
   for (const file of payloads) {
     const result = await handleWrite(projectId, {
       file_path: file.project_path,
-      content: file.content
+      content: file.content,
+      expected_hash: file.expected_hash,
+      create_only: !file.expected_hash,
     });
     if (result?.isError) return result;
     copied.push(`${file.local_path} → ${file.project_path}`);
@@ -3548,7 +3599,7 @@ var TOOLS = [{
   }
 }, {
   name: "project_write",
-  description: "Write content to a file. Creates the file if it does not exist, or overwrites if it does. Use this for normal file creation and updates, including ordinary two-file changes. project_write_batch is reserved for bulk import workflows that create many new files at once.",
+  description: "Write a project file. Set create_only=true for a new path. To overwrite, read the file first and pass its SHA-256 as expected_hash; a changed file returns a conflict. project_write_batch is reserved for bulk new-file imports.",
   inputSchema: {
     type: "object",
     properties: {
@@ -3559,6 +3610,14 @@ var TOOLS = [{
       content: {
         type: "string",
         description: "Full file content to write"
+      },
+      expected_hash: {
+        type: "string",
+        description: "SHA-256 returned by project_read; required when overwriting an existing file"
+      },
+      create_only: {
+        type: "boolean",
+        description: "Must be true when creating a new file"
       }
     },
     required: ["file_path", "content"]
@@ -3619,16 +3678,20 @@ var TOOLS = [{
   }
 }, {
   name: "project_delete",
-  description: "Delete a file from the project.",
+  description: "Delete a project file only if its SHA-256 still matches the hash returned by project_read.",
   inputSchema: {
     type: "object",
     properties: {
       file_path: {
         type: "string",
         description: "Relative file path to delete"
+      },
+      expected_hash: {
+        type: "string",
+        description: "SHA-256 returned by project_read"
       }
     },
-    required: ["file_path"]
+    required: ["file_path", "expected_hash"]
   }
 }, {
   name: "approve",
@@ -4072,7 +4135,7 @@ var TOOLS = [{
   }
 }, {
   name: "local_write",
-  description: "Write content to a file on the user's local filesystem. Creates the file and parent directories if they don't exist. Use ABSOLUTE paths. Only works within allowed directories.",
+  description: "Write a file in an allowed local folder. Use an absolute path and create_only=true for a new file. To overwrite, read it first and pass its SHA-256 as expected_hash. Parent directories are created when allowed.",
   inputSchema: {
     type: "object",
     properties: {
@@ -4083,6 +4146,14 @@ var TOOLS = [{
       content: {
         type: "string",
         description: "Full file content to write"
+      },
+      expected_hash: {
+        type: "string",
+        description: "SHA-256 returned by local_read; required when overwriting"
+      },
+      create_only: {
+        type: "boolean",
+        description: "Must be true when creating a new file"
       }
     },
     required: ["file_path", "content"]
@@ -4203,7 +4274,7 @@ Supported formats: png, jpg, jpeg, gif, webp, avif, svg, ico, woff, woff2, ttf, 
   name: "project_copy_file",
   description: `Copy a local text file (or several) into the Bingo project without sending the file through the model. Use this when the user wants a local .ts/.tsx/.css/.json file in the project as-is — "copy this component", "port these files", "bring LiquidMenu over". Do NOT local_read + project_write the same bytes; that is slow. After the copy, project_edit only the lines that must change (imports, mocks). Images/fonts/video still use project_copy_asset.
 
-Pass local_path + project_path for one file, or files[] (up to 50) for a batch. local_path is absolute and must be in an allowed directory. project_path is project-relative (e.g. components/LiquidMenu.tsx). Overwrites if the destination already exists.`,
+Pass local_path + project_path for one file, or files[] (up to 50) for a batch. local_path is absolute and must be in an allowed directory. project_path is project-relative (e.g. components/LiquidMenu.tsx). New destinations are created; for an existing destination, read it first and pass its expected_hash.`,
   inputSchema: {
     type: "object",
     properties: {
@@ -4214,6 +4285,10 @@ Pass local_path + project_path for one file, or files[] (up to 50) for a batch. 
       project_path: {
         type: "string",
         description: "Relative destination in the Bingo project, e.g. components/LiquidMenu.tsx"
+      },
+      expected_hash: {
+        type: "string",
+        description: "SHA-256 of an existing destination returned by project_read"
       },
       files: {
         type: "array",
@@ -4228,6 +4303,10 @@ Pass local_path + project_path for one file, or files[] (up to 50) for a batch. 
             project_path: {
               type: "string",
               description: "Relative project destination"
+            },
+            expected_hash: {
+              type: "string",
+              description: "SHA-256 of an existing destination returned by project_read"
             }
           },
           required: ["local_path", "project_path"]

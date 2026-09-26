@@ -7,46 +7,14 @@
  * author's original file. See luna/RECOVERY.md.
  */
 
+import { reconcileEditedSubtree } from "./selectionEdit";
+
 function hasNestedChildren$1(element) {
   return "children" in element;
 }
-/** Whether `next` can inherit `previous`'s id — same type and same tag/component/icon. */
-function canReuseElementId(previous, next) {
-  if (previous.type !== next.type) return false;
-  switch (previous.type) {
-    case "html":
-      return next.type === "html" && previous.tag === next.tag;
-    case "component":
-      return next.type === "component" && previous.componentName === next.componentName;
-    case "capture":
-      return next.type === "capture" && previous.original.componentName === next.original.componentName;
-    case "icon":
-      return next.type === "icon" && previous.iconName === next.iconName && previous.library === next.library;
-    case "text":
-      return next.type === "text";
-    case "webview":
-      return next.type === "webview";
-  }
-}
-/**
-* Walk a parsed subtree and re-apply the previous tree's ids where structure
-* still matches (by position + type). Newly added/changed nodes keep their
-* parsed ids (or reminted ids).
-*/
-function preserveMatchingSubtreeIds(previous, next) {
-  const withStableId = {
-    ...next,
-    id: previous.id
-  };
-  if (!hasNestedChildren$1(previous) || !hasNestedChildren$1(withStableId)) return withStableId;
-  const nextChildren = withStableId.children?.map((child, index) => {
-    const previousChild = previous.children?.[index];
-    return previousChild && canReuseElementId(previousChild, child) ? preserveMatchingSubtreeIds(previousChild, child) : child;
-  });
-  return {
-    ...withStableId,
-    children: nextChildren
-  };
+/** Preserve unique structural identities without trusting pasted element IDs. */
+function preserveMatchingSubtreeIds(previous, next, componentIndex?) {
+  return reconcileEditedSubtree(previous, next, undefined, componentIndex);
 }
 /** Collect all element ids in a nested FEElement tree (pre-order). */
 function collectNestedIds(el) {
@@ -64,9 +32,9 @@ function mintTempId() {
 * - Reject duplicate ids in the payload
 * - Reject ids that exist in the store but outside the claimed subtree (foreign)
 * - Remint ids that are not in the claimed subtree and not in the store (model-invented)
-* - Then preserveMatchingSubtreeIds for positional fallback
+* - Reconcile validated explicit IDs, keys and unique content without moving hidden metadata by position
 */
-function normalizeUpdateSubtree(previous, parsed, claimedSubtreeIds, allStoreIds) {
+function normalizeUpdateSubtree(previous, parsed, claimedSubtreeIds, allStoreIds, componentIndex?) {
   const originalIds = collectNestedIds(parsed);
   const dupCheck = new Set();
   for (const id of originalIds) {
@@ -92,10 +60,12 @@ function normalizeUpdateSubtree(previous, parsed, claimedSubtreeIds, allStoreIds
     reminted: 0
   };
   let reminted = 0;
+  const allocatedIds = new Set(allStoreIds);
   function keepClaimedRemintRest(el) {
     let id = el.id;
     if (!claimedSubtreeIds.has(id)) {
-      id = mintTempId();
+      do { id = mintTempId(); } while (allocatedIds.has(id));
+      allocatedIds.add(id);
       reminted += 1;
     }
     const next = {
@@ -105,12 +75,12 @@ function normalizeUpdateSubtree(previous, parsed, claimedSubtreeIds, allStoreIds
     if (hasNestedChildren$1(el) && el.children) next.children = el.children.map(keepClaimedRemintRest);
     return next;
   }
-  const preserved = preserveMatchingSubtreeIds(previous, keepClaimedRemintRest(parsed));
-  preserved.id = previous.id;
-  return {
-    element: preserved,
-    reminted
-  };
+  try {
+    const element = reconcileEditedSubtree(previous, keepClaimedRemintRest(parsed), undefined, componentIndex, claimedSubtreeIds);
+    return { element, reminted };
+  } catch (error) {
+    return { element: parsed, reminted, error: error instanceof Error ? error.message : String(error) };
+  }
 }
 function summarizeSubtreeChange(previous, next) {
   const prevIds = new Set(collectNestedIds(previous));

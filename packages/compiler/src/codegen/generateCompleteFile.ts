@@ -43,6 +43,7 @@ function generateCompleteFile(options) {
     purpose: options.purpose ?? "project",
     includeDataElementId,
     assetResolver,
+    componentIndex,
     variableLibrary: options.variableLibrary,
     variablePageModes: options.variablePageModes,
     rootId: options.rootId

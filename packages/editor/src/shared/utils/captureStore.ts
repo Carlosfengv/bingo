@@ -8,6 +8,7 @@
  */
 import { componentDisplayName, getById, getIndex, getParentId, walk } from "@bingo/compiler";
 import * as import_react from "react";
+import { mergeStyleOperations } from "./operations";
 import * as import_compiler_runtime from "react/compiler-runtime";
 
 /**
@@ -241,10 +242,10 @@ function collapseRepeatedEdits(ops) {
     const existing = firstIdx.get(key);
     if (existing !== void 0) {
       const prev = out[existing];
-      const merged = {
+      const merged = op.type === "set_styles" ? mergeStyleOperations(prev, op) : {
         ...op
       };
-      if (op.type === "set_text") merged.oldText = prev.oldText;else if (op.type === "set_styles") merged.oldStyles = prev.oldStyles;else if (op.type === "set_props") merged.oldProps = prev.oldProps;
+      if (op.type === "set_text") merged.oldText = prev.oldText;else if (op.type === "set_props") merged.oldProps = prev.oldProps;
       out[existing] = merged;
     } else {
       firstIdx.set(key, out.length);
@@ -401,7 +402,7 @@ function describeOperation(op, store) {
       {
         const oldClass = op.oldProps?.className || "";
         const newClass = op.newProps.className || "";
-        const otherKeys = Object.keys(op.newProps).filter(k => k !== "className");
+        const otherKeys = [...new Set([...Object.keys(op.oldProps ?? {}), ...Object.keys(op.newProps)])].filter(k => k !== "className");
         if (otherKeys.length === 0 && (op.oldProps ? Object.keys(op.oldProps).filter(k => k !== "className").length === 0 : true) && oldClass !== newClass) {
           const oldSet = new Set(oldClass.split(/\s+/).filter(Boolean));
           const newSet = new Set(newClass.split(/\s+/).filter(Boolean));
@@ -424,6 +425,10 @@ function describeOperation(op, store) {
         for (const k of otherKeys) {
           const oldVal = op.oldProps?.[k];
           const newVal = op.newProps[k];
+          if (!Object.hasOwn(op.newProps, k)) {
+            propDiffs.push(`remove ${k}`);
+            continue;
+          }
           if (oldVal !== newVal && isPrintablePropValue(newVal)) {
             if (isPrintablePropValue(oldVal)) propDiffs.push(`${k}: ${JSON.stringify(oldVal)} → ${JSON.stringify(newVal)}`);else propDiffs.push(`${k}: → ${JSON.stringify(newVal)}`);
           }
@@ -442,12 +447,23 @@ function describeOperation(op, store) {
     case "set_styles":
       {
         const styleDiffs = [];
-        for (const k of Object.keys(op.newStyles)) {
-          const oldVal = op.oldStyles?.[k];
-          const newVal = op.newStyles[k];
+        // A first legacy edit can consolidate props.style into styles. Describe
+        // its visible before/after values without changing the raw undo payload.
+        const oldStyles = { ...op.oldStyles, ...op.oldLegacyProps?.style };
+        const newStyles = { ...op.newStyles, ...op.newLegacyProps?.style };
+        for (const k of new Set([...Object.keys(oldStyles), ...Object.keys(newStyles)])) {
+          const oldVal = oldStyles[k];
+          const newVal = newStyles[k];
+          if (!Object.hasOwn(newStyles, k)) {
+            styleDiffs.push(`remove ${k}`);
+            continue;
+          }
           if (oldVal !== newVal && isPrintablePropValue(newVal)) {
             if (isPrintablePropValue(oldVal) && oldVal !== void 0) styleDiffs.push(`${k}: ${JSON.stringify(oldVal)} → ${JSON.stringify(newVal)}`);else styleDiffs.push(`${k}: ${JSON.stringify(newVal)}`);
           }
+        }
+        if (!styleDiffs.length && Object.hasOwn(op, "oldLegacyProps") && Object.hasOwn(op.oldLegacyProps ?? {}, "style") !== Object.hasOwn(op.newLegacyProps ?? {}, "style")) {
+          styleDiffs.push(Object.hasOwn(op.newLegacyProps ?? {}, "style") ? `restore explicit style argument: ${JSON.stringify(op.newLegacyProps.style)}` : "remove explicit empty style argument");
         }
         const stylesSummary = styleDiffs.length > 0 ? styleDiffs.slice(0, 6).join(", ") + (styleDiffs.length > 6 ? ` (+${styleDiffs.length - 6} more)` : "") : Object.keys(op.newStyles).join(", ");
         return {

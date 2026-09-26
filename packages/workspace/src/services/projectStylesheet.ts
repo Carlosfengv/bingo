@@ -7,6 +7,7 @@
  * author's original file. See luna/RECOVERY.md.
  */
 import { PROJECT_CSS_ISOLATION_TAIL } from "../utils/projectCssIsolation";
+import { refreshProjectStyleBaseline, cleanupProjectStyleBaseline } from "@bingo/editor";
 
 var COMPILED_LINK_ID = "bingo-project-compiled-css";
 var ISOLATION_STYLE_ID = "bingo-project-css-isolation";
@@ -89,6 +90,15 @@ async function loadStylesheetLink(link, cssUrl) {
 * Skips network fetch when css:ready repeats the same build output.
 */
 async function loadProjectStylesheet(projectId, cssUrl, options = {}) {
+  if (!cssUrl) {
+    loadedKeyByProject.delete(projectId);
+    document.getElementById(COMPILED_LINK_ID)?.remove();
+    document.getElementById(LEGACY_COMPILED_LINK_ID)?.remove();
+    ensureIsolationTail();
+    await refreshProjectStyleBaseline();
+    notifyCssUpdated([], options.onCompiledClasses);
+    return;
+  }
   const {
     fontUrls,
     compiledClasses,
@@ -101,6 +111,7 @@ async function loadProjectStylesheet(projectId, cssUrl, options = {}) {
     const existing = document.getElementById(COMPILED_LINK_ID);
     if (existing && isStylesheetApplied(existing)) {
       ensureIsolationTail();
+      await refreshProjectStyleBaseline();
       notifyCssUpdated(compiledClasses, onCompiledClasses);
       return;
     }
@@ -122,6 +133,7 @@ async function loadProjectStylesheet(projectId, cssUrl, options = {}) {
     }
     await loadStylesheetLink(link, cssUrl);
     ensureIsolationTail();
+    await refreshProjectStyleBaseline();
     loadedKeyByProject.set(projectId, cacheKey);
   })();
   inFlightByKey.set(loadKey, loadPromise);
@@ -133,6 +145,7 @@ async function loadProjectStylesheet(projectId, cssUrl, options = {}) {
   }
 }
 function cleanupProjectStylesheet(projectId) {
+  cleanupProjectStyleBaseline();
   loadedKeyByProject.delete(projectId);
   for (const key of inFlightByKey.keys()) if (key.startsWith(`${projectId}:`)) inFlightByKey.delete(key);
   document.getElementById(COMPILED_LINK_ID)?.remove();

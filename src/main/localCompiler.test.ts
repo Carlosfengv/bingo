@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -11,6 +12,7 @@ import {
   disconnectLocalBuilder,
   loadLocalModule,
   rebuildLocalBuilder,
+  notifyLocalSourceWrite,
   subscribeLocalBuilderEvents,
 } from "./localCompiler";
 import { clearProjectBuildCache, configureProjectBuildCache } from "./projectBuildCache";
@@ -87,7 +89,7 @@ test("CommonJS React dependencies share the browser ESM runtime without dynamic 
     await fs.writeFile(path.join(root, "Probe.tsx"), 'import legacy from "./legacy.cjs"; import * as React from "react"; export function Probe(){return legacy === React.default;}');
     const compiled = await compileProject(root);
     const module = compiled.modules.find(item => item.path === "Probe.tsx");
-    const code = Buffer.from(module.codeUrl.split(",")[1], "base64").toString();
+    const code = await (await fetch(module.codeUrl)).text();
     assert.doesNotMatch(code, /__require\("react"\)/);
     const stub = `data:text/javascript,${encodeURIComponent('const shared = {}; export default shared;')}`;
     const browserCode = code.replaceAll('from "react"', `from ${JSON.stringify(stub)}`);
@@ -95,6 +97,33 @@ test("CommonJS React dependencies share the browser ESM runtime without dynamic 
     assert.equal(exports.Probe(), true);
   } finally {
     await fs.rm(root, {recursive:true, force:true});
+  }
+});
+
+test("router-dependent entries carry their own preview provider without exposing it as a component", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bingo-router-preview-"));
+  try {
+    const packageRoot = path.join(root, "node_modules/react-router-dom");
+    await fs.mkdir(packageRoot, { recursive: true });
+    await fs.writeFile(path.join(root, "package.json"), JSON.stringify({ name: "fixture" }));
+    await fs.writeFile(path.join(packageRoot, "package.json"), JSON.stringify({ name: "react-router-dom", type: "module", main: "index.js" }));
+    await fs.writeFile(path.join(packageRoot, "index.js"), "export function MemoryRouter(){ return 'router'; } export function useInRouterContext(){ return false; } export function useNavigate(){ return 'navigate'; } export function BrowserRouter(){ return 'browser'; }");
+    await fs.writeFile(path.join(root, "App.tsx"), "import { useNavigate } from 'react-router-dom'; export default function App(){ return useNavigate(); }");
+    await fs.writeFile(path.join(root, "Root.tsx"), "import { BrowserRouter } from 'react-router-dom'; export default function Root(){ return BrowserRouter(); }");
+    const compiled = await compileProject(root);
+    const appModule = compiled.modules.find(module => module.path === "App.tsx");
+    const appCode = await (await fetch(appModule.codeUrl)).text();
+    const appExports = await import(`data:text/javascript;base64,${Buffer.from(appCode).toString("base64")}`);
+    assert.equal(appExports.default(), "navigate");
+    assert.equal(appExports.__bingoMemoryRouter(), "router");
+    assert.equal(appExports.__bingoInRouterContext(), false);
+    assert.equal(compiled.componentIndex.__bingoMemoryRouter, undefined);
+    const rootModule = compiled.modules.find(module => module.path === "Root.tsx");
+    const rootCode = await (await fetch(rootModule.codeUrl)).text();
+    const rootExports = await import(`data:text/javascript;base64,${Buffer.from(rootCode).toString("base64")}`);
+    assert.equal(rootExports.__bingoMemoryRouter, undefined);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
   }
 });
 
@@ -147,12 +176,23 @@ test("ignores tooling configuration and test files when compiling component entr
       path.join(projectRoot, "src/Card.test.tsx"),
       "import testOnly from '@missing/test-helper'; export const TestOnly = testOnly;"
     );
+    await fs.mkdir(path.join(projectRoot, "src/tests"), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, "src/tests/Fixture.tsx"),
+      "import './fixture.css'; export function TestOnly() { return <div className='test-fixture-style' />; }"
+    );
+    await fs.writeFile(
+      path.join(projectRoot, "src/tests/fixture.css"),
+      ".test-fixture-style { font-family: test-fixture-font; }"
+    );
 
     const result = await compileProject(projectRoot);
 
     assert.equal(result.complete, true);
     assert.deepEqual(result.rebuiltEntries, ["src/Card.tsx"]);
     assert.equal(result.componentIndex.TestOnly, undefined);
+    const css = Buffer.from(result.cssUrl.split(",")[1], "base64").toString("utf8");
+    assert.doesNotMatch(css, /test-fixture-style|test-fixture-font/);
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });
   }
@@ -282,18 +322,27 @@ test("restores a verified build from disk after the in-memory cache is cleared",
     await clearProjectBuildCache();
 
     const reopenedAt = events.length;
-    await connectLocalBuilder({ root, sessionId: "disk-second-open" });
+    await Promise.all([
+      connectLocalBuilder({ root, sessionId: "disk-second-open" }),
+      connectLocalBuilder({ root, sessionId: "disk-third-open" }),
+    ]);
     const ready = await waitForEvent(
       events,
       (event) => event.sessionId === "disk-second-open" && event.type === "components:ready"
     );
+    const otherReady = await waitForEvent(
+      events,
+      (event) => event.sessionId === "disk-third-open" && event.type === "components:ready"
+    );
     const reopenEvents = events.slice(reopenedAt).filter((event) => event.sessionId === "disk-second-open");
     assert.equal(reopenEvents.some((event) => event.type === "modules:build_started"), false);
     assert.equal(ready.payload.cacheSource, "disk");
+    assert.equal(otherReady.payload.cacheSource, "disk");
   } finally {
     unsubscribe();
     await disconnectLocalBuilder({ root, sessionId: "disk-first-open" });
     await disconnectLocalBuilder({ root, sessionId: "disk-second-open" });
+    await disconnectLocalBuilder({ root, sessionId: "disk-third-open" });
     await clearProjectBuildCache({ disk: true });
     configureProjectBuildCache(null);
     await fs.rm(workspace, { recursive: true, force: true });
@@ -420,6 +469,84 @@ test("an active session publishes one-entry incremental snapshots for shared cha
   }
 });
 
+test("app-owned source writes refresh component metadata without an OS watch event", async context => {
+  clearProjectBuildCache();
+  context.mock.method(fsSync, "watch", () => ({ close() {} }));
+  const workspace = await createWorkspace();
+  const root = path.join(workspace, "apps/web");
+  const events = [];
+  const unsubscribe = subscribeLocalBuilderEvents(event => events.push(event));
+  try {
+    await connectLocalBuilder({ root, sessionId: "explicit-source-write" });
+    await waitForEvent(events, event => event.sessionId === "explicit-source-write" && event.type === "components:ready");
+    await fs.writeFile(path.join(root, "src/Card.tsx"), `export function Card({ label = 'Updated by app' }: {label?: string}) { return <button>{label}</button>; }`);
+    notifyLocalSourceWrite(root, "src/Card.tsx");
+    const updated = await waitForEvent(events, event => event.sessionId === "explicit-source-write" && event.type === "components:updated");
+    assert.equal(updated.payload.componentIndex.Card.props.label.default, "Updated by app");
+    assert.equal(componentIndexFor(root).Card.props.label.default, "Updated by app");
+  } finally {
+    unsubscribe();
+    await disconnectLocalBuilder({ root, sessionId: "explicit-source-write" });
+    await fs.rm(workspace, { recursive: true, force: true });
+    clearProjectBuildCache();
+  }
+});
+
+test("shared workspace edits reconcile when native directory watchers miss the event", async context => {
+  clearProjectBuildCache();
+  context.mock.method(fsSync, "watch", () => ({ close() {} }));
+  const workspace = await createWorkspace();
+  const root = path.join(workspace, "apps/web");
+  const events = [];
+  const unsubscribe = subscribeLocalBuilderEvents(event => events.push(event));
+  try {
+    await connectLocalBuilder({ root, sessionId: "shared-poll-fallback" });
+    await waitForEvent(events, event => event.sessionId === "shared-poll-fallback" && event.type === "components:ready");
+    await fs.writeFile(path.join(workspace, "packages/shared/src/Thing.tsx"), "import './shared.css'; export function Thing() { return <em>Polled shared change</em>; }");
+    await waitForEvent(events, event => event.sessionId === "shared-poll-fallback" && event.type === "components:updated");
+    const progress = events.filter(event => event.sessionId === "shared-poll-fallback" && event.type === "modules:build_progress");
+    assert.ok(progress.some(event => event.payload.incremental === true && event.payload.total === 1));
+    const modules = events.find(event => event.sessionId === "shared-poll-fallback" && event.type === "modules:updated").payload.modules;
+    const sources = await Promise.all(modules.map(async module => (await fetch(module.codeUrl)).text()));
+    assert.ok(sources.some(source => source.includes("Polled shared change")));
+  } finally {
+    unsubscribe();
+    await disconnectLocalBuilder({ root, sessionId: "shared-poll-fallback" });
+    await fs.rm(workspace, { recursive: true, force: true });
+    clearProjectBuildCache();
+  }
+});
+
+test("shared input reconciliation does not rebuild an already observed native edit", async context => {
+  clearProjectBuildCache();
+  const callbacks = new Map();
+  context.mock.method(fsSync, "watch", (directory, _options, callback) => {
+    callbacks.set(fsSync.realpathSync(directory), callback);
+    return { close() {} };
+  });
+  const workspace = await createWorkspace();
+  const root = path.join(workspace, "apps/web");
+  const sharedFile = path.join(workspace, "packages/shared/src/Thing.tsx");
+  const events = [];
+  const unsubscribe = subscribeLocalBuilderEvents(event => events.push(event));
+  const sessionId = "shared-native-dedup";
+  try {
+    await connectLocalBuilder({ root, sessionId });
+    await waitForEvent(events, event => event.sessionId === sessionId && event.type === "components:ready");
+    await fs.writeFile(sharedFile, "export function Thing() { return <em>Native shared change</em>; }");
+    callbacks.get(fsSync.realpathSync(path.dirname(sharedFile)))("change", path.basename(sharedFile));
+    await waitForEvent(events, event => event.sessionId === sessionId && event.type === "components:updated");
+    // Cross two reconciliation ticks plus the build debounce window.
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    assert.equal(events.filter(event => event.sessionId === sessionId && event.type === "components:updated").length, 1);
+  } finally {
+    unsubscribe();
+    await disconnectLocalBuilder({ root, sessionId });
+    await fs.rm(workspace, { recursive: true, force: true });
+    clearProjectBuildCache();
+  }
+});
+
 test("an explicit rebuild bypasses a valid cache and runs a complete build", async () => {
   clearProjectBuildCache();
   const workspace = await createWorkspace();
@@ -441,6 +568,42 @@ test("an explicit rebuild bypasses a valid cache and runs a complete build", asy
   } finally {
     unsubscribe();
     await disconnectLocalBuilder({ root, sessionId: "force-session" });
+    await fs.rm(workspace, { recursive: true, force: true });
+    clearProjectBuildCache();
+  }
+});
+
+test("rebuild callers wait for overlapping builds and receive dependency failures until repaired", async () => {
+  clearProjectBuildCache();
+  const workspace = await createWorkspace();
+  const root = path.join(workspace, "apps/web");
+  const sessionId = "rebuild-failure";
+  const events = [];
+  const unsubscribe = subscribeLocalBuilderEvents(event => events.push(event));
+  try {
+    await connectLocalBuilder({ root, sessionId });
+    await waitForEvent(events, event => event.sessionId === sessionId && event.type === "components:ready");
+    await fs.writeFile(path.join(workspace, "packages/shared/src/Thing.tsx"), "export const broken = ;");
+    const results = await Promise.all([
+      rebuildLocalBuilder({ root, sessionId }),
+      rebuildLocalBuilder({ root, sessionId }),
+    ]);
+    for (const result of results) {
+      assert.equal(result.ok, false, "a completed request must report the actual failed build");
+      assert.match(result.error, /Thing|Unexpected|build/i);
+    }
+    await fs.writeFile(path.join(root, "src/Safe.tsx"), "export function Safe() { return <span>Unaffected</span>; }");
+    const partial = await rebuildLocalBuilder({ root, sessionId });
+    assert.equal(partial.ok, false, "publishing unaffected components does not make a partial build successful");
+    assert.match(partial.error, /Card|Unexpected/i);
+    assert.ok(componentIndexFor(root).Safe);
+    assert.equal(componentIndexFor(root).Card, undefined);
+    await fs.writeFile(path.join(workspace, "packages/shared/src/Thing.tsx"), "export function Thing() { return <span>Repaired</span>; }");
+    assert.equal((await rebuildLocalBuilder({ root, sessionId })).ok, true);
+    assert.ok(componentIndexFor(root).Card);
+  } finally {
+    unsubscribe();
+    await disconnectLocalBuilder({ root, sessionId });
     await fs.rm(workspace, { recursive: true, force: true });
     clearProjectBuildCache();
   }

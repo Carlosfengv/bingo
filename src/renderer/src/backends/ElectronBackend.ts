@@ -47,6 +47,22 @@ function createElectronBackend(projectId, options = {}) {
   });
   return {
     ...local,
+    saveComponentInstance: async element => {
+      const result = await window.api.invoke("component-instance:save", { projectId, element });
+      if (result.success && result.code && result.filePath) await options.onFileChanged?.(result.filePath, result.code);
+      return result;
+    },
+    adaptComponentStyle: async (componentName, proposal, kind = "style") => {
+      const reviewed = proposal ? { sourceHash: proposal.sourceHash, filePath: proposal.filePath, exportName: proposal.exportName, kind: proposal.kind ?? "style" } : undefined;
+      const result = await window.api.invoke("component-style:adapt", { projectId, componentName, kind, mode: reviewed ? "apply" : "preview", reviewed });
+      if (result.success && result.applied) {
+        // The write already succeeded. A source-tab notification failure must
+        // not send the UI back to an unapplied proposal and repeat the write.
+        try { await options.onFileChanged?.(result.filePath, result.code); }
+        catch (error) { console.warn("Component source saved; editor notification failed", error); }
+      }
+      return result;
+    },
     dispose: () => {
       unsubFileChanged();
       unsubSettingsChanged();

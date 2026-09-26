@@ -1,0 +1,62 @@
+/* Continue the isolated mainline smoke in a fresh Electron process. */
+const { app, BrowserWindow, webContents } = require('electron');
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
+const repo = path.resolve(__dirname, '..');
+const reportName = process.env.BINGO_MAINLINE_REPORT || 'project-mainline';
+if (!/^project-mainline(?:-(?:codex|opencode|grok-ask))?$/.test(reportName)) throw Error(`Unsupported mainline report: ${reportName}`);
+const reportFile = path.join(repo, 'output/playwright', reportName, 'report.json');
+const previous = JSON.parse(fs.readFileSync(reportFile, 'utf8'));
+const project = previous.project;
+const base = path.dirname(path.dirname(project));
+const data = path.join(base, 'data');
+const manifest = JSON.parse(fs.readFileSync(path.join(project, '.bingo/design/manifest.json'), 'utf8'));
+const pageId = manifest.pages[0].id;
+const pageFile = path.join(project, '.bingo/design/pages', `${pageId}.json`);
+const beforeBytes = fs.readFileSync(pageFile);
+const beforeMtime = fs.statSync(pageFile).mtimeMs;
+const versionsDirectory = path.join(project, '.bingo/design/canvases', `${pageId}.versions`);
+const versionCount = () => fs.existsSync(versionsDirectory) ? fs.readdirSync(versionsDirectory).filter(name => name.endsWith('.json')).length : 0;
+const beforeVersions = versionCount();
+const git = (...args) => execFileSync('git', ['-C', project, ...args], { encoding: 'utf8' }).trim();
+git('add', '-A');
+git('add', '-f', '.bingo/design');
+git('-c', 'user.name=Bingo Test', '-c', 'user.email=bingo-test@example.invalid', 'commit', '-qm', 'Baseline before reopen');
+const beforeGitStatus = git('status', '--porcelain', '--untracked-files=all');
+if (beforeGitStatus) throw Error(`Git baseline is not clean: ${beforeGitStatus}`);
+app.commandLine.appendSwitch('user-data-dir', data);
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function waitFor(get, label) { const start = Date.now(); while (Date.now() - start < 60000) { const result = await get(); if (result) return result; await sleep(100); } throw Error(`Timed out: ${label}`); }
+const evaluate = (wc, script) => wc.executeJavaScript(script, true);
+const invoke = (wc, channel, args) => evaluate(wc, `window.api.invoke(${JSON.stringify(channel)},${JSON.stringify(args)})`);
+const checks = [];
+const check = (name, condition) => { assert.ok(condition, name); checks.push(name); console.log('PASS', name); };
+setTimeout(() => app.exit(1), 120000).unref();
+require(path.join(repo, 'out/main/index.js'));
+app.whenReady().then(async () => {
+  try {
+    const shell = (await waitFor(() => BrowserWindow.getAllWindows().find(win => !win.isDestroyed()), 'window')).webContents;
+    await waitFor(() => evaluate(shell, '!!window.api?.invoke').catch(() => false), 'preload');
+    const tabs = await invoke(shell, 'project-tabs:get');
+    if (!tabs.tabs.some(tab => tab.id === project)) await invoke(shell, 'project-tabs:open', { projectId: project });
+    const editor = await waitFor(() => webContents.getAllWebContents().find(wc => { try { return new URL(wc.getURL()).searchParams.get('projectTab') === project; } catch { return false; } }), 'restored editor');
+    await waitFor(() => evaluate(editor, '!!window.api?.invoke').catch(() => false), 'editor preload');
+    const store = (op, args = {}) => invoke(editor, 'bingo:store', { op, root: project, ...args });
+    const page = await store('load-canvas', { pageId });
+    check('Fresh process restores the saved canvas', page?.elements?.byId?.title?.text === 'Saved on canvas');
+    check('Fresh process restores Agent-edited source', (await store('read-file-snapshot', { rel: 'src/App.tsx' })).content.includes('Agent edit'));
+    const chats = await store('list-chats');
+    check('Fresh process restores chat list', JSON.stringify(chats).includes('mainline-chat'));
+    await sleep(1800);
+    await invoke(shell, 'project-tabs:close', { projectId: project });
+    check('Opening and closing without edits preserves page bytes', fs.readFileSync(pageFile).equals(beforeBytes));
+    check('Opening and closing without edits preserves page mtime and version count', fs.statSync(pageFile).mtimeMs === beforeMtime && versionCount() === beforeVersions);
+    check('Opening and closing without edits preserves Git status', git('status', '--porcelain', '--untracked-files=all') === beforeGitStatus);
+    const report = { ...previous, restartChecks: checks };
+    fs.writeFileSync(reportFile, JSON.stringify(report, null, 2));
+    console.log(JSON.stringify({ checks: checks.length, report: reportFile }));
+    app.exit(0);
+  } catch (error) { console.error(error.stack || error); app.exit(1); }
+});

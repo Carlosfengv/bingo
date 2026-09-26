@@ -1,4 +1,7 @@
 import { acquireProjectRender } from "../../shared/lib/projectActivity";
+import { nextComponentStyleRecords } from "../../../../compiler/src/store/componentEditing";
+import { validateComponentBindingChanges } from "../../../../compiler/src/codegen/componentEditBindings";
+import { validateComponentParameterChanges } from "../../../../compiler/src/codegen/componentEditParameters";
 /*
  * Reconstructed from the shipped Bingo bundle by luna/tools/rebuild.mjs.
  * Original module: ../../packages/editor/src/shell/hooks/useCanvasToolHandler.ts
@@ -168,6 +171,7 @@ function useCanvasToolHandler(deps) {
   const pendingPageCreationsRef = (0, import_react.useRef)(new Map());
   const drawPreviewsRef = (0, import_react.useRef)(new Map());
   const completedCanvasOperationsRef = (0, import_react.useRef)(new Map());
+  const inFlightCanvasOperationsRef = (0, import_react.useRef)(new Map());
   (0, import_react.useEffect)(() => {
     if (typeof window === "undefined" || !window.api?.on) return;
     /** claim_id → last time an MCP operation named it. */
@@ -271,8 +275,19 @@ function useCanvasToolHandler(deps) {
           operationId,
           result: nextResult
         });
+        const pending = inFlightCanvasOperationsRef.current.get(operationId);
+        if (pending?.requestId === requestId) {
+          inFlightCanvasOperationsRef.current.delete(operationId);
+          for (const waitingRequestId of pending.waiters) window.api.send("canvas_tool_result", {
+            requestId: waitingRequestId, operationId, result: nextResult
+          });
+        }
       };
       const editorProjectId = latestDeps().projectId;
+      if (latestDeps().readOnly && (CANVAS_MUTATION_OPERATIONS.has(operation) || operation === "create_page")) {
+        respond({ isError: true, content: [{ type: "text", text: "This project is read-only. No canvas changes were applied." }] });
+        return;
+      }
       if (editorProjectId && requestProjectId && String(editorProjectId) !== String(requestProjectId)) {
         respond({
           isError: true,
@@ -310,6 +325,9 @@ function useCanvasToolHandler(deps) {
           return;
         }
         if (cached) completedCanvasOperationsRef.current.delete(operationId);
+        const pending = inFlightCanvasOperationsRef.current.get(operationId);
+        if (pending) { pending.waiters.push(requestId); return; }
+        inFlightCanvasOperationsRef.current.set(operationId, { requestId, waiters: [] });
       }
       if (typeof args?.claim_id === "string" && args.claim_id) touchClaim(args.claim_id);
       const {
@@ -337,6 +355,16 @@ function useCanvasToolHandler(deps) {
             throw error;
           }
           const parsed = parseCanvasJsx(jsx, iconLibraries, componentIndex, undefined, { operation: canvasOperation, forceNewIds });
+          // New nodes are authored by this edit, not pre-existing source
+          // overrides. Reconciliation below restores provenance on old nodes.
+          for (const [id, element] of parsed.store.byId) {
+            if (canvasOperation === "canvas_add" || canvasOperation === "canvas_insert") {
+              validateComponentBindingChanges(undefined, element);
+              validateComponentParameterChanges(undefined, element, componentIndex[element.componentName]);
+            }
+            if (element.type !== "component" || !Object.keys(element.styles ?? {}).length) continue;
+            parsed.store.byId.set(id, { ...element, componentEditing: nextComponentStyleRecords({ ...element, styles: {}, componentEditing: undefined }, element.styles, componentIndex[element.componentName]) });
+          }
           jsxRecovery = parsed.recovery;
           return parsed.store;
         } catch (error) {
@@ -347,12 +375,25 @@ function useCanvasToolHandler(deps) {
       const currentTabs = tabs;
       const currentActiveTabId = activeTabIdRef.current;
       const publishStore = (tabId, next) => {
-        applyStoreUpdate(tabId, currentActiveTabId, next, setStore, storeRef, setTabStoreById);
+        const current = latestDeps();
+        applyStoreUpdate(tabId, current.activeTabIdRef.current, next, current.setStore, current.storeRef, current.setTabStoreById);
       };
       const currentStoreForTab = tabId => {
         const current = latestDeps();
         if (current.activeTabIdRef.current === tabId) return current.storeRef.current;
         return current.tabs.find(tab => tab.id === tabId)?.store;
+      };
+      const validateAndCommit = async (tabId, before, after, commit) => {
+        const claimEntries = args.claim_id ? [...elementLocksRef_0.current].filter(([, claim]) => claim === args.claim_id) : [];
+        const guardedCommit = () => {
+          const current = latestDeps();
+          if (current.readOnly || current.projectId !== editorProjectId) throw new Error("Project access changed during preview. No changes were applied.");
+          if (currentStoreForTab(tabId) !== before) throw new CanvasRevisionConflictError();
+          if (claimEntries.some(([id, claim]) => current.elementLocksRef.current.get(id) !== claim)) throw new Error("Element claim changed during preview. No changes were applied.");
+          commit();
+        };
+        if (latestDeps().validateCanvasChange) await latestDeps().validateCanvasChange(tabId, before, after, "agent", guardedCommit);
+        else guardedCommit();
       };
       const dropPreviewsOnTab = (_tabId, store) => store;
       const releaseRender = acquireProjectRender();
@@ -1015,12 +1056,14 @@ function useCanvasToolHandler(deps) {
             }
           }
           if (recorded.length > 0) {
-            commitCanvasCandidate(candidate, currentStoreForTab(targetTabId_0), prepared => {
-              (0, import_react_dom.flushSync)(() => {
-                publishStore(targetTabId_0, prepared.nextStore);
-                history.recordOperations(targetTabId_0, prepared.operations, prepared.nextStore);
-                if (claimId_5) for (const insertedId of insertedIds) elementLocksRef_0.current.set(insertedId, claimId_5);
-              });
+            await validateAndCommit(targetTabId_0, candidate.expectedStore, candidate.nextStore, () => {
+              commitCanvasCandidate(candidate, currentStoreForTab(targetTabId_0), prepared => {
+                (0, import_react_dom.flushSync)(() => {
+                  publishStore(targetTabId_0, prepared.nextStore);
+                  history.recordOperations(targetTabId_0, prepared.operations, prepared.nextStore);
+                  if (claimId_5) for (const insertedId of insertedIds) elementLocksRef_0.current.set(insertedId, claimId_5);
+                });
+            });
             });
             setElementLocksVersion_0(v_1 => v_1 + 1);
           }
@@ -1167,12 +1210,14 @@ function useCanvasToolHandler(deps) {
             workingStore_0 = appendCanvasCandidateOperation(candidate_0, insert_1);
             indexCursor += 1;
           }
-          commitCanvasCandidate(candidate_0, currentStoreForTab(found_5.tabId), prepared_0 => {
-            (0, import_react_dom.flushSync)(() => {
-              publishStore(found_5.tabId, prepared_0.nextStore);
-              history.recordOperations(found_5.tabId, prepared_0.operations, prepared_0.nextStore);
-              for (const insertedId_0 of insertedIds_0) elementLocksRef_0.current.set(insertedId_0, claimId_6);
-            });
+          await validateAndCommit(found_5.tabId, candidate_0.expectedStore, candidate_0.nextStore, () => {
+            commitCanvasCandidate(candidate_0, currentStoreForTab(found_5.tabId), prepared_0 => {
+              (0, import_react_dom.flushSync)(() => {
+                publishStore(found_5.tabId, prepared_0.nextStore);
+                history.recordOperations(found_5.tabId, prepared_0.operations, prepared_0.nextStore);
+                for (const insertedId_0 of insertedIds_0) elementLocksRef_0.current.set(insertedId_0, claimId_6);
+              });
+          });
           });
           createdElementIdsForResult = insertedIds_0;
           parentElementIdForResult = insertParentId;
@@ -1248,7 +1293,9 @@ function useCanvasToolHandler(deps) {
             expectedRevisionForResult = getCanvasRevision?.(found_6.tabId) ?? 0;
             const textOp = createSetTextOperation(targetStore, elementId_2, { text: editedText.content });
             if (textOp) {
-              applyStoreUpdate(found_6.tabId, currentActiveTabId, history.pushOperation(found_6.tabId, targetStore, textOp), setStore, storeRef, setTabStoreById);
+              await validateAndCommit(found_6.tabId, targetStore, applyOperationsToStore(targetStore, [textOp]), () => {
+                publishStore(found_6.tabId, history.pushOperation(found_6.tabId, targetStore, textOp));
+              });
               committedRevisionForResult = getCanvasRevision?.(found_6.tabId) ?? expectedRevisionForResult + 1;
             }
             respond({ content: [{ type: "text", text: `Edited text element ${elementId_2} (${editedText.replacements ?? 1} replacement(s)). Change summary: preserved=1, added=0, removed=0` }] });
@@ -1294,7 +1341,7 @@ function useCanvasToolHandler(deps) {
           }
           const claimedIds = claimedSubtreeIdSet(found_6.store, elementId_2);
           const storeIds = allStoreIdSet(found_6.store);
-          const normalized = normalizeUpdateSubtree(previousNested, storeSubtreeToLegacyNested(parsed_2, parsedRootIds_1[0]), claimedIds, storeIds);
+          const normalized = normalizeUpdateSubtree(previousNested, storeSubtreeToLegacyNested(parsed_2, parsedRootIds_1[0]), claimedIds, storeIds, componentIndex);
           if (normalized.error) {
             respond({
               isError: true,
@@ -1314,8 +1361,9 @@ function useCanvasToolHandler(deps) {
           expectedRevisionForResult = getCanvasRevision?.(found_6.tabId) ?? 0;
           const op = createReplaceOperation(targetStore_2, elementId_2, newElement);
           if (op) {
-            const nextStore_0 = history.pushOperation(found_6.tabId, targetStore_2, op);
-            applyStoreUpdate(found_6.tabId, currentActiveTabId, nextStore_0, setStore, storeRef, setTabStoreById);
+            await validateAndCommit(found_6.tabId, targetStore_2, applyOperationsToStore(targetStore_2, [op]), () => {
+              publishStore(found_6.tabId, history.pushOperation(found_6.tabId, targetStore_2, op));
+            });
             committedRevisionForResult = getCanvasRevision?.(found_6.tabId) ?? expectedRevisionForResult + 1;
           }
           respond({
@@ -1400,7 +1448,7 @@ function useCanvasToolHandler(deps) {
           expectedRevisionForResult = getCanvasRevision?.(targetTabId_1) ?? 0;
           const targetStore_3 = resolveActiveStore(targetTabId_1, currentActiveTabId, storeRef, currentTabs, found_7.store);
           const previousNested_0 = storeSubtreeToLegacyNested(targetStore_3, elementId_3);
-          const normalized_0 = normalizeUpdateSubtree(previousNested_0, newElementNested, claimedSubtreeIdSet(targetStore_3, elementId_3), allStoreIdSet(targetStore_3));
+          const normalized_0 = normalizeUpdateSubtree(previousNested_0, newElementNested, claimedSubtreeIdSet(targetStore_3, elementId_3), allStoreIdSet(targetStore_3), componentIndex);
           if (normalized_0.error) {
             respond({
               isError: true,
@@ -1417,7 +1465,9 @@ function useCanvasToolHandler(deps) {
           const summary_1 = summarizeSubtreeChange(previousNested_0, newElement_0);
           const op_0 = createReplaceOperation(targetStore_3, elementId_3, newElement_0);
           if (op_0) {
-            applyStoreUpdate(targetTabId_1, currentActiveTabId, history.pushOperation(targetTabId_1, targetStore_3, op_0), setStore, storeRef, setTabStoreById);
+            await validateAndCommit(targetTabId_1, targetStore_3, applyOperationsToStore(targetStore_3, [op_0]), () => {
+              publishStore(targetTabId_1, history.pushOperation(targetTabId_1, targetStore_3, op_0));
+            });
             committedRevisionForResult = getCanvasRevision?.(targetTabId_1) ?? expectedRevisionForResult + 1;
           }
           respond({
@@ -1469,7 +1519,9 @@ function useCanvasToolHandler(deps) {
           const descendantIds = getDescendantIds(targetStore_4, elementId_4);
           const op_1 = createRemoveOperation(targetStore_4, elementId_4);
           if (op_1) {
-            applyStoreUpdate(targetTabId_2, currentActiveTabId, history.pushOperation(targetTabId_2, targetStore_4, op_1), setStore, storeRef, setTabStoreById);
+            await validateAndCommit(targetTabId_2, targetStore_4, applyOperationsToStore(targetStore_4, [op_1]), () => {
+              publishStore(targetTabId_2, history.pushOperation(targetTabId_2, targetStore_4, op_1));
+            });
             committedRevisionForResult = getCanvasRevision?.(targetTabId_2) ?? expectedRevisionForResult + 1;
           }
           elementLocksRef_0.current.delete(elementId_4);

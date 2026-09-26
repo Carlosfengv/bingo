@@ -1,5 +1,6 @@
 import { getChildren$2, getRootIds } from "../store/read";
 import { resolveCollectionModes, variableDeclarationsForModes } from "../runtime/variables";
+import { componentStyleArgument } from "../store/componentEditing";
 
 /** Project CSS supplies source variables. Materialize managed tokens at the
  * output boundary and mode deltas at explicit local boundaries only. Never
@@ -23,10 +24,26 @@ export function prepareProjectVariableStore(store, options) {
     if (emitsElement && (outputRoot || hasLocalMode)) {
       const delta = Object.fromEntries(Object.entries(declarations).filter(([name, value]) =>
         value !== inherited[name] || outputRoot && managedNames.has(name)));
-      if (Object.keys(delta).length) byId.set(id, { ...element, styles: { ...delta, ...element.styles } });
+      if (Object.keys(delta).length) {
+        let themeAdapter = false;
+        if (element.type === "component") {
+          themeAdapter = options.componentIndex?.[element.componentName]?.editing?.themeVariables === "applied";
+          if (themeAdapter && (element.sourceExpressions?.props?.themeVariables || element.sourceExpressions?.spread)) throw new Error(`Cannot replace the dynamic theme variables of <${element.componentName}>. Keep its source expression or export its surrounding themed frame.`);
+          const argument = componentStyleArgument(element, { ...element.styles, ...element.props?.style });
+          if (!themeAdapter && (!argument || !Object.keys(argument).length || element.sourceExpressions?.props?.style || element.sourceExpressions?.spread)) {
+            throw new Error(`Cannot export <${element.componentName}> with this theme boundary without changing its style argument. Export the surrounding themed frame, or provide an explicit component theme adapter. The original instance is unchanged.`);
+          }
+        }
+        byId.set(id, themeAdapter
+          ? { ...element, props: { ...element.props, themeVariables: { ...delta, ...element.props?.themeVariables } } }
+          : { ...element, styles: { ...delta, ...element.styles } });
+      }
     }
     const exported = byId.get(id);
-    const ownDeclarations = Object.fromEntries(Object.entries(exported.styles ?? {}).filter(([name]) => name.startsWith("--")));
+    const ownDeclarations = Object.fromEntries(Object.entries({
+      ...(options.componentIndex?.[element.componentName]?.editing?.themeVariables === "applied" ? exported.props?.themeVariables : {}),
+      ...exported.styles,
+    }).filter(([name]) => name.startsWith("--")));
     const nextInherited = emitsElement ? { ...inherited, ...ownDeclarations } : inherited;
     for (const child of getChildren$2(store, id)) visit(child, nextInherited, outputRoot && !emitsElement || !emitsElement && hasLocalMode);
   };

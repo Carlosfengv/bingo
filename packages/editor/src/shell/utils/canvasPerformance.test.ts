@@ -30,16 +30,18 @@ test("selection waits for the matching overlay and excludes unchanged selections
   commitCanvasSelection(new Set(["a"]), viewport("a"));
   commitCanvasSelection(new Set(["b"]), viewport("a"));
   assert.equal(getCanvasPerformance().selection.count, 0);
+  flushFrames();
   commitCanvasSelection(new Set(["b"]), viewport("b"));
   assert.equal(getCanvasPerformance().selection.count, 1);
   assert.equal(getCanvasPerformance().nextFrame.count, 0);
   flushFrames();
   assert.equal(getCanvasPerformance().nextFrame.count, 1);
 });
-test("no-op clicks expire; reset cancels pending frame samples", () => {
+test("no-op clicks expire; reset cancels pending frame samples", async () => {
   setCanvasPerformanceEnabled(true);
   beginCanvasSelection(performance.now(), ["a"]);
   flushFrames();
+  await new Promise(resolve => setTimeout(resolve, 275));
   commitCanvasSelection(new Set(["b"]), viewport("b"));
   assert.equal(getCanvasPerformance().selection.count, 0);
   beginCanvasSelection(performance.now(), ["a"]);

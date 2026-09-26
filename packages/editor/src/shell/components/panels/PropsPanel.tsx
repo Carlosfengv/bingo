@@ -11,6 +11,7 @@ import { useUploadImage } from "../../../shared/hooks/useUploadImage";
 import { fileToUrl } from "../../../shared/utils/clipboard";
 import { LUCIDE_PROPS_SCHEMA, PHOSPHOR_PROPS_SCHEMA } from "../../../types/components";
 import { PropField, PropRow, handlePropInputKeyDown } from "./props/PropField";
+import { ComponentPropsPanel } from "./ComponentPropsPanel";
 import { IconBtn, InspectorControlAction, InspectorControlInput, InspectorControlShell } from "./styles/primitives";
 import { getById, isBingoOwnedDomProp } from "@bingo/compiler";
 import { useTranslation } from "@bingo/i18n";
@@ -402,7 +403,13 @@ function PropsScanLoading() {
   } else t0 = $[0];
   return t0;
 }
-function PropsPanel(t0) {
+function PropsPanel(props) {
+  const ids = props.selectedElementIds?.size > 1 ? [...props.selectedElementIds] : props.selectedElementId ? [props.selectedElementId] : [];
+  const elements = ids.map(id => getById(props.store, id)).filter(Boolean);
+  if (elements.some(element => element.type === "component")) return <ComponentPropsPanel key={ids.join(":")} {...props} elements={elements} />;
+  return <LegacyPropsPanel {...props} />;
+}
+function LegacyPropsPanel(t0) {
   const $ = (0, import_compiler_runtime.c)(183);
   const { t } = useTranslation("editor");
   const {

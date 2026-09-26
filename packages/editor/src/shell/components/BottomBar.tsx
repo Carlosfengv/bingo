@@ -107,7 +107,7 @@ function BottomBar({
   onSaveEnd,
   onOpenVersionHistory,
   readOnly = false,
-  selectedElementId,
+  selectedElementId: requestedSelectedElementId,
   documentId,
   onRevealDraft,
   store,
@@ -122,12 +122,26 @@ function BottomBar({
   onCloseFile,
   activateFile,
   onSaveFile,
+  onRebaseFile,
   openSkills,
   onCloseSkill,
   activateSkill,
   onSaveSkill
 }) {
   const { t } = useTranslation("editor");
+  // Let the canvas paint its new selection before replacing a potentially
+  // large CodeMirror document. Rapid layer changes only prepare the last one.
+  const [settledSelection, setSettledSelection] = import_react.useState(() => ({ documentId, id: requestedSelectedElementId }));
+  const selectionPending = settledSelection.documentId !== documentId || settledSelection.id !== requestedSelectedElementId;
+  import_react.useEffect(() => {
+    if (!selectionPending) return;
+    let nextFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      nextFrame = requestAnimationFrame(() => setSettledSelection({ documentId, id: requestedSelectedElementId }));
+    });
+    return () => { cancelAnimationFrame(firstFrame); cancelAnimationFrame(nextFrame); };
+  }, [documentId, requestedSelectedElementId, selectionPending]);
+  const selectedElementId = selectionPending ? null : requestedSelectedElementId;
   const backend = useBackendOptional();
   const isDark = useIsDark();
   useCodeEditorFontStyles();
@@ -182,7 +196,9 @@ function BottomBar({
   const [isSavingCss, setIsSavingCss] = (0, import_react.useState)(false);
   const [cssDirty, setCssDirty] = (0, import_react.useState)(false);
   const cssDraftsRef = import_react.useRef(new Map());
+  const cssHashesRef = import_react.useRef(new Map());
   const [cssError, setCssError] = (0, import_react.useState)(null);
+  const [cssLoadError, setCssLoadError] = (0, import_react.useState)(false);
   const [copiedKind, setCopiedKind] = (0, import_react.useState)(null);
   const assetResolver = useAssetResolver();
   const variables = useVariableSnapshot();
@@ -204,9 +220,11 @@ function BottomBar({
     }));
   }, [selectedElementId, hasSelectedElement, store, componentIndex, assetResolver, t, variables?.library, variables?.defaultModes]);
   const showSelectionCode = mode === "dev" && activeCodeTab === "selection";
-  const selectedElementCode = import_react.useMemo(() => showSelectionCode ? buildSelectedElementCode() : "", [showSelectionCode, buildSelectedElementCode]);
+  const selectedElementCode = import_react.useMemo(() => showSelectionCode ? selectionPending ? t("bottomBar.loadingSelection") : buildSelectedElementCode() : "", [showSelectionCode, selectionPending, buildSelectedElementCode, t]);
   const selection = useSelectionJsxEditor({
     documentId,
+    readOnly,
+    componentIndex,
     active: showSelectionCode,
     selectedElementId,
     selectedElementSnippet: selectedElementCode,
@@ -287,6 +305,8 @@ function BottomBar({
   const activeOpenFile = (openFiles || []).find(f_0 => activeCodeTab === `file:${f_0.path}`);
   const activeOpenSkill = (openSkills || []).find(s_0 => activeCodeTab === `skill:${s_0.name}`);
   const [fileDrafts, setFileDrafts] = (0, import_react.useState)({});
+  const [sourceConflict, setSourceConflict] = (0, import_react.useState)(null);
+  const [showDiskVersion, setShowDiskVersion] = (0, import_react.useState)(false);
   const [skillDrafts, setSkillDrafts] = (0, import_react.useState)({});
   const [savingFile, setSavingFile] = (0, import_react.useState)(false);
   const [savingSkill, setSavingSkill] = (0, import_react.useState)(false);
@@ -312,6 +332,7 @@ function BottomBar({
       if (kind === "file") {
         if (!runtime.onSaveFile) throw new Error(t("bottomBar.saveUnavailable"));
         await runtime.onSaveFile(path, content);
+        setSourceConflict(current => current?.path === path ? null : current);
         setFileDrafts(current => {
           if (current[path] !== content) return current;
           const next = { ...current }; delete next[path]; return next;
@@ -325,7 +346,9 @@ function BottomBar({
           const next = { ...current }; delete next[path]; return next;
         });
       } else {
-        await runtime.backend.writeFileRaw(path, content);
+        const written = await runtime.backend.writeFileRaw(path, content, cssHashesRef.current.get(path));
+        setSourceConflict(current => current?.path === path ? null : current);
+        if (written?.hash) cssHashesRef.current.set(path, written.hash);
         if (cssDraftsRef.current.get(path) === content) cssDraftsRef.current.delete(path);
         const current = codeStateRef.current;
         if (current.selectedCssPath === path && current.cssCode === content) {
@@ -340,12 +363,19 @@ function BottomBar({
     await codeSaves.flush();
   };
   const handleSaveOpenFile = async () => {
-    if (!activeOpenFile || !onSaveFile || readOnly) return;
+    if (!activeOpenFile || activeOpenFile.readError || !onSaveFile || readOnly) return;
     setSavingFile(true); onSaveStart?.();
     try {
       await saveCode("file", activeOpenFile.path, fileDrafts[activeOpenFile.path] ?? activeOpenFile.content);
       onSaveEnd?.(true);
-    } catch (error) { onSaveEnd?.(false, error instanceof Error ? error.message : String(error)); }
+    } catch (error) {
+      setCssError(error instanceof Error ? error.message : String(error)); setSaveStatus("error");
+      try {
+        const disk = await backend?.readFileSnapshot?.(activeOpenFile.path);
+        if (disk?.hash && disk.hash !== activeOpenFile.hash) setSourceConflict({ kind: "file", path: activeOpenFile.path, disk });
+      } catch {}
+      onSaveEnd?.(false, error instanceof Error ? error.message : String(error));
+    }
     finally { setSavingFile(false); }
   };
   const handleSaveOpenSkill = async () => {
@@ -481,10 +511,15 @@ function BottomBar({
     const loadCss = async () => {
       setIsLoadingCss(true);
       setCssError(null);
+      setCssLoadError(false);
       try {
-        const raw = await backend.readFileRaw(selectedCssPath);
+        const snapshot = backend.readFileSnapshot
+          ? await backend.readFileSnapshot(selectedCssPath)
+          : { content: await backend.readFileRaw(selectedCssPath) };
         if (cancelled) return;
-        setCssCode(raw ?? "");
+        if (snapshot.hash) cssHashesRef.current.set(selectedCssPath, snapshot.hash);
+        setCssCode(snapshot.content ?? "");
+        setCssLoadError(false);
         setCssLoadedPath(selectedCssPath);
         setCssDirty(false);
       } catch (err_0) {
@@ -492,6 +527,7 @@ function BottomBar({
         setCssCode("");
         setCssLoadedPath(selectedCssPath);
         setCssDirty(false);
+        setCssLoadError(true);
         setCssError(err_0 instanceof Error ? err_0.message : String(err_0));
       } finally {
         if (!cancelled) setIsLoadingCss(false);
@@ -507,13 +543,19 @@ function BottomBar({
     const files_0 = await backend.listFiles("", ".css");
     const globalsPath = PROJECT_CSS_ENTRY_CANDIDATES.find(candidate => files_0.includes(candidate)) ?? "app/globals.css";
     let globalsCss = "";
+    let globalsHash = null;
     try {
-      globalsCss = await backend.readFileRaw(globalsPath);
-    } catch {
+      const snapshot = backend.readFileSnapshot
+        ? await backend.readFileSnapshot(globalsPath)
+        : { content: await backend.readFileRaw(globalsPath) };
+      globalsCss = snapshot.content;
+      globalsHash = snapshot.hash;
+    } catch (error) {
+      if (files_0.includes(globalsPath)) throw error;
       globalsCss = "@import \"tailwindcss\";\n";
     }
     const nextGlobalsCss = addCssImport(globalsCss, relativeCssImport(globalsPath, path_2));
-    if (nextGlobalsCss !== globalsCss) await backend.writeFileRaw(globalsPath, nextGlobalsCss);
+    if (nextGlobalsCss !== globalsCss) await backend.writeFileRaw(globalsPath, nextGlobalsCss, globalsHash);
   }, [backend]);
   const createCssFile = (0, import_react.useCallback)(async (rawPath, content_1) => {
     if (!backend || readOnly || !enableCssEditor) return;
@@ -523,7 +565,8 @@ function BottomBar({
     setCssError(null);
     try {
       const starter = content_1 ?? "";
-      await backend.writeFileRaw(path_3, starter);
+      const written = await backend.writeFileRaw(path_3, starter, null);
+      if (written?.hash) cssHashesRef.current.set(path_3, written.hash);
       await ensureCssFileImported(path_3);
       setSelectedCssPath(path_3);
       setCssCode(starter);
@@ -551,7 +594,7 @@ function BottomBar({
     await createCssFile(selectedCssPath, content_2);
   };
   const handleSaveCssFile = async () => {
-    if (!backend || readOnly || !enableCssEditor || !selectedCssPath) return;
+    if (!backend || readOnly || !enableCssEditor || !selectedCssPath || cssLoadError) return;
     setIsSavingCss(true); setCssError(null);
     try {
       await saveCode("css", selectedCssPath, cssCode);
@@ -560,9 +603,13 @@ function BottomBar({
       if (isPlanLimitError(error)) return;
       setCssError(error instanceof Error ? error.message : String(error));
       setSaveStatus("error");
+      try {
+        const disk = await backend.readFileSnapshot?.(selectedCssPath);
+        if (disk?.hash && disk.hash !== cssHashesRef.current.get(selectedCssPath)) setSourceConflict({ kind: "css", path: selectedCssPath, disk });
+      } catch {}
     } finally { setIsSavingCss(false); }
   };
-  const canEditSource = !readOnly && !!activeOpenFile && !!onSaveFile;
+  const canEditSource = !readOnly && !!activeOpenFile && !activeOpenFile.readError && !!onSaveFile;
   const canEditSkill = !readOnly && !!activeOpenSkill && !!onSaveSkill;
   const isCssActive = enableCssEditor && activeCodeTab === "css";
   const selectedCssFileExists = cssFiles.includes(selectedCssPath.trim());
@@ -571,7 +618,7 @@ function BottomBar({
   const activeSurface = isCssActive ? {
     value: cssCode,
     language: "css",
-    editable: !readOnly,
+    editable: !readOnly && !cssLoadError,
     onChange: value => {
       cssDraftsRef.current.set(selectedCssPath, value);
       setCssCode(value);
@@ -589,7 +636,7 @@ function BottomBar({
   } : activeOpenFile ? {
     value: activeFileValue,
     language: activeOpenFile.path.endsWith(".css") ? "css" : activeOpenFile.path.endsWith(".md") ? "markdown" : "jsx",
-    editable: !readOnly && !!onSaveFile,
+    editable: canEditSource,
     onChange: value_1 => setFileDrafts(d_2 => ({
       ...d_2,
       [activeOpenFile.path]: value_1
@@ -615,7 +662,10 @@ function BottomBar({
     const line = update.state.doc.lineAt(update.state.selection.main.head).number;
     setCursorLine(line);
   })], [activeSurface.language, isDark]);
-  const status = activeCodeTab === "selection" && selection.error ? {
+  const status = activeOpenFile?.readError ? {
+    kind: "error",
+    message: activeOpenFile.readError
+  } : activeCodeTab === "selection" && selection.error ? {
     kind: "error",
     message: selection.error
   } : saveStatus === "error" && cssError ? {
@@ -628,6 +678,22 @@ function BottomBar({
     kind: "hint",
     message: t("bottomBar.previewPaused")
   } : null;
+  const conflictForActive = sourceConflict && (sourceConflict.kind === "file"
+    ? activeOpenFile?.path === sourceConflict.path
+    : isCssActive && selectedCssPath === sourceConflict.path) ? sourceConflict : null;
+  const conflictPanel = conflictForActive && <div className="border-b border-ed-border bg-ed-muted/40 px-3 py-2 text-xs">
+    <div>{t("bottomBar.sourceConflictHelp")}</div>
+    <div className="mt-2 flex flex-wrap gap-2">
+      <Button variant="outline" size="xs" onClick={() => setShowDiskVersion(value => !value)}>{t("bottomBar.viewDiskVersion")}</Button>
+      <Button variant="outline" size="xs" onClick={() => void navigator.clipboard.writeText(conflictForActive.kind === "file" ? activeFileValue : cssCode)}>{t("bottomBar.copyDraft")}</Button>
+      <Button variant="outline" size="xs" onClick={() => {
+        if (conflictForActive.kind === "file") onRebaseFile?.(conflictForActive.path, conflictForActive.disk.hash);
+        else cssHashesRef.current.set(conflictForActive.path, conflictForActive.disk.hash);
+        setSourceConflict(null); setShowDiskVersion(false); setSaveStatus("idle"); setCssError(null);
+      }}>{t("bottomBar.retryAfterMerge")}</Button>
+    </div>
+    {showDiskVersion && <pre className="mt-2 max-h-40 overflow-auto rounded border border-ed-border bg-ed-background p-2 font-mono whitespace-pre-wrap break-all">{conflictForActive.disk.content}</pre>}
+  </div>;
   (0, import_react.useEffect)(() => {
     if (mode !== "dev" || isTerminalActive || pendingScrollLineRef.current == null || !activeOpenFile) return;
     const line_0 = pendingScrollLineRef.current;
@@ -680,13 +746,13 @@ function BottomBar({
                   e_7.stopPropagation();
                   closeTerminalTab(t_3.id);
                 }} className="inline-flex size-2.5 items-center justify-center rounded text-ed-muted-foreground opacity-0 group-hover:opacity-100 group-data-[state=active]:opacity-100 hover:bg-ed-muted hover:text-ed-foreground">{<XIcon className="size-2.5" />}</span>}</TabsTrigger>;
-            })}</TabsList>}</Tabs>}{hasTerminal && <WithTooltip label={t("bottomBar.newTerminal")}>{<Button variant="ghost" size="icon-2xs" LeftIcon={PlusIcon} leftIconSize={12} aria-label={t("bottomBar.newTerminal")} className="text-ed-muted-foreground" onClick={addTerminalTab} />}</WithTooltip>}</div>}{<div className="flex shrink-0 items-center gap-2">{!isTerminalActive && <>{activeCodeTab === "selection" && selectedElementId && onReplaceElement && <>{selection.dirty && <Button variant="ghost" size="xs" onMouseDown={e_8 => e_8.preventDefault()} onClick={selection.reset} disabled={readOnly} LeftIcon={ArrowCounterClockwiseIcon} aria-label={t("bottomBar.resetChanges")}>{t("bottomBar.reset")}</Button>}{<WithTooltip label={t("bottomBar.applyToCanvas")}>{<Button variant="outline" size="xs" onMouseDown={e_9 => e_9.preventDefault()} onClick={selection.apply} disabled={readOnly || !selection.dirty} aria-label={t("bottomBar.applyToCanvas")}>{t("bottomBar.apply")} {<Kbd>⌘S</Kbd>}</Button>}</WithTooltip>}</>}{activeOpenFile && onOpenVersionHistory && <Button variant="ghost" size="xs" onClick={onOpenVersionHistory} LeftIcon={ClockIcon} aria-label={t("bottomBar.versionHistory")}>{t("bottomBar.history")}</Button>}{isCssActive && !readOnly && backend && <>{canCreateSelectedCssFile && <WithTooltip label={t("bottomBar.createCssHelp")}>{<Button variant="secondary" size="xs" onClick={handleCreateCssFile} disabled={isSavingCss} LeftIcon={PlusIcon} aria-label={t("bottomBar.createCss")}>{t("bottomBar.createCss")}</Button>}</WithTooltip>}{<WithTooltip label={t("bottomBar.saveCssHelp")}>{<Button variant="default" size="xs" onClick={handleSaveCssFile} disabled={isSavingCss || !selectedCssFileExists || !cssDirty} loading={isSavingCss} LeftIcon={FloppyDiskIcon} aria-label={t("bottomBar.saveCss")}>{isSavingCss ? t("bottomBar.saving") : t("bottomBar.saveCss")}</Button>}</WithTooltip>}</>}{activeOpenFile && canEditSource && <WithTooltip label={t("bottomBar.saveFileHelp")}>{<Button variant="default" size="xs" onClick={() => void handleSaveOpenFile()} disabled={savingFile || !activeFileDirty} loading={savingFile} LeftIcon={FloppyDiskIcon} aria-label={t("bottomBar.saveFile")}>{savingFile ? t("bottomBar.saving") : t("bottomBar.save")}</Button>}</WithTooltip>}{activeOpenSkill && canEditSkill && <WithTooltip label={t("bottomBar.saveSkillHelp")}>{<Button variant="default" size="xs" onClick={() => void handleSaveOpenSkill()} disabled={savingSkill || !activeSkillDirty} loading={savingSkill} LeftIcon={FloppyDiskIcon} aria-label={t("bottomBar.saveSkill")}>{savingSkill ? t("bottomBar.saving") : t("bottomBar.save")}</Button>}</WithTooltip>}</>}{<WithTooltip label={activeOpenFile ? `${t("bottomBar.copySourceFile")} (${GLOBAL_SHORTCUTS.copySelectionAsJsx.keyLabel})` : `${t("bottomBar.copySelection")} (${GLOBAL_SHORTCUTS.copySelectionAsJsx.keyLabel})`}>{<Button variant="secondary" size="xs" disabled={activeOpenFile ? false : !hasSelectedElement} onClick={() => void copyCode()} LeftIcon={copiedKind ? CheckIcon : CopyIcon} aria-label={activeOpenFile ? t("bottomBar.copySourceFile") : t("bottomBar.copySelection")}>{copiedKind ? t("bottomBar.copied") : activeOpenFile ? <>{t("bottomBar.copySourceFile")} {<Kbd>{GLOBAL_SHORTCUTS.copySelectionAsJsx.keyLabel}</Kbd>}</> : <>{t("bottomBar.copyCode")} {<Kbd>{GLOBAL_SHORTCUTS.copySelectionAsJsx.keyLabel}</Kbd>}</>}</Button>}</WithTooltip>}</div>}</div>}{isCssActive ? <div className="flex min-h-[22px] items-center gap-1.5 overflow-x-auto border-b border-ed-border bg-ed-background px-3 py-0.5">{cssFiles.length > 0 && <select value={cssFiles.includes(selectedCssPath) ? selectedCssPath : ""} onChange={e_10 => {
+            })}</TabsList>}</Tabs>}{hasTerminal && <WithTooltip label={t("bottomBar.newTerminal")}>{<Button variant="ghost" size="icon-2xs" LeftIcon={PlusIcon} leftIconSize={12} aria-label={t("bottomBar.newTerminal")} className="text-ed-muted-foreground" onClick={addTerminalTab} />}</WithTooltip>}</div>}{<div className="flex shrink-0 items-center gap-2">{!isTerminalActive && <>{activeCodeTab === "selection" && selectedElementId && onReplaceElement && <>{selection.dirty && <Button variant="ghost" size="xs" onMouseDown={e_8 => e_8.preventDefault()} onClick={selection.reset} disabled={readOnly} LeftIcon={ArrowCounterClockwiseIcon} aria-label={t("bottomBar.resetChanges")}>{t("bottomBar.reset")}</Button>}{<WithTooltip label={t("bottomBar.applyToCanvas")}>{<Button variant="outline" size="xs" onMouseDown={e_9 => e_9.preventDefault()} onClick={selection.apply} disabled={readOnly || !selection.dirty} aria-label={t("bottomBar.applyToCanvas")}>{t("bottomBar.apply")} {<Kbd>⌘S</Kbd>}</Button>}</WithTooltip>}</>}{activeOpenFile && onOpenVersionHistory && <Button variant="ghost" size="xs" onClick={onOpenVersionHistory} LeftIcon={ClockIcon} aria-label={t("bottomBar.versionHistory")}>{t("bottomBar.history")}</Button>}{isCssActive && !readOnly && backend && <>{canCreateSelectedCssFile && <WithTooltip label={t("bottomBar.createCssHelp")}>{<Button variant="secondary" size="xs" onClick={handleCreateCssFile} disabled={isSavingCss} LeftIcon={PlusIcon} aria-label={t("bottomBar.createCss")}>{t("bottomBar.createCss")}</Button>}</WithTooltip>}{<WithTooltip label={t("bottomBar.saveCssHelp")}>{<Button variant="default" size="xs" onClick={handleSaveCssFile} disabled={isSavingCss || cssLoadError || !selectedCssFileExists || !cssDirty} loading={isSavingCss} LeftIcon={FloppyDiskIcon} aria-label={t("bottomBar.saveCss")}>{isSavingCss ? t("bottomBar.saving") : t("bottomBar.saveCss")}</Button>}</WithTooltip>}</>}{activeOpenFile && canEditSource && <WithTooltip label={t("bottomBar.saveFileHelp")}>{<Button variant="default" size="xs" onClick={() => void handleSaveOpenFile()} disabled={savingFile || !activeFileDirty} loading={savingFile} LeftIcon={FloppyDiskIcon} aria-label={t("bottomBar.saveFile")}>{savingFile ? t("bottomBar.saving") : t("bottomBar.save")}</Button>}</WithTooltip>}{activeOpenSkill && canEditSkill && <WithTooltip label={t("bottomBar.saveSkillHelp")}>{<Button variant="default" size="xs" onClick={() => void handleSaveOpenSkill()} disabled={savingSkill || !activeSkillDirty} loading={savingSkill} LeftIcon={FloppyDiskIcon} aria-label={t("bottomBar.saveSkill")}>{savingSkill ? t("bottomBar.saving") : t("bottomBar.save")}</Button>}</WithTooltip>}</>}{<WithTooltip label={activeOpenFile ? `${t("bottomBar.copySourceFile")} (${GLOBAL_SHORTCUTS.copySelectionAsJsx.keyLabel})` : `${t("bottomBar.copySelection")} (${GLOBAL_SHORTCUTS.copySelectionAsJsx.keyLabel})`}>{<Button variant="secondary" size="xs" disabled={activeOpenFile ? false : !hasSelectedElement} onClick={() => void copyCode()} LeftIcon={copiedKind ? CheckIcon : CopyIcon} aria-label={activeOpenFile ? t("bottomBar.copySourceFile") : t("bottomBar.copySelection")}>{copiedKind ? t("bottomBar.copied") : activeOpenFile ? <>{t("bottomBar.copySourceFile")} {<Kbd>{GLOBAL_SHORTCUTS.copySelectionAsJsx.keyLabel}</Kbd>}</> : <>{t("bottomBar.copyCode")} {<Kbd>{GLOBAL_SHORTCUTS.copySelectionAsJsx.keyLabel}</Kbd>}</>}</Button>}</WithTooltip>}</div>}</div>}{isCssActive ? <div className="flex min-h-[22px] items-center gap-1.5 overflow-x-auto border-b border-ed-border bg-ed-background px-3 py-0.5">{cssFiles.length > 0 && <select value={cssFiles.includes(selectedCssPath) ? selectedCssPath : ""} onChange={e_10 => {
         setSelectedCssPath(e_10.target.value);
         setCssLoadedPath(null);
         setCssDirty(false);
       }} className="h-5 max-w-[220px] rounded border border-ed-border bg-ed-background px-1.5 text-[10px] text-ed-foreground">{cssFiles.map(path_5 => <option key={path_5} value={path_5}>{path_5}</option>)}</select>}{<input value={selectedCssPath} onChange={e_11 => setSelectedCssPath(e_11.target.value)} onBlur={() => {
         if (!selectedCssPath.trim()) setSelectedCssPath(DEFAULT_USER_CSS_PATH);
-      }} placeholder={DEFAULT_USER_CSS_PATH} className="h-5 w-[220px] rounded border border-ed-border bg-ed-background px-1.5 text-[10px] font-mono text-ed-foreground placeholder:text-ed-muted-foreground" />}</div> : activeOpenSkill ? <div className="flex min-h-[22px] items-center gap-1.5 overflow-x-auto border-b border-ed-border bg-ed-background px-3 py-0.5">{<Text$4 size="xs" className="font-mono text-ed-muted-foreground">{activeOpenSkill.name}/SKILL.md</Text$4>}</div> : !isTerminalActive && breadcrumbItems.length > 0 && <EditorFileBreadcrumb items={breadcrumbItems} />}{!isTerminalActive && status && <EditorStatusBar status={status} />}{<div className="flex-1 min-h-0 overflow-hidden" style={isTerminalActive ? {
+      }} placeholder={DEFAULT_USER_CSS_PATH} className="h-5 w-[220px] rounded border border-ed-border bg-ed-background px-1.5 text-[10px] font-mono text-ed-foreground placeholder:text-ed-muted-foreground" />}</div> : activeOpenSkill ? <div className="flex min-h-[22px] items-center gap-1.5 overflow-x-auto border-b border-ed-border bg-ed-background px-3 py-0.5">{<Text$4 size="xs" className="font-mono text-ed-muted-foreground">{activeOpenSkill.name}/SKILL.md</Text$4>}</div> : !isTerminalActive && breadcrumbItems.length > 0 && <EditorFileBreadcrumb items={breadcrumbItems} />}{!isTerminalActive && status && <EditorStatusBar status={status} />}{!isTerminalActive && conflictPanel}{<div className="flex-1 min-h-0 overflow-hidden" style={isTerminalActive ? {
       display: "none"
     } : void 0}>{isLoadingCss && isCssActive ? <div className="flex items-center justify-center h-full">{<Text$4 size="sm" className="text-ed-muted-foreground">{t("bottomBar.loadingCss")}</Text$4>}</div> : <RetainedCodeEditor active={mode === "dev" && !isTerminalActive} documentKey={JSON.stringify([documentId, activeCodeTab, activeCodeTab === "selection" ? selectedElementId : selectedCssPath])} editorRef={cmRef} value={activeSurface.value} height="100%" className={`${CODE_EDITOR_CLASS} h-full`} extensions={editorExtensions} editable={activeSurface.editable} onChange={activeSurface.onChange} onBlur={() => {
         if (activeSurface.commitOnBlur) activeSurface.commit?.();

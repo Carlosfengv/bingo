@@ -32,7 +32,8 @@ function CodeView(t0) {
     onUpdateElementProps,
     onUpdateMultipleElementsStyles,
     onUpdateMultipleElementsProps,
-    readOnly
+    readOnly,
+    classesReadOnly = readOnly
   } = t0;
   const isMultiSelect = selectedElements && selectedElements.length > 1;
   const elementClassName = element?.props?.className;
@@ -110,12 +111,12 @@ function CodeView(t0) {
     $[30] = t4;
   } else t4 = $[30];
   let t5;
-  if ($[31] !== element || $[32] !== onUpdateElementProps || $[33] !== onUpdateMultipleElementsProps || $[34] !== readOnly || $[35] !== selectedElementId || $[36] !== selectedElements) {
-    t5 = <ClassesTab element={element} selectedElementId={selectedElementId} selectedElements={selectedElements} onUpdateElementProps={onUpdateElementProps} onUpdateMultipleElementsProps={onUpdateMultipleElementsProps} readOnly={readOnly} />;
+  if ($[31] !== element || $[32] !== onUpdateElementProps || $[33] !== onUpdateMultipleElementsProps || $[34] !== classesReadOnly || $[35] !== selectedElementId || $[36] !== selectedElements) {
+    t5 = <ClassesTab element={element} selectedElementId={selectedElementId} selectedElements={selectedElements} onUpdateElementProps={onUpdateElementProps} onUpdateMultipleElementsProps={onUpdateMultipleElementsProps} readOnly={classesReadOnly} />;
     $[31] = element;
     $[32] = onUpdateElementProps;
     $[33] = onUpdateMultipleElementsProps;
-    $[34] = readOnly;
+    $[34] = classesReadOnly;
     $[35] = selectedElementId;
     $[36] = selectedElements;
     $[37] = t5;

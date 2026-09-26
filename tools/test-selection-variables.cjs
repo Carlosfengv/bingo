@@ -61,6 +61,8 @@ app.whenReady().then(async () => {
     const editCode = code => evaluate(editor, `(()=>{const view=document.querySelector('.cm-content').cmView.view;view.dispatch({changes:{from:0,to:view.state.doc.length,insert:${JSON.stringify(code)}}})})()`);
     const apply = () => evaluate(editor, `document.querySelector('[aria-label="将 JSX 应用到画布"]').click()`);
     await select('label');
+    // Start editing only after this untyped component's contract is available.
+    await waitFor(() => evaluate(editor, `!!document.querySelector('[data-component-parameters]') && !document.querySelector('[data-component-scan-state]')`), 'initial parameter scan');
     await waitFor(async () => (await readCode())?.includes('Original label'), 'selection editor');
     const code = await readCode();
     check('Component reference excludes runtime variables and internal theme metadata', code.includes('<SidebarGroupLabel>') && !/data-bingo-variables|--foreground|--unused/.test(code));

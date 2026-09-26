@@ -12,15 +12,19 @@ import { AgentStatusCache } from "./agentStatusCache";
 import { listClaudeConnections, listClaudeSlashCommands } from "./claudeContext";
 import { abandonClaimsForProject, cancelApprovalsForProject, checkMcpHealth, ensureMcpServerReady, getMcpUrl, getSystemSkills, isExistingPathAllowed, mcpEvents, orphanCanvasOperationsForWebContents, resolveApproval, resolveFolderAccess, setExternalMcpAutoApproveFileEdits, setProjectAllowedPaths, setSkillOverrides, startMcpServer, stopMcpServer } from "./mcpServer";
 import { getAllowedLocalPaths, validatePromptFolders, withPromptFolders } from "./promptFolders";
-import { getProjectAllowedPaths } from "./projectAccess";
+import { getProjectAccessContext, getProjectAllowedPaths } from "./projectAccess";
 import { registerDebugBridge } from "./debugBridge";
 import { handleDevToolsShortcut } from "./devToolsShortcut";
 import { registerAiConfig } from "./aiConfig";
 import { registerLocalCompiler } from "./localCompiler";
 import { getPresentationUrl, stopPresentationServer } from "./presentationServer";
+import { stopLocalModuleServer } from "./localModuleServer";
 import { initializeLocalization, refreshSystemLocale, tNative } from "./localization";
 import { saveFileLocally } from "./localSaveToCode";
-import { chatStoreForRoot, registerLocalStore, resolveRegisteredProjectRoot } from "./localStore";
+import { saveComponentInstanceLocally } from "./componentInstanceSave";
+import { componentStyleAdapterLocally } from "./componentStyleAdapterService";
+import { chatStoreForRoot, registerLocalStore, resolveRegisteredProjectRoot, writeProjectFile } from "./localStore";
+import { readSourceSnapshot, writeSourceFile } from "./sourceFileWrite";
 import { ChatRunPersistence, runPersistedChat } from "./chatRunPersistence";
 import { disposeTerminalsForWindow, disposeTerminalsForRenderer, registerTerminalIPC } from "./terminal";
 import { windowProjectMap, projectForWebContents, windowForWebContents, broadcastToEditors } from "./windowManager";
@@ -184,14 +188,17 @@ function registerIPC() {
   };
   electron.ipcMain.handle("edit_source", async (event, args) => {
     const absPath = await authorizeSourcePath(event, args.filePath);
-    if (!absPath) return {
+    const projectId = projectForWebContents(event.sender);
+    const projectRoot = projectId ? resolveRegisteredProjectRoot(projectId) : null;
+    if (!absPath || !projectRoot || getProjectAccessContext(projectId).mode !== "edit") return {
       ok: false,
       reason: "not-allowed",
       detail: args.filePath
     };
-    let source;
+    let snapshot;
     try {
-      source = await fs.promises.readFile(absPath, "utf8");
+      snapshot = readSourceSnapshot(absPath);
+      if (!snapshot) throw new Error("Source file not found");
     } catch (e) {
       return {
         ok: false,
@@ -199,6 +206,7 @@ function registerIPC() {
         detail: String(e?.message || e)
       };
     }
+    const source = snapshot.content;
     const result = applySourceEdit(source, {
       line: args.line,
       column: args.column,
@@ -218,7 +226,19 @@ function registerIPC() {
       };
     }
     try {
-      await fs.promises.writeFile(absPath, result.source, "utf8");
+      const relative = path.relative(projectRoot, absPath);
+      if (relative && relative !== ".." && !relative.startsWith(".." + path.sep) && !path.isAbsolute(relative)) {
+        writeProjectFile(projectRoot, relative, result.source, { expectedHash: snapshot.hash });
+      } else {
+        const validate = () => {
+          const access = getProjectAccessContext(projectId);
+          const real = fs.realpathSync(absPath);
+          if (access.mode !== "edit" || !access.allowedPaths.some(root => real === root || real.startsWith(root + path.sep))) {
+            throw new Error("Source path is no longer allowed");
+          }
+        };
+        writeSourceFile(absPath, result.source, { expectedHash: snapshot.hash, validate });
+      }
     } catch (e) {
       return {
         ok: false,
@@ -240,9 +260,11 @@ function registerIPC() {
       detail: args.filePath
     };
     try {
+      const bytes = await fs.promises.readFile(absPath);
       return {
         ok: true,
-        content: await fs.promises.readFile(absPath, "utf8")
+        content: bytes.toString("utf8"),
+        hash: crypto$1.createHash("sha256").update(bytes).digest("hex")
       };
     } catch (e) {
       return {
@@ -329,6 +351,24 @@ function registerIPC() {
     return {
       path: result.filePaths[0]
     };
+  });
+  electron.ipcMain.handle("component-instance:save", async (event, args) => {
+    try {
+      if (!windowOwnsProject(event, args?.projectId)) return { success: false, code: "NOT_ALLOWED", error: "This window does not own the project." };
+      return await saveComponentInstanceLocally(args.projectId, args.element);
+    } catch (error) {
+      return { success: false, code: error?.code ?? "SAVE_FAILED", error: error instanceof Error ? error.message : String(error), expected: error?.expected, actual: error?.actual };
+    }
+  });
+  electron.ipcMain.handle("component-style:adapt", async (event, args) => {
+    try {
+      if (!windowOwnsProject(event, args?.projectId)) return { success: false, error: "This window does not own the project." };
+      if (args.mode !== "preview" && args.mode !== "apply") throw new Error("Unknown adaptation action.");
+      if (args.mode === "apply" && (!args.reviewed || ![args.reviewed.sourceHash, args.reviewed.filePath, args.reviewed.exportName].every(value => typeof value === "string"))) throw new Error("Review the source change before applying it.");
+      return await componentStyleAdapterLocally(args.projectId, args.componentName, args.mode === "apply" ? args.reviewed : undefined, args.kind ?? "style");
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
   });
   electron.ipcMain.handle("save_file", async (event, args) => {
     try {
@@ -490,7 +530,7 @@ function registerIPC() {
       return true;
     },
   });
-  registerLocalCompiler(electron.ipcMain);
+  registerLocalCompiler(electron.ipcMain, { userDataRoot: electron.app.getPath("userData") });
   electron.ipcMain.handle("bingo:open-presentation", async (event, params) => {
     const projectId = projectForWebContents(event.sender);
     if (!projectId || params?.projectId !== projectId) throw new Error("Preview project mismatch");
@@ -840,6 +880,7 @@ electron.app.on("before-quit", event => {
   cancelAllSessions();
   stopMcpServer();
   stopPresentationServer();
+  stopLocalModuleServer();
 });
 electron.app.on("window-all-closed", () => {
   if (process.platform !== "darwin") electron.app.quit();

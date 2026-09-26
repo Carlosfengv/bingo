@@ -223,6 +223,16 @@ app.whenReady().then(async () => {
     await evaluate(editor,'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
     check('Reopening restores the last saved color',await color('a')==='rgb(17, 24, 39)');
     check('Reopening retains page metadata and source content',persisted().name==='Renamed during save'&&persisted().canvas.backgroundColor==='#abcdef'&&fs.readFileSync(path.join(project,'src/App.tsx'),'utf8')===finalCode);
+    await installProbe();
+    const pageFingerprint=file=>({bytes:fs.readFileSync(file).toString('base64'),mtime:fs.statSync(file).mtimeMs,
+      versions:(()=>{const dir=path.join(project,'.bingo/design/canvases',`${path.basename(file,'.json')}.versions`);return fs.existsSync(dir)?fs.readdirSync(dir).filter(name=>name.endsWith('.json')).length:0})()});
+    const beforeQuietSwitch=[pageFingerprint(pageFile),pageFingerprint(secondPageFile)];
+    await evaluate(editor,`window.__propsFor('PagesPanel').onSelectPage(${JSON.stringify(secondPageId)})`);
+    await waitFor(()=>evaluate(editor,`window.__propsFor('PagesPanel').activePageId===${JSON.stringify(secondPageId)}&&!window.__propsFor('PagesPanel').isPageLoading`),'quiet second page');
+    await evaluate(editor,`window.__propsFor('PagesPanel').onSelectPage(${JSON.stringify(pageId)})`);
+    await waitFor(()=>evaluate(editor,`window.__propsFor('PagesPanel').activePageId===${JSON.stringify(pageId)}&&!window.__propsFor('PagesPanel').isPageLoading`),'quiet original page');
+    await sleep(1800);
+    check('Switching unchanged pages creates no writes or versions',JSON.stringify([pageFingerprint(pageFile),pageFingerprint(secondPageFile)])===JSON.stringify(beforeQuietSwitch));
     report.unexpectedErrors=[...new Set(report.errors)].filter(message=>!/fonts\.gstatic\.com|Request Autofill\.|Failed to parse JSX: SyntaxError: Unexpected token \(1:35\)/.test(message));
     check('No unexpected renderer errors',report.unexpectedErrors.length===0);
     report.done=true;report.saveCount=saves.length;

@@ -11,17 +11,16 @@ import { projectBuilderClient } from "../services/ProjectBuilderClient";
 import * as import_react from "react";
 
 /**
-* useComponents - Web version (project-builder)
+* Component registry and parameter metadata from the local project builder.
 *
 * Build artifacts (modules, component index, CSS) arrive from the local builder.
-* Component props arrive via components:ready when distMeta already has a
-* scanned props cache. When no cache exists, props scan starts on first
-* component selection via POST /components/scan; props then stream via
-* components:updated until components:scan_complete / components:scan_failed.
-* A cached scan response clears scanLoading without a new builder event.
+* Static props arrive with the component index. Selecting a component without
+* metadata, or explicitly retrying, requests a local rebuild. Older builders
+* can also deliver components:scan_complete / components:scan_failed events.
+* A cached or completed local rebuild response clears scanLoading even when
+* the component's declaration cannot produce editable parameter metadata.
 *
-* After a file save, the API syncs to project-builder and the server pushes
-* modules:updated / components:updated — the client applies those events here.
+* The file watcher publishes modules:updated / components:updated after saves.
 */
 function readyState(components, componentIndex, scanLoading) {
   return {
@@ -45,6 +44,10 @@ function takePendingModuleUpdates(pending) {
   pending.clear();
   return list;
 }
+const EMPTY_COMPONENT_STATE = {
+  initialized: false, loading: true, scanLoading: false, error: null,
+  components: {}, componentIndex: {}, registryRevision: 0,
+};
 function useComponents(projectPath, options = {}) {
   const [state, setState] = (0, import_react.useState)({
     initialized: false,
@@ -53,25 +56,45 @@ function useComponents(projectPath, options = {}) {
     error: null,
     components: {},
     componentIndex: {},
-    registryRevision: 0
+    registryRevision: 0,
+    projectPath,
   });
+  // Effects reset the registry after a project switch. Hide the preceding
+  // project's state during that render as well, before those effects execute.
+  const visibleState = state.projectPath === projectPath ? state : EMPTY_COMPONENT_STATE;
   const projectPathRef = (0, import_react.useRef)(projectPath);
+  const projectSessionRef = (0, import_react.useRef)(0);
   const pendingScanComponentRef = (0, import_react.useRef)(null);
+  const scanRequestRef = (0, import_react.useRef)(0);
   const registryRef = (0, import_react.useRef)(state);
   const onSourceFilesUpdatedRef = (0, import_react.useRef)(options.onSourceFilesUpdated);
   (0, import_react.useLayoutEffect)(() => {
+    if (projectPathRef.current !== projectPath) {
+      projectSessionRef.current++;
+      scanRequestRef.current++;
+      pendingScanComponentRef.current = null;
+    }
     projectPathRef.current = projectPath;
-    registryRef.current = state;
+    registryRef.current = visibleState;
     onSourceFilesUpdatedRef.current = options.onSourceFilesUpdated;
   });
+  (0, import_react.useLayoutEffect)(() => () => {
+    projectSessionRef.current++;
+    scanRequestRef.current++;
+  }, []);
   const notifySourceFilesUpdated = (0, import_react.useCallback)(paths => {
     if (paths.length === 0) return;
     onSourceFilesUpdatedRef.current?.(paths);
   }, []);
   const waitForComponent = (componentKey, timeoutMs = 15e3) => {
+    const session = projectSessionRef.current;
     return new Promise((resolve, reject) => {
       const start = Date.now();
       const check = () => {
+        if (session !== projectSessionRef.current) {
+          reject(new Error("The project changed while waiting for the component"));
+          return;
+        }
         const {
           components,
           componentIndex
@@ -90,7 +113,11 @@ function useComponents(projectPath, options = {}) {
     });
   };
   const applyRegistryUpdate = (0, import_react.useCallback)((components_0, componentIndex_0, scanLoading, options_0) => {
+    const projectId = projectPathRef.current;
+    const session = projectSessionRef.current;
     setState(prev => {
+      if (session !== projectSessionRef.current) return prev;
+      if (prev.projectPath !== projectId) prev = EMPTY_COMPONENT_STATE;
       const mergedComponents = {
         ...prev.components
       };
@@ -101,91 +128,99 @@ function useComponents(projectPath, options = {}) {
           ...prev.componentIndex,
           ...componentIndex_0
         }, scanLoading ?? prev.scanLoading),
-        registryRevision: nextRevision
+        registryRevision: nextRevision,
+        projectPath: projectId,
       };
     });
   }, []);
   const refreshComponentPaths = (0, import_react.useCallback)(async paths_0 => {
+    const session = projectSessionRef.current;
     const sourcePaths = [...new Set(paths_0.filter(path => /\.(tsx?|jsx?)$/.test(path)))];
     if (!sourcePaths.length || !projectPathRef.current) return;
     const baseline = new Map(sourcePaths.map(path_0 => [path_0, componentLoader.getModuleCodeUrl(path_0)]));
     const deadline = Date.now() + 2500;
     while (Date.now() < deadline) {
+      if (session !== projectSessionRef.current) return;
       if (sourcePaths.some(path_1 => {
         const url = componentLoader.getModuleCodeUrl(path_1);
         return url && url !== baseline.get(path_1);
       })) break;
       await new Promise(resolve_0 => setTimeout(resolve_0, 200));
     }
+    if (session !== projectSessionRef.current) return;
     const result = await componentLoader.reloadIndexedModules(sourcePaths);
-    if (!result || projectPathRef.current === null) return;
+    if (!result || session !== projectSessionRef.current) return;
     applyRegistryUpdate(result.components, result.componentIndex);
   }, [applyRegistryUpdate]);
   const ensureComponentNames = (0, import_react.useCallback)(async names => {
     if (!projectPathRef.current) return;
+    const session = projectSessionRef.current;
     const result_0 = await componentLoader.ensureModulesForNames(names);
-    if (!result_0 || projectPathRef.current === null) return;
+    if (!result_0 || session !== projectSessionRef.current) return;
     applyRegistryUpdate(result_0.components, result_0.componentIndex);
   }, [applyRegistryUpdate]);
-  const patchComponentsUpdated = (0, import_react.useCallback)(patch => {
+  const patchComponentsUpdated = (0, import_react.useCallback)((patch, replace = false) => {
+    const session = projectSessionRef.current;
     notifySourceFilesUpdated(sourcePathsFromPatch(patch));
     const propsOnly = Object.values(patch).every(entry => entry.props !== void 0);
-    componentLoader.patchComponentIndexAndLoad(patch).then(({
-      components: components_1,
-      componentIndex: componentIndex_1
-    }) => {
-      if (projectPathRef.current === null) return;
+    componentLoader.patchComponentIndexAndLoad(patch, { replace }).then(result => {
+      if (!result || session !== projectSessionRef.current) return;
       let scanLoading_0;
       const pending = pendingScanComponentRef.current;
       if (pending && patch[pending]) {
         pendingScanComponentRef.current = null;
         scanLoading_0 = false;
       }
-      applyRegistryUpdate(components_1, componentIndex_1, scanLoading_0, {
+      applyRegistryUpdate(result.components, result.componentIndex, scanLoading_0, {
         bumpRevision: !propsOnly
       });
     });
   }, [notifySourceFilesUpdated, applyRegistryUpdate]);
   const requestPropsScan = async componentKey_0 => {
-    const projectId = projectPathRef.current;
-    if (!projectId) return;
+    const projectId = projectPath;
+    if (projectPathRef.current !== projectId) return { success: false, cancelled: true };
+    if (!projectId) return { success: false, error: "Project builder session is not connected" };
+    const session = projectSessionRef.current;
+    const requestId = ++scanRequestRef.current;
     pendingScanComponentRef.current = componentKey_0;
     setState(prev_0 => prev_0.scanLoading ? prev_0 : {
       ...prev_0,
-      scanLoading: true
+      scanLoading: true,
+      error: null
     });
     try {
       const {
         status
       } = await projectBuilderClient.scanComponents({
-        componentKey: componentKey_0
+        componentKey: componentKey_0,
+        projectId
       });
-      if (projectPathRef.current !== projectId) return;
-      if (status === "cached") {
+      if (projectPathRef.current !== projectId || projectSessionRef.current !== session) return { success: false, cancelled: true };
+      if (scanRequestRef.current === requestId && (status === "cached" || status === "rebuilt")) {
         pendingScanComponentRef.current = null;
         setState(prev_2 => ({
           ...prev_2,
           scanLoading: false
         }));
       }
+      return { success: true };
     } catch (error) {
-      if (projectPathRef.current !== projectId) return;
-      pendingScanComponentRef.current = null;
-      setState(prev_1 => ({
-        ...prev_1,
-        scanLoading: false,
-        error: String(error)
-      }));
+      if (projectPathRef.current !== projectId || projectSessionRef.current !== session) return { success: false, cancelled: true };
+      if (scanRequestRef.current === requestId) {
+        pendingScanComponentRef.current = null;
+        setState(prev_1 => ({
+          ...prev_1,
+          scanLoading: false,
+          error: String(error)
+        }));
+      }
+      return { success: false, error: String(error) };
     }
   };
   (0, import_react.useEffect)(() => {
     if (!projectPath) {
       pendingScanComponentRef.current = null;
-      setState(prev_3 => ({
-        ...prev_3,
-        components: {},
-        componentIndex: {}
-      }));
+      setState({ ...EMPTY_COMPONENT_STATE, projectPath });
       return;
     }
     let cancelled = false;
@@ -194,7 +229,9 @@ function useComponents(projectPath, options = {}) {
     const pendingModuleUpdates = new Map();
     setState(prev_4 => ({
       ...prev_4,
+      projectPath,
       loading: true,
+      scanLoading: false,
       error: null,
       initialized: false,
       components: {},
@@ -230,14 +267,15 @@ function useComponents(projectPath, options = {}) {
           firstPaintDone = true;
           setState(prev_5 => ({
             ...readyState(prev_5.components, prev_5.componentIndex, false),
-            registryRevision: prev_5.registryRevision
+            registryRevision: prev_5.registryRevision,
+            projectPath,
           }));
           return;
         }
         const bootstrap = () => {
           if (cancelled) return;
           componentLoader.loadModulesForIndex(nextIndex).then(result_2 => {
-            if (cancelled) return;
+            if (cancelled || !result_2) return;
             let scanLoading_1;
             const pending_0 = pendingScanComponentRef.current;
             if (pending_0 && nextIndex[pending_0]?.props !== void 0) {
@@ -262,7 +300,7 @@ function useComponents(projectPath, options = {}) {
       }
       if (event.type === "components:updated") {
         const payload_0 = event.payload;
-        patchComponentsUpdated(payload_0.componentIndex);
+        patchComponentsUpdated(payload_0.componentIndex, payload_0.replace === true);
         return;
       }
       if (event.type === "components:scan_complete") {
@@ -349,13 +387,13 @@ function useComponents(projectPath, options = {}) {
     }
   }, []);
   return {
-    initialized: state.initialized,
-    loading: state.loading,
-    scanLoading: state.scanLoading,
-    error: state.error,
-    components: state.components,
-    componentIndex: state.componentIndex,
-    registryRevision: state.registryRevision,
+    initialized: visibleState.initialized,
+    loading: visibleState.loading,
+    scanLoading: visibleState.scanLoading,
+    error: visibleState.error,
+    components: visibleState.components,
+    componentIndex: visibleState.componentIndex,
+    registryRevision: visibleState.registryRevision,
     reload,
     reconnect,
     requestPropsScan,

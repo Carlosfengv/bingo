@@ -7,6 +7,7 @@
  * author's original file. See luna/RECOVERY.md.
  */
 import { canAcceptChild, hasChildren$1 } from "./types";
+import { nextComponentStyleRecords } from "./componentEditing";
 
 function applyOps(store, ops) {
   if (ops.length === 0) return store;
@@ -55,6 +56,7 @@ function mutate(s, op) {
       return mutateUpdateField(s, op.id, el => ({
         ...el,
         styles: op.styles,
+        ...(Object.prototype.hasOwnProperty.call(op, "componentEditing") ? { componentEditing: op.componentEditing ?? undefined } : el.type === "component" ? { componentEditing: nextComponentStyleRecords(el, op.styles) } : {}),
         ...(el.theme?.bindings ? { theme: { ...el.theme, bindings: el.theme.bindings.filter(binding => binding.target !== "style" || op.styles?.[binding.property] === el.styles?.[binding.property]) } } : {}),
         ...(op.scaleAnchorTransform !== void 0 ? {
           scaleAnchorTransform: op.scaleAnchorTransform ?? void 0

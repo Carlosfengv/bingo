@@ -9,8 +9,11 @@
 import { measureVisibleBounds } from "../../shared/utils/visibleElement";
 import { measureCanvasWork } from "../lib/canvasPerformance";
 import { CapturedPageRenderer } from "../components/CapturedPageRenderer";
+import { componentRenderStyles, componentStyleArgument } from "../../../../compiler/src/store/componentEditing";
+import { variableStyleProjection } from "../../../../compiler/src/runtime/variables";
 import { DraggableElement } from "../components/DraggableElement";
-import { ElementErrorBoundary } from "../components/ErrorBoundary";
+import { ComponentPreview } from "../components/ComponentPreview";
+import { markUnwrappedPreviewElement } from "../../shared/utils/componentPreviewTree";
 import { MediaWithFallback } from "../components/MediaWithFallback";
 import { TextEditor } from "../components/TextEditor";
 import { WebviewRenderer } from "../components/WebviewRenderer";
@@ -80,21 +83,12 @@ function LiveOrFrozen(t0) {
   } else t4 = $[6];
   return t4;
 }
-var crashedElementRenders = new Map();
 var lastGoodComponents = new Map();
 /** Element ids already reported as unrenderable — one console line each, not one per render. */
 var warnedRenderFailures = new Set();
-var MAX_CRASHED_ELEMENT_RENDERS = 500;
 var MAX_LAST_GOOD_COMPONENTS = 500;
 function isRenderableComponent(value) {
   return typeof value === "function" || typeof value === "object" && value !== null && "$$typeof" in value;
-}
-function rememberCrashedElementRender(elementId, render) {
-  if (!crashedElementRenders.has(elementId) && crashedElementRenders.size >= MAX_CRASHED_ELEMENT_RENDERS) {
-    const oldestElementId = crashedElementRenders.keys().next().value;
-    if (oldestElementId) crashedElementRenders.delete(oldestElementId);
-  }
-  crashedElementRenders.set(elementId, render);
 }
 function rememberLastGoodComponent(elementId, name, component) {
   if (!lastGoodComponents.has(elementId) && lastGoodComponents.size >= MAX_LAST_GOOD_COMPONENTS) {
@@ -104,12 +98,6 @@ function rememberLastGoodComponent(elementId, name, component) {
   lastGoodComponents.set(elementId, {
     name,
     component
-  });
-}
-function commitLastGoodComponent(elementId, name, component) {
-  queueMicrotask(() => {
-    if (crashedElementRenders.get(elementId)?.component === component) return;
-    rememberLastGoodComponent(elementId, name, component);
   });
 }
 var DEFAULT_DEV_SERVER_URL = typeof process !== "undefined" && {}.NEXT_PUBLIC_BINGO_DEV_SERVER || "http://localhost:4001";
@@ -235,12 +223,15 @@ function renderElement(idOrElement, store, options = {}) {
 function renderElementOrThrow(idOrElement, store, options = {}) {
   let element = typeof idOrElement === "string" ? getById(store, idOrElement) : idOrElement;
   if (!element) return null;
+  const variableProjection = variableStyleProjection(element);
+  if (element.type === "component" && variableProjection) element = { ...element, styles: variableProjection.styles };
+  const componentFrameRoot = options.isFrameRoot && element.type === "component";
   if (options.isFrameRoot) {
     options = {
       ...options,
       isFrameRoot: false
     };
-    const styles = options.responsivePreview ? {
+    const styles = componentFrameRoot ? element.styles : options.responsivePreview ? {
       ...normalizeFrameRootStyles(element.styles),
       width: "100%", minWidth: 0, maxWidth: "none", height: "auto", minHeight: "100vh", maxHeight: "none"
     } : normalizeFrameRootStyles(element.styles);
@@ -510,9 +501,12 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
       ...commonProps
     }, captureChildren);
   } else if (element.type === "component") {
+    const activeStyles = componentRenderStyles(element, options.componentIndex?.[element.componentName]);
+    if (activeStyles !== element.styles) element = { ...element, styles: activeStyles };
     const componentElement = element;
     const componentRevision = options.renderCache?.componentRevision(element.componentName) ?? options.componentsRevision ?? 0;
     const componentInfo = options.componentIndex?.[element.componentName];
+    const hasThemeAdapter = componentInfo?.editing?.themeVariables === "applied";
     const hasChildrenProp = componentInfo?.props?.children !== void 0;
     const componentChildIds = getChildren$2(store, element.id);
     const hasChildren = componentChildIds.length > 0;
@@ -522,6 +516,7 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
       renderSignature = JSON.stringify({
         props: element.props ?? null,
         styles: element.styles ?? null,
+        variableDeclarations: variableProjection?.declarations ?? null,
         children: componentChildIds,
         inspectsChildren: componentInfo?.inspectsChildren === true,
         revision: componentRevision
@@ -529,13 +524,10 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
     } catch {
       renderSignature = `${componentChildIds.join(",")}:${componentInfo?.inspectsChildren === true}:${componentRevision}`;
     }
-    const crashedRender = crashedElementRenders.get(element.id);
-    const componentStillCrashed = !!crashedRender && crashedRender.component === Component && crashedRender.signature === renderSignature;
-    if (crashedRender && !componentStillCrashed) crashedElementRenders.delete(element.id);
     const lastGood = lastGoodComponents.get(element.id);
     const lastGoodComponent = lastGood?.name === element.componentName && isRenderableComponent(lastGood.component) ? lastGood.component : null;
-    if (isRenderableComponent(Component) && !componentStillCrashed) commitLastGoodComponent(element.id, element.componentName, Component);else if (lastGoodComponent) Component = lastGoodComponent;
-    if (!isRenderableComponent(Component) || componentStillCrashed && !lastGoodComponent) {
+    if (!isRenderableComponent(Component) && lastGoodComponent) Component = lastGoodComponent;
+    if (!isRenderableComponent(Component)) {
       const fallbackChildren = componentChildIds.map(childId => renderElement(childId, store, {
         ...options,
         isSVGContext: childSVGContext,
@@ -556,7 +548,7 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
         box,
         paint
       } = splitBoxStyles(element.styles);
-      const componentStyle = resolveStyleAssets(componentPositioned ? {
+      const componentStyle = componentStyleArgument(element, resolveStyleAssets(componentPositioned ? {
         ...asStyleObject(paint),
         ...(element.styles?.width !== void 0 ? {
           width: "100%"
@@ -568,10 +560,14 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
       } : {
         ...asStyleObject(element.styles),
         ...asStyleObject(element.props?.style)
-      }, assetResolver);
-      const wrapperStyle = componentPositioned ? box : {
-        display: "contents"
-      };
+      }, assetResolver), hasThemeAdapter ? undefined : variableProjection?.declarations);
+      // The existing editor host supplies inherited variables without changing
+      // the component's style argument or adding a new layout container.
+      const wrapperStyle = { ...variableProjection?.declarations,
+        ...(componentPositioned ? componentFrameRoot ? {
+          ...normalizeFrameRootStyles(box),
+          ...(options.responsivePreview ? { width: "100%", minWidth: 0, maxWidth: "none", height: "auto", minHeight: "100vh", maxHeight: "none" } : {}),
+        } : box : { display: "contents" }) };
       const filteredProps = {};
       if (element.props) for (const [key, value] of Object.entries(element.props)) {
         if (key === "children") continue;
@@ -587,9 +583,13 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
         }
         if (value !== void 0) filteredProps[key] = assetResolver && typeof value === "string" && looksLikeAssetPath(value) ? assetResolver(value) : value;
       }
+      if (hasThemeAdapter && variableProjection && Object.keys(variableProjection.declarations).length) {
+        filteredProps.themeVariables = { ...variableProjection.declarations, ...asStyleObject(filteredProps.themeVariables) };
+      }
       const isAsChildChild = options.isAsChildSlotTarget && element.type === "component";
       const isChildIntrospectionChild = isChildIntrospectionTarget && element.type === "component";
-      let parentHasAsChild = filteredProps.asChild === true;
+      const usesAsChild = props => (props.asChild === undefined ? componentInfo?.props?.asChild?.default : props.asChild) === true;
+      let parentHasAsChild = usesAsChild(filteredProps);
       const parentInspectsChildren = componentInfo?.inspectsChildren === true;
       if (options.isDragPreview && parentHasAsChild) filteredProps.asChild = false;
       if (parentHasAsChild) {
@@ -599,14 +599,20 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
           parentHasAsChild = false;
         }
       }
-      const renderedChildren = hasChildrenProp && !hasChildren ? renderSlot() : componentChildIds.map(childId => renderElement(childId, store, {
+      const renderChildren = asChild => hasChildrenProp && !hasChildren ? renderSlot() : componentChildIds.map(childId => renderElement(childId, store, {
         ...options,
         isSVGContext: childSVGContext,
         isDragPreview,
-        isAsChildSlotTarget: parentHasAsChild,
+        isAsChildSlotTarget: asChild,
         isChildIntrospectionTarget: parentInspectsChildren,
         _currentParentId: element.id
       }));
+      const renderedChildren = renderChildren(parentHasAsChild);
+      const renderPreviewChildren = props => {
+        const asChild = usesAsChild(props);
+        const children = renderChildren(asChild);
+        return asChild && Array.isArray(children) && children.length === 1 ? children[0] : Array.isArray(children) && children.length === 0 ? undefined : children;
+      };
       if (isAsChildChild || isChildIntrospectionChild) {
         const asChildProps = {
           ...filteredProps,
@@ -614,21 +620,23 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
           style: componentStyle,
           ...commonProps
         };
-        return Array.isArray(renderedChildren) && renderedChildren.length === 0 ? (0, import_react.createElement)(Component, asChildProps) : (0, import_react.createElement)(Component, asChildProps, renderedChildren);
+        const childrenToPass = parentHasAsChild && Array.isArray(renderedChildren) && renderedChildren.length === 1 ? renderedChildren[0] : renderedChildren;
+        const node = Array.isArray(childrenToPass) && childrenToPass.length === 0 ? (0, import_react.createElement)(Component, asChildProps) : (0, import_react.createElement)(Component, asChildProps, childrenToPass);
+        return markUnwrappedPreviewElement(node, { id: element.id, renderChildren: renderPreviewChildren });
       }
       const childrenToPass = parentHasAsChild && renderedChildren && renderedChildren.length === 1 ? renderedChildren[0] : renderedChildren;
-      const componentInner = (0, import_react.createElement)(ElementErrorBoundary, {
+      const componentInner = (0, import_react.createElement)(ComponentPreview, {
         key: componentMountKey,
-        resetKey: componentMountKey,
+        resetKey: `${componentMountKey}:${renderSignature}`,
+        assetResolver,
+        renderPreviewChildren,
+        renderStore: store,
         elementId: element.id,
         elementName: element.componentName,
         elementProps: filteredProps,
         silent: element.id.startsWith("el-draw-"),
         onFixWithAI: options.onFixWithAI,
-        onCrash: () => rememberCrashedElementRender(element.id, {
-          component: Component,
-          signature: renderSignature
-        })
+        onSuccess: () => rememberLastGoodComponent(element.id, element.componentName, Component)
       }, Array.isArray(childrenToPass) && childrenToPass.length === 0 ? (0, import_react.createElement)(Component, {
         ...filteredProps,
         key: componentMountKey,
@@ -639,6 +647,7 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
         style: componentStyle
       }, childrenToPass));
       content = (0, import_react.createElement)("div", {
+        "data-component-root-host": element.id,
         style: wrapperStyle,
         ...commonProps
       }, componentElement.frozenFallback ? (0, import_react.createElement)(LiveOrFrozen, {

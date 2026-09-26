@@ -7,6 +7,7 @@ import path from "node:path";
 import { Readable, Writable } from "node:stream";
 import { promisify } from "node:util";
 import { getShellEnv$1, isWindows, sanitizeShellOutput, userHome } from "./claudeBinary";
+import { resolveAcpPermission } from "./agentPermission";
 
 const execFileAsync = promisify(execFile);
 
@@ -50,7 +51,12 @@ function knownAgentPaths(agent: AgentId) {
     `/usr/local/bin/${command}`,
   ];
   if (agent === "codex" && process.platform === "darwin") {
-    common.unshift("/Applications/Codex.app/Contents/Resources/codex", "/Applications/ChatGPT.app/Contents/Resources/codex");
+    common.unshift(
+      "/Applications/Codex.app/Contents/Resources/codex",
+      "/Applications/Codex.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+      "/Applications/ChatGPT.app/Contents/Resources/codex",
+      "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+    );
   }
   if (isWindows()) {
     const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
@@ -66,7 +72,10 @@ function knownAgentPaths(agent: AgentId) {
 export async function findAgentBinary(agent: AgentId) {
   const info = AGENT_INFO[agent];
   const shellEnv = await getShellEnv$1();
-  for (const entry of String(shellEnv.PATH || process.env.PATH || "").split(isWindows() ? ";" : ":")) {
+  const separator = isWindows() ? ";" : ":";
+  const searchPaths = new Set([shellEnv.PATH, process.env.PATH]
+    .flatMap(value => String(value || "").split(separator)));
+  for (const entry of searchPaths) {
     if (!entry) continue;
     for (const extension of executableExtensions()) {
       const candidate = path.join(entry.replace(/^"|"$/g, ""), info.command + extension);
@@ -84,6 +93,14 @@ function invocation(binary: string, args: string[]) {
     return { file: process.env.COMSPEC || "cmd.exe", args: ["/d", "/s", "/c", binary, ...args] };
   }
   return { file: binary, args };
+}
+
+async function grokEnv() {
+  const env = { ...(await getShellEnv$1()) };
+  for (const name of ["XAI_API_KEY", "GROK_DEPLOYMENT_KEY"] as const) {
+    if (!env[name] && process.env[name]) env[name] = process.env[name];
+  }
+  return env;
 }
 
 export async function getAgentStatus(agentValue: unknown) {
@@ -122,9 +139,12 @@ export async function getAgentStatus(agentValue: unknown) {
       loggedIn = false;
     }
   } else if (agent === "grok") {
-    // Grok Build versions do not expose one consistent auth-status command.
-    // Let the first run return its actionable authentication error instead.
-    loggedIn = true;
+    // Grok Build has no consistent auth-status command. Presence is the best
+    // non-interactive signal; an expired credential still fails on first run.
+    const env = await grokEnv();
+    let cachedAuth = false;
+    try { cachedAuth = fs.statSync(path.join(userHome(), ".grok", "auth.json")).size > 0; } catch {}
+    loggedIn = !!(env.XAI_API_KEY || env.GROK_DEPLOYMENT_KEY || cachedAuth);
   }
   return { agent, displayName: info.name, installed: true, loggedIn, version, binary, installCommand: info.install, loginCommand: info.login };
 }
@@ -148,7 +168,7 @@ async function listGrokModels(binary: string): Promise<AgentModel[]> {
     cwd: process.cwd(),
     shell: false,
     windowsHide: true,
-    env: await getShellEnv$1(),
+    env: await grokEnv(),
   });
   const output = Writable.toWeb(child.stdin) as WritableStream<Uint8Array>;
   const input = Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>;
@@ -240,6 +260,7 @@ export type AgentRunOptions = {
   mcpUrl?: string;
   images?: Array<{ base64: string; mediaType: string }>;
   autoApprove?: boolean;
+  requestPermission?: (toolName: string, input: unknown) => Promise<boolean>;
   emit: (event: AgentEvent) => void;
   onSpawn: (process: ReturnType<typeof spawn>) => void;
 };
@@ -391,26 +412,10 @@ async function runOpenCode(options: AgentRunOptions, binary: string) {
   }
 }
 
-async function runGrokAcp(options: AgentRunOptions, binary: string) {
-  const args = ["agent", ...(options.autoApprove === false ? [] : ["--always-approve"]), "stdio"];
-  const call = invocation(binary, args);
-  const child = spawn(call.file, call.args, {
-    cwd: options.workDir,
-    shell: false,
-    windowsHide: true,
-    env: await getShellEnv$1(),
-  });
-  options.onSpawn(child);
-  let stderr = "";
-  child.stderr.on("data", (data) => { stderr += data.toString(); });
-  const output = Writable.toWeb(child.stdin) as WritableStream<Uint8Array>;
-  const input = Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>;
-  const connection = new ClientSideConnection(() => ({
+export function grokClientHandlers(options: Pick<AgentRunOptions, "autoApprove" | "requestPermission" | "emit">) {
+  return {
     requestPermission(params: any) {
-      const allowed = options.autoApprove === false
-        ? params.options.find((option: any) => option.kind === "reject_once")
-        : params.options.find((option: any) => option.kind === "allow_always") || params.options.find((option: any) => option.kind === "allow_once");
-      return allowed ? { outcome: { outcome: "selected", optionId: allowed.optionId } } : { outcome: { outcome: "cancelled" } };
+      return resolveAcpPermission(params, options.autoApprove !== false, options.requestPermission);
     },
     sessionUpdate(params: any) {
       const update = params.update;
@@ -424,7 +429,24 @@ async function runGrokAcp(options: AgentRunOptions, binary: string) {
         options.emit({ type: "tool_activity", name: update.name || update.title || "tool", input: update.rawInput, id: update.toolCallId });
       }
     },
-  }), ndJsonStream(output, input));
+  };
+}
+
+async function runGrokAcp(options: AgentRunOptions, binary: string) {
+  const args = ["agent", ...(options.autoApprove === false ? [] : ["--always-approve"]), "stdio"];
+  const call = invocation(binary, args);
+  const child = spawn(call.file, call.args, {
+    cwd: options.workDir,
+    shell: false,
+    windowsHide: true,
+    env: await grokEnv(),
+  });
+  options.onSpawn(child);
+  let stderr = "";
+  child.stderr.on("data", (data) => { stderr += data.toString(); });
+  const output = Writable.toWeb(child.stdin) as WritableStream<Uint8Array>;
+  const input = Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>;
+  const connection = new ClientSideConnection(() => grokClientHandlers(options), ndJsonStream(output, input));
   try {
     await connection.initialize({
       protocolVersion: PROTOCOL_VERSION,

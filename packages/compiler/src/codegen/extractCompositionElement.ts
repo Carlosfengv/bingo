@@ -98,9 +98,34 @@ function getExportSpecifierName(exported) {
   if (import_lib$3.isStringLiteral(exported)) return exported.value;
   return null;
 }
-function collectCompositionElements(ast) {
+function collectCompositionElements(ast, content, sourceOptions) {
   const jsxByExport = new Map();
+  const editableJsxByExport = new Map();
   const staticBindings = new Map();
+  const collectEditable = (name, expression) => {
+    if (!sourceOptions?.filePath || !sourceOptions?.sourceHash) return;
+    const cloned = import_lib$3.cloneNode(unwrapExpression(expression), true);
+    const file = import_lib$3.file(import_lib$3.program([import_lib$3.expressionStatement(cloned)]));
+    traverse$1(file, { JSXOpeningElement(path) {
+      const node = path.node;
+      if (!import_lib$3.isJSXIdentifier(node.name) || !/^[A-Z]/.test(node.name.name)) return;
+      const start = node.loc?.start.index, end = node.loc?.end.index;
+      if (typeof start !== "number" || typeof end !== "number") return;
+      const boundProps = {}, attributes = [];
+      let spread = false;
+      for (const attr of node.attributes) {
+        const code = content.slice(attr.loc?.start.index, attr.loc?.end.index);
+        if (import_lib$3.isJSXSpreadAttribute(attr)) { spread = true; attributes.push({ code }); continue; }
+        if (!import_lib$3.isJSXIdentifier(attr.name)) continue;
+        const dynamic = import_lib$3.isJSXExpressionContainer(attr.value) && !isStaticExpression(attr.value.expression, new Map());
+        if (dynamic) boundProps[attr.name.name] = code;
+        attributes.push({ name: attr.name.name, ...(dynamic ? { code } : {}) });
+      }
+      const binding = { schemaVersion: 1, filePath: sourceOptions.filePath, sourceHash: sourceOptions.sourceHash, exportName: name, tag: node.name.name, start, end, openingSource: content.slice(start, end), boundProps, attributes, spread, template: true };
+      node.attributes.push(import_lib$3.jsxAttribute(import_lib$3.jsxIdentifier("data-bingo-callsite"), import_lib$3.jsxExpressionContainer(import_lib$3.stringLiteral(JSON.stringify(binding)))));
+    } });
+    editableJsxByExport.set(name, jsxToString(file.program.body[0].expression, staticBindings));
+  };
   traverse$1(ast, {
     VariableDeclaration(path) {
       if (path.node.kind !== "const") return;
@@ -118,7 +143,7 @@ function collectCompositionElements(ast) {
         if (!isCompositionElementDeclarator(declarator)) continue;
         const name = declarator.id.name;
         const jsx = extractJsxFromInit(declarator.init, staticBindings);
-        if (jsx) jsxByExport.set(name, jsx);
+        if (jsx) { jsxByExport.set(name, jsx); collectEditable(name, declarator.init); }
       }
       for (const specifier of path.node.specifiers) {
         if (!import_lib$3.isExportSpecifier(specifier)) continue;
@@ -128,18 +153,19 @@ function collectCompositionElements(ast) {
         const binding = path.scope.getBinding(localName);
         if (binding?.path.isVariableDeclarator() && isCompositionElementDeclarator(binding.path.node)) {
           const jsx = extractJsxFromBinding(binding, staticBindings);
-          if (jsx) jsxByExport.set(exported, jsx);
+          if (jsx) { jsxByExport.set(exported, jsx); collectEditable(exported, binding.path.node.init); }
         }
       }
     }
   });
   return {
     exportNames: [...jsxByExport.keys()],
-    jsxByExport
+    jsxByExport,
+    editableJsxByExport
   };
 }
 /** Parse a *.compositions.* file and collect all element exports and their JSX. */
-function parseCompositionFile(content) {
+function parseCompositionFile(content, sourceOptions) {
   let ast;
   try {
     ast = (0, import_lib.parse)(content, {
@@ -152,7 +178,7 @@ function parseCompositionFile(content) {
       jsxByExport: new Map()
     };
   }
-  return collectCompositionElements(ast);
+  return collectCompositionElements(ast, content, sourceOptions);
 }
 
 export { parseCompositionFile };

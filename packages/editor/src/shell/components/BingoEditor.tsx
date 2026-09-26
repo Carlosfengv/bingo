@@ -34,16 +34,19 @@ import { resolvePointerTarget } from "../../canvas/utils/pointerTarget";
 import { isDescendClick, resolveDescendTarget, sameSelection } from "../../canvas/utils/selection";
 import { ActiveToolProvider } from "../../shared/contexts/ActiveToolContext";
 import { AssetProvider } from "../../shared/contexts/AssetContext";
+import { ComponentPreviewProvider, useComponentPreview } from "../../shared/contexts/ComponentPreviewContext";
+import { componentSceneTargets } from "../../shared/utils/componentScenePreview";
 import { EditorModeProvider } from "../../shared/contexts/EditorModeContext";
 import { useUploadImage } from "../../shared/hooks/useUploadImage";
 import { readCamera, writeCamera } from "../../shared/lib/cameraStore";
-import { isCodeEditorTarget, isTypingTarget } from "../../shared/shortcuts/matchShortcut";
+import { isCodeEditorTarget, isInteractiveTarget, isTypingTarget } from "../../shared/shortcuts/matchShortcut";
 import { useGlobalShortcut } from "../../shared/shortcuts/useGlobalShortcut";
 import { getAiWriteTarget } from "../../shared/state/aiWriteTarget";
 import { clearLog, describeOperation, ensureLog, getOperations, popOperation, recordOperation, squashOperations, startLog } from "../../shared/utils/captureStore";
 import { COMPOSITION_DRAG_MIME, copyElementToClipboard, createCompositionDragPayload, createImageElement, createVideoElement, fileToUrl, htmlToJsx, isCanvasInsertDrag, looksLikeHTML, readElementFromClipboard } from "../../shared/utils/clipboard";
 import { planDropMoves } from "../../shared/utils/dropPlan";
 import { cloneElementWithNewIds } from "../../shared/utils/elementCloning";
+import { applyComponentSourceSave } from "../../shared/utils/componentSourceSave";
 import { expandLinkedMapOps } from "../../shared/utils/expandLinkedMapOps";
 import { normalizeFlexShrinkOps } from "../../shared/utils/flexShrink";
 import { normalizeFlowLayoutChildrenOps } from "../../shared/utils/flowLayoutChildren";
@@ -174,6 +177,9 @@ function buildInitialTabs(initialPages, initialActivePageId, initialElements) {
       canvasPath: `.bingo/canvases/${p.id}/`,
       store,
       loaded,
+      savedName: p.name,
+      savedBackgroundColor: p.backgroundColor,
+      savedBackgroundToken: p.backgroundToken,
       lastSavedState: loaded ? JSON.stringify({
         elements
       }) : void 0,
@@ -189,6 +195,7 @@ function buildInitialTabs(initialPages, initialActivePageId, initialElements) {
     canvasPath: ".bingo/canvases/canvas-1/",
     store: ensureV2(elements),
     loaded: true,
+    savedName: "Page 1",
     lastSavedState: JSON.stringify({
       elements
     })
@@ -253,22 +260,18 @@ function sortIdsByLayoutDirection(ids, rectsById, direction) {
     return direction === "column" ? rectA.left - rectB.left : rectA.top - rectB.top;
   });
 }
-async function readSourceFileForBottomBar(readFileRaw, filePath) {
-  let content = "";
-  if (readFileRaw) {
-    const raw = await readFileRaw(filePath);
-    if (raw) content = raw;
+async function readSourceFileForBottomBar(backend, filePath) {
+  if (backend?.readFileSnapshot) return backend.readFileSnapshot(filePath);
+  if (backend?.readFileRaw) {
+    const content = await backend.readFileRaw(filePath);
+    return { content, hash: void 0 };
   }
-  if (!content) {
-    const invoke = window.api?.invoke;
-    if (typeof invoke === "function") {
-      const res = await invoke("read_source", {
-        filePath
-      });
-      if (res && res.ok) content = res.content;
-    }
+  const invoke = window.api?.invoke;
+  if (typeof invoke === "function") {
+    const res = await invoke("read_source", { filePath });
+    if (res?.ok) return { content: res.content, hash: res.hash };
   }
-  return content;
+  throw new Error(`Failed to read ${filePath}`);
 }
 async function loadSystemSkillMarkdown(name) {
   const api = window.api;
@@ -573,17 +576,19 @@ var BingoEditorInner = ({
       n: fileOpenCountRef.current,
       line: options?.line
     });
-    const readFileRaw = chatBackend ? chatBackend.readFileRaw : void 0;
-    let content = "";
+    let snapshot;
+    let readError;
     try {
-      content = await readSourceFileForBottomBar(readFileRaw, filePath);
-    } catch {
-      content = `// Couldn't read ${filePath}`;
+      snapshot = await readSourceFileForBottomBar(chatBackend, filePath);
+    } catch (error) {
+      readError = error instanceof Error ? error.message : String(error);
     }
     if (fileReadVersionsRef.current.get(filePath) !== version) return;
     setOpenCodeFiles(prev_1 => prev_1.map(f_0 => f_0.path === filePath ? {
       ...f_0,
-      content
+      content: snapshot?.content ?? "",
+      hash: snapshot?.hash,
+      readError
     } : f_0));
   };
   const closeCodeFile = filePath_0 => {
@@ -592,13 +597,22 @@ var BingoEditorInner = ({
   };
   const saveCodeFile = async (filePath_1, content_0) => {
     if (!chatBackend?.writeFileRaw) throw new Error(t("bottomBar.saveUnavailable"));
+    const opened = openCodeFilesRef.current.find(file => file.path === filePath_1);
+    if (!opened || opened.readError || opened.hash === void 0) throw new Error(t("bottomBar.saveUnavailable"));
     beginFileRead(filePath_1);
-    await chatBackend.writeFileRaw(filePath_1, content_0);
+    const written = await chatBackend.writeFileRaw(filePath_1, content_0, opened.hash);
     beginFileRead(filePath_1);
+    openCodeFilesRef.current = openCodeFilesRef.current.map(file => file.path === filePath_1
+      ? { ...file, content: content_0, hash: written?.hash ?? file.hash } : file);
     setOpenCodeFiles(prev_3 => prev_3.map(f_2 => f_2.path === filePath_1 ? {
       ...f_2,
-      content: content_0
+      content: content_0,
+      hash: written?.hash ?? f_2.hash
     } : f_2));
+  };
+  const rebaseCodeFile = (filePath, hash) => {
+    openCodeFilesRef.current = openCodeFilesRef.current.map(file => file.path === filePath ? { ...file, hash } : file);
+    setOpenCodeFiles(files => files.map(file => file.path === filePath ? { ...file, hash } : file));
   };
   const [openSkills, setOpenSkills] = (0, import_react.useState)([]);
   const [skillOpenSignal, setSkillOpenSignal] = (0, import_react.useState)(null);
@@ -1341,6 +1355,11 @@ var BingoEditorInner = ({
   const [focusedComponent, setFocusedComponent] = (0, import_react.useState)();
   const activeTab = tabs.find(t_3 => t_3.id === activeTabId);
   const activePageId = activeTab?.canvasId || activeTabId;
+  // Updating the inspector can mount many style controls and inspect project
+  // CSS. Let the canvas commit the selection before doing that work.
+  const inspectorSource = import_react.useMemo(() => ({ tabId: activeTabId, ids: selectedElementIds }), [activeTabId, selectedElementIds]);
+  const deferredInspectorSource = import_react.useDeferredValue(inspectorSource);
+  const inspectorSelectionPending = deferredInspectorSource.tabId !== activeTabId || !sameSelection(deferredInspectorSource.ids, selectedElementIds);
   const pageBackgroundByCanvasRef = (0, import_react.useRef)(new Map());
   (0, import_react.useLayoutEffect)(() => {
     for (const tab_8 of tabs) if (tab_8.canvasId) pageBackgroundByCanvasRef.current.set(tab_8.canvasId, {
@@ -1483,6 +1502,9 @@ var BingoEditorInner = ({
           canvasPath: `.bingo/canvases/${c_3.id}/`,
           store: store_0,
           loaded: isActive,
+          savedName: c_3.name || c_3.id,
+          savedBackgroundColor: c_3.backgroundColor,
+          savedBackgroundToken: c_3.backgroundToken,
           lastSavedState: isActive ? JSON.stringify({
             elements
           }) : void 0,
@@ -1519,6 +1541,7 @@ var BingoEditorInner = ({
           canvasPath: `.bingo/canvases/${newId_0}/`,
           store: emptyStore(),
           loaded: true,
+          savedName: "Page 1",
           lastSavedState: JSON.stringify({
             elements: []
           })
@@ -1535,6 +1558,7 @@ var BingoEditorInner = ({
         ...tab_9,
         store: ensureV2(elements_0),
         loaded: true,
+        savedName: tab_9.name,
         lastSavedState: JSON.stringify({
           elements: elements_0
         })
@@ -1576,6 +1600,9 @@ var BingoEditorInner = ({
       ...tab_10,
       store: newStore,
       loaded: true,
+      savedName: result_0.canvas.name || tab_10.name,
+      savedBackgroundColor: result_0.canvas.canvas?.backgroundColor ?? result_0.canvas.backgroundColor,
+      savedBackgroundToken: result_0.canvas.canvas?.backgroundToken ?? result_0.canvas.backgroundToken,
       lastSavedState: JSON.stringify({
         elements: newElements
       })
@@ -1616,6 +1643,7 @@ var BingoEditorInner = ({
       canvasPath: `.bingo/canvases/${newId_1}/`,
       store: emptyStore(),
       loaded: true,
+      savedName: newName,
       lastSavedState: JSON.stringify({
         elements: []
       })
@@ -1657,6 +1685,7 @@ var BingoEditorInner = ({
       canvasPath: `.bingo/canvases/${newId_2}/`,
       store: emptyStore(),
       loaded: true,
+      savedName: name_4,
       lastSavedState: JSON.stringify({
         elements: []
       })
@@ -1841,6 +1870,7 @@ var BingoEditorInner = ({
     setOpenCodeFiles(files_0 => [...files_0, {
       path: filePath_3,
       content: content_4,
+      hash: null,
       componentName: componentName_1
     }]);
     fileOpenCountRef.current += 1;
@@ -1951,6 +1981,51 @@ var BingoEditorInner = ({
   }, [currentStore, activeTabId]);
   const focusedComponentEditSession = findFocusedComponentEditSession(currentStore, selectedElementIds);
   const [previewStore, setPreviewStore] = (0, import_react.useState)(null);
+  const { store: componentPreviewStore, snapshot: componentPreviewSnapshot } = useComponentPreview();
+  const previewEnvironment = (0, import_react.useRef)(null);
+  const previewMounted = (0, import_react.useRef)(true);
+  (0, import_react.useLayoutEffect)(() => {
+    previewEnvironment.current = { projectPath, activeTabId, readOnly, componentIndex, components };
+  });
+  (0, import_react.useLayoutEffect)(() => () => {
+    if (componentPreviewStore?.getSnapshot()?.scene) componentPreviewStore.cancel();
+  }, [componentPreviewStore, activeTabId, currentStore, readOnly, componentIndex, components]);
+  (0, import_react.useEffect)(() => {
+    previewMounted.current = true;
+    return () => { previewMounted.current = false; componentPreviewStore?.cancel(); };
+  }, [componentPreviewStore]);
+  const validateCanvasChange = async (tabId, before, after, owner, commit) => {
+    const targets = componentSceneTargets(before, after);
+    const project = projectPath;
+    const environment = previewEnvironment.current;
+    if (targets.length && activeTabIdRef.current !== tabId) {
+      setActiveTabId(tabId);
+      const deadline = performance.now() + 3000;
+      do {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        if (!previewMounted.current || previewEnvironment.current?.projectPath !== project || performance.now() > deadline) {
+          throw new Error("Component preview page is unavailable. No changes were applied.");
+        }
+      } while (activeTabIdRef.current !== tabId || storeRef.current !== before);
+      // Allow selection/page cleanup to finish before installing its candidate.
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    }
+    const assertCurrent = () => {
+      const current = previewEnvironment.current;
+      if (!previewMounted.current || current.readOnly || current.projectPath !== project
+        || current.componentIndex !== environment.componentIndex || current.components !== environment.components
+        || (targets.length && (activeTabIdRef.current !== tabId || storeRef.current !== before))) {
+        throw new Error("Canvas or component changed during preview. No changes were applied.");
+      }
+    };
+    const publish = () => { assertCurrent(); commit(); };
+    assertCurrent();
+    if (!targets.length) { publish(); return; }
+    setPreviewStore(null);
+    await componentPreviewStore.validate(targets, { tabId, store: after, owner }, publish);
+  };
+  const scenePreview = componentPreviewSnapshot?.status === "pending" && componentPreviewSnapshot.scene?.tabId === activeTabId
+    ? componentPreviewSnapshot.scene.store : null;
   const [previewStoreTabId, setPreviewStoreTabId] = (0, import_react.useState)(activeTabId);
   if (previewStoreTabId !== activeTabId) {
     setPreviewStoreTabId(activeTabId);
@@ -1996,6 +2071,15 @@ var BingoEditorInner = ({
       };
     }));
   };
+  const onComponentSourceSaved = result => {
+    storeRef.current = applyComponentSourceSave(storeRef.current, result);
+    setTabs(previous => previous.map(tab => {
+      const store = applyComponentSourceSave(tab.store, result);
+      if (store === tab.store) return tab;
+      bumpCanvasContentRevision(tab.id);
+      return { ...tab, store };
+    }));
+  };
   const findElementTab = elementId_4 => {
     const active_0 = tabs.find(t_12 => t_12.id === activeTabId);
     if (active_0 && getById(active_0.store, elementId_4)) return {
@@ -2023,6 +2107,8 @@ var BingoEditorInner = ({
   };
   useCanvasToolHandler({
     projectId: projectPath,
+    readOnly,
+    validateCanvasChange,
     tabs,
     activeTabId,
     iconLibraries,
@@ -2330,8 +2416,8 @@ var BingoEditorInner = ({
     const op_4 = createSetNameOperation(storeRef.current, elementId_8, name_5);
     if (op_4) setStore(history.pushOperation(activeTabId, storeRef.current, op_4));
   };
-  const onUpdateElementStyles = (elementId_9, styles) => {
-    if (!activeTabId) return;
+  const onUpdateElementStyles = (elementId_9, styles, options) => {
+    if (!activeTabId || readOnly) return;
     const ate = activeTextEditorRef.current;
     const editingText = !!(ate && editingTextId);
     if (editingText && ate.hasTextStyleTarget()) {
@@ -2368,7 +2454,8 @@ var BingoEditorInner = ({
       }
       if (Object.keys(clearPatch).length) ate.applyStyles(clearPatch);
     }
-    const op_5 = createSetStylesOperation(storeRef.current, elementId_9, styles);
+    const styledElement = getById(storeRef.current, elementId_9);
+    const op_5 = createSetStylesOperation(storeRef.current, elementId_9, styles, undefined, undefined, mergedComponentIndex?.[styledElement?.componentName], options?.normalizeLegacyStyles);
     if (op_5) {
       const newElements_3 = history.pushOperation(activeTabId, storeRef.current, op_5);
       setStore(newElements_3);
@@ -2411,6 +2498,7 @@ var BingoEditorInner = ({
     }
   };
   const onUpdateElementProps = (elementId_11, props) => {
+    if (readOnly) return;
     if (!activeTabId) return;
     const ate_1 = activeTextEditorRef.current;
     const editingText_0 = !!(ate_1 && editingTextId);
@@ -2455,12 +2543,12 @@ var BingoEditorInner = ({
     stripStaleOwnedDomProps();
   }, [selectedElementId, currentStore, readOnly]);
   const onUpdateMultipleElementsProps = (elementIds_1, propsUpdater) => {
-    if (!activeTabId || elementIds_1.size === 0) return;
+    if (!activeTabId || readOnly || elementIds_1.size === 0) return;
     const operations = [];
     for (const elementId_13 of elementIds_1) {
       const element_5 = getById(storeRef.current, elementId_13);
       if (!element_5 || element_5.type === "text") continue;
-      const newProps = propsUpdater(element_5.props || {});
+      const newProps = propsUpdater(element_5.props || {}, elementId_13);
       const op_9 = createSetPropsOperation(storeRef.current, elementId_13, newProps);
       if (op_9) operations.push(op_9);
     }
@@ -2469,14 +2557,14 @@ var BingoEditorInner = ({
       setStore(newElements_6);
     }
   };
-  const onUpdateMultipleElementsStyles = (elementIds_2, stylesUpdater) => {
-    if (!activeTabId || elementIds_2.size === 0) return;
+  const onUpdateMultipleElementsStyles = (elementIds_2, stylesUpdater, options) => {
+    if (!activeTabId || readOnly || elementIds_2.size === 0) return;
     const operations_0 = [];
     for (const elementId_14 of elementIds_2) {
       const element_6 = getById(storeRef.current, elementId_14);
       if (!element_6) continue;
       const newStyles_0 = stylesUpdater(element_6.styles || {}, elementId_14);
-      const op_10 = createSetStylesOperation(storeRef.current, elementId_14, newStyles_0);
+      const op_10 = createSetStylesOperation(storeRef.current, elementId_14, newStyles_0, undefined, undefined, mergedComponentIndex?.[element_6.componentName], options?.normalizeLegacyStyles);
       if (op_10) operations_0.push(op_10);
     }
     if (operations_0.length > 0) {
@@ -2522,20 +2610,34 @@ var BingoEditorInner = ({
     if (operations_2.length > 0) setStore(history.pushOperation(activeTabId, storeRef.current, operations_2));
     setPasteStyleSuggestion(null);
   };
-  const onReplaceElement = (oldElementId, newElement) => {
-    if (!activeTabId) return;
+  const onReplaceElement = async (oldElementId, newElement) => {
+    if (!activeTabId || readOnly) return;
     const op_13 = createReplaceOperation(storeRef.current, oldElementId, newElement);
     if (op_13) {
-      const newElements_8 = history.pushOperation(activeTabId, storeRef.current, op_13);
-      setStore(newElements_8);
+      const before = storeRef.current;
+      await validateCanvasChange(activeTabId, before, applyOperationsToStore(before, [op_13]), "code", () => {
+        if (storeRef.current !== before) throw new Error("Canvas changed during preview. No changes were applied.");
+        setStore(history.pushOperation(activeTabId, before, op_13));
+      });
     }
     setPreviewStore(null);
   };
-  const onPreviewElement = (oldElementId_0, newElement_0) => {
+  const onPreviewElement = async (oldElementId_0, newElement_0) => {
+    if (readOnly) return;
     const op_14 = createReplaceOperation(storeRef.current, oldElementId_0, newElement_0);
-    if (op_14) setPreviewStore(applyOperationsToStore(storeRef.current, [op_14]));
+    if (op_14) {
+      const before = storeRef.current;
+      const after = applyOperationsToStore(before, [op_14]);
+      await validateCanvasChange(activeTabId, before, after, "code", () => {
+        if (storeRef.current !== before) throw new Error("Canvas changed during preview. No changes were applied.");
+        setPreviewStore(after);
+      });
+    }
   };
-  const onClearPreview = () => setPreviewStore(null);
+  const onClearPreview = () => {
+    setPreviewStore(null);
+    if (componentPreviewStore?.getSnapshot()?.scene?.owner === "code") componentPreviewStore.cancel();
+  };
   const onCopyElement = async elementId_16 => {
     if (!getById(storeRef.current, elementId_16)) return;
     await copyElementToClipboard(storeSubtreeToLegacyNested(storeRef.current, elementId_16));
@@ -3489,16 +3591,22 @@ var BingoEditorInner = ({
     }
     const elementWithSubtree = storeSubtreeToLegacyNested(currentStore, selectedElementId);
     const targetFilePath = `components/${componentName_5}.tsx`;
-    const code = generateCompleteFile({
-      componentName: componentName_5,
-      purpose: "project",
-      store: currentStore,
-      rootId: selectedElementId,
-      variableLibrary: variableRuntime?.library,
-      variablePageModes: currentStore.variableModes ?? variableRuntime?.defaultModes,
-      componentIndex,
-      targetFilePath
-    });
+    let code;
+    try {
+      code = generateCompleteFile({
+        componentName: componentName_5,
+        purpose: "project",
+        store: currentStore,
+        rootId: selectedElementId,
+        variableLibrary: variableRuntime?.library,
+        variablePageModes: currentStore.variableModes ?? variableRuntime?.defaultModes,
+        componentIndex,
+        targetFilePath
+      });
+    } catch (error) {
+      toast.error(t("shell.createComponentFailed", { error: error instanceof Error ? error.message : String(error) }));
+      return;
+    }
     const result_9 = await createComponent({
       componentName: componentName_5,
       code,
@@ -3763,7 +3871,8 @@ var BingoEditorInner = ({
     if (canvasSaveQueue.isCurrent(canvasId, version)) {
       setTabs(current => current.map(tab => tab.id === tabId && tab.store === store
         && tab.name === name && tab.backgroundColor === backgroundColor && tab.backgroundToken === backgroundToken
-        ? { ...tab, lastSavedState: serialized } : tab));
+        ? { ...tab, lastSavedState: serialized, savedName: name,
+            savedBackgroundColor: backgroundColor, savedBackgroundToken: backgroundToken } : tab));
       setPages(current => current.map(page => page.id === canvasId ? { ...page, elementCount: store.byId.size } : page));
       schedulePreview(canvasId, version);
     }
@@ -3784,15 +3893,38 @@ var BingoEditorInner = ({
     if (readOnly) return;
     for (const tab of tabs) {
       if (!tab.canvasId || !tab.loaded) continue;
-      canvasSaveQueue.update(tab.canvasId, { tabId: tab.id, store: tab.store, name: tab.name,
+      const snapshot = { tabId: tab.id, store: tab.store, name: tab.name,
         backgroundColor: tab.backgroundColor, backgroundToken: tab.backgroundToken,
-        revision: canvasContentRevisionsRef.current.get(tab.id) ?? 0 });
+        revision: canvasContentRevisionsRef.current.get(tab.id) ?? 0 };
+      if (!canvasSaveQueue.hasEntry(tab.canvasId) && tab.lastSavedState && tab.savedName === tab.name
+        && tab.savedBackgroundColor === tab.backgroundColor
+        && tab.savedBackgroundToken === tab.backgroundToken) {
+        try {
+          const saved = JSON.parse(tab.lastSavedState);
+          const savedStore = ensureV2(saved.elements ?? saved);
+          if (JSON.stringify(toWire(savedStore)) === JSON.stringify(toWire(tab.store))) {
+            canvasSaveQueue.seed(tab.canvasId, snapshot);
+          }
+        } catch { /* Invalid baselines take the normal save path. */ }
+      }
+      canvasSaveQueue.update(tab.canvasId, snapshot);
     }
   });
   (0, import_react.useLayoutEffect)(() => { collectCanvasSaves(); }, [tabs, pages, readOnly]);
-  (0, import_react.useEffect)(() => () => {
-    canvasSaveQueue.dispose();
-    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+  const canvasSaveQueueMountedRef = (0, import_react.useRef)(false);
+  (0, import_react.useEffect)(() => {
+    canvasSaveQueueMountedRef.current = true;
+    return () => {
+      canvasSaveQueueMountedRef.current = false;
+      // In development, StrictMode replays effect cleanup and setup without
+      // discarding hook state. Disposing synchronously would permanently close
+      // the memoized queue, leaving every later canvas edit unsaved.
+      queueMicrotask(() => {
+        if (canvasSaveQueueMountedRef.current) return;
+        canvasSaveQueue.dispose();
+        if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+      });
+    };
   }, [canvasSaveQueue]);
   const flushProjectCanvases = (0, import_react.useEffectEvent)(async () => {
     if (readOnly) return;
@@ -3887,8 +4019,7 @@ var BingoEditorInner = ({
       if (!readOnly) addToPrompt([...selectedElementIds]);
       return;
     }
-    const target_4 = e_10.target;
-    if (target_4.tagName === "INPUT" || target_4.tagName === "TEXTAREA" || target_4.isContentEditable) return;
+    if (isTypingTarget(e_10) || !e_10.metaKey && !e_10.ctrlKey && isInteractiveTarget(e_10)) return;
     if ((e_10.metaKey || e_10.ctrlKey) && e_10.key === "\\") {
       e_10.preventDefault();
       setChromeHidden(v_0 => !v_0);
@@ -4232,12 +4363,12 @@ var BingoEditorInner = ({
         const ids_6 = selectedElementIds.size > 0 ? selectedElementIds : new Set([targetId_6]);
         onPasteToReplace(ids_6);
       }}>{<span>{t("shell.pasteToReplace")}</span>}{<ContextMenuShortcut>⇧⌘R</ContextMenuShortcut>}</ContextMenuItem>}{targetId_6 && <>{<ContextMenuItem onSelect={async () => {
-          const jsx_1 = generateJSX(currentStore, 0, { purpose: "project", rootId: targetId_6, variableLibrary: variableRuntime?.library, variablePageModes: currentStore.variableModes ?? variableRuntime?.defaultModes });
           try {
+            const jsx_1 = generateJSX(currentStore, 0, { purpose: "project", componentIndex: mergedComponentIndex, rootId: targetId_6, variableLibrary: variableRuntime?.library, variablePageModes: currentStore.variableModes ?? variableRuntime?.defaultModes });
             await navigator.clipboard.writeText(jsx_1);
             toast.success(t("shell.copiedAsReact"));
-          } catch {
-            toast.error(t("shell.copyAsReactFailed"));
+          } catch (error) {
+            toast.error(t("shell.copyAsReactFailed"), { description: error instanceof Error ? error.message : String(error) });
           }
         }}>{<span>{t("shell.copyAsReact")}</span>}{<ContextMenuShortcut>⇧⌘C</ContextMenuShortcut>}</ContextMenuItem>}{onCopySelectionLink && <ContextMenuItem onSelect={async () => {
           await copySelectionLink(targetId_6);
@@ -4249,7 +4380,7 @@ var BingoEditorInner = ({
             size: 14
           })}{<span>{t("shell.copyToFigma")}</span>}</ContextMenuItem>}</>}</>;
   };
-  return <><VariableEditorProvider store={currentStore} selectedIds={selectedElementIds} readOnly={readOnly || !activeTab?.loaded} onCommit={createOps => { if (!activeTabId || readOnly) return; const ops = createOps(storeRef.current); if (ops.length) setStore(history.pushOperation(activeTabId, storeRef.current, ops)); }}><VariableManager />{<Toaster />}{<EditorModeProvider>{<ActiveToolProvider>{<ScrubSessionContext.Provider value={scrubSessionValue}>{<CanvasLayout isElectron={isElectron} chromeHidden={chromeHidden} bottomBarRevealSignal={bottomBarRevealSignal} leftChildren={enableSidebarV2 ? <LeftSidebarV2 className={isElectron ? "electron-sidebar-inset" : void 0} projectName={projectName} projectIconUrl={projectIconUrl} onProjectIconClick={onProjectIconClick} onOpenProjectSettings={onOpenProjectSettings ? () => onOpenProjectSettings("general") : void 0} activeTab={sidebarV2Tab} onActiveTabChange={setSidebarV2Tab} onTabActivate={tab_20 => {
+  return <><VariableEditorProvider store={currentStore} selectedIds={selectedElementIds} componentIndex={mergedComponentIndex} readOnly={readOnly || !activeTab?.loaded} onCommit={createOps => { if (!activeTabId || readOnly) return; const ops = createOps(storeRef.current); if (ops.length) setStore(history.pushOperation(activeTabId, storeRef.current, ops)); }}><VariableManager />{<Toaster />}{<EditorModeProvider>{<ActiveToolProvider>{<ScrubSessionContext.Provider value={scrubSessionValue}>{<CanvasLayout isElectron={isElectron} chromeHidden={chromeHidden} bottomBarRevealSignal={bottomBarRevealSignal} leftChildren={enableSidebarV2 ? <LeftSidebarV2 className={isElectron ? "electron-sidebar-inset" : void 0} projectName={projectName} projectIconUrl={projectIconUrl} onProjectIconClick={onProjectIconClick} onOpenProjectSettings={onOpenProjectSettings ? () => onOpenProjectSettings("general") : void 0} activeTab={sidebarV2Tab} onActiveTabChange={setSidebarV2Tab} onTabActivate={tab_20 => {
             if (tab_20 !== "agents") return;
             setArchiveOpen(false);
             setChatHistoryOpen(false);
@@ -4362,10 +4493,10 @@ var BingoEditorInner = ({
                 const componentFilePath_0 = mergedComponentIndex?.[componentName_7]?.path;
                 return <ElementHeader name={componentName_7} kind="component" onGoToMain={componentFilePath_0 ? () => openComponentFile(componentName_7, componentFilePath_0) : void 0} />;
               })() : selectedEl?.type === "icon" ? <ElementHeader name={selectedEl.iconName} kind="icon" detail={iconLibraries?.[selectedEl.library]?.displayName || selectedEl.library} /> : void 0;
-              const elementContent = <StylesPanelTabs selectedElementId={selectedElementId} selectedElementIds={selectedElementIds} store={currentStore} onUpdateElementStyles={onUpdateElementStyles} onUpdateElementProps={onUpdateElementProps} onUpdateMultipleElementsProps={onUpdateMultipleElementsProps} onUpdateMultipleElementsStyles={onUpdateMultipleElementsStyles} onUpdateElementPositions={onUpdateElementPositions} onToggleTextFormat={onToggleTextFormat} textSelectionState={textSelectionState} onCreateComponent={() => setShowCreateComponentModal(true)} readOnly={readOnly} fonts={fonts} propsPanel={showPropsTab ? <PropsPanel selectedElementId={selectedElementId} selectedElementIds={selectedElementIds} store={currentStore} componentIndex={mergedComponentIndex} iconLibraries={iconLibraries} onUpdateElementProps={onUpdateElementProps} onSetElementPropsTransient={onSetElementPropsTransient} onUpdateMultipleElementsProps={onUpdateMultipleElementsProps} onReplaceElement={onReplaceElement} onOpenComponent={openComponentFile} onCreateComponent={() => setShowCreateComponentModal(true)} readOnly={readOnly} scanLoading={scanLoading} onRequestPropsScan={onRequestPropsScan} hideHeader={!!elementHeaderEl} /> : void 0} header={elementHeaderEl} headerActions={activeTab?.loaded && <CanvasZoomMenu store={currentStore} selectedElementIds={selectedElementIds} viewportRef={viewportRef} commentsHidden={commentsHidden} onCommentsHiddenChange={setCommentsHidden} />} />;
+              const elementContent = inspectorSelectionPending ? <div className="flex-1" aria-busy="true" /> : <StylesPanelTabs componentIndex={mergedComponentIndex} selectedElementId={selectedElementId} selectedElementIds={selectedElementIds} store={currentStore} onUpdateElementStyles={onUpdateElementStyles} onUpdateElementProps={onUpdateElementProps} onUpdateMultipleElementsProps={onUpdateMultipleElementsProps} onUpdateMultipleElementsStyles={onUpdateMultipleElementsStyles} onUpdateElementPositions={onUpdateElementPositions} onToggleTextFormat={onToggleTextFormat} textSelectionState={textSelectionState} onCreateComponent={() => setShowCreateComponentModal(true)} readOnly={readOnly} fonts={fonts} propsPanel={showPropsTab ? <PropsPanel onComponentSourceSaved={onComponentSourceSaved} onOpenSource={openFileInBottomBar} selectedElementId={selectedElementId} selectedElementIds={selectedElementIds} store={currentStore} componentIndex={mergedComponentIndex} iconLibraries={iconLibraries} onUpdateElementProps={onUpdateElementProps} onSetElementPropsTransient={onSetElementPropsTransient} onUpdateMultipleElementsProps={onUpdateMultipleElementsProps} onReplaceElement={onReplaceElement} onOpenComponent={openComponentFile} onCreateComponent={() => setShowCreateComponentModal(true)} readOnly={readOnly} scanLoading={scanLoading} onRequestPropsScan={onRequestPropsScan} hideHeader={!!elementHeaderEl} /> : void 0} header={elementHeaderEl} headerActions={activeTab?.loaded && <CanvasZoomMenu store={currentStore} selectedElementIds={selectedElementIds} viewportRef={viewportRef} commentsHidden={commentsHidden} onCommentsHiddenChange={setCommentsHidden} />} />;
               if (!readOnly && !selectedElementId && selectedElementIds.size === 0) return <div className="flex-1 overflow-auto">{<PagePanel backgroundColor={activeTab?.backgroundColor} backgroundToken={activeTab?.backgroundToken} onChangeBackground={handleSetPageBackground} disabled={isPageLoading || !activeTab?.loaded} />}</div>;
               return <div className="flex-1 overflow-hidden flex flex-col">{elementContent}</div>;
-            })()}</div>} bottomChildren={activeTab && <BottomBar tab={activeTab} openFiles={openCodeFiles} onCloseFile={closeCodeFile} activateFile={fileOpenSignal} onSaveFile={saveCodeFile} openSkills={openSkills} onCloseSkill={closeSkill} activateSkill={skillOpenSignal} onSaveSkill={saveSkill} onSaveSuccess={serverDrivenFileRefresh ? void 0 : refreshFocusedComponent} onSaveEnd={(success, errorMsg) => {
+            })()}</div>} bottomChildren={activeTab && <BottomBar tab={activeTab} openFiles={openCodeFiles} onCloseFile={closeCodeFile} activateFile={fileOpenSignal} onSaveFile={saveCodeFile} onRebaseFile={rebaseCodeFile} openSkills={openSkills} onCloseSkill={closeSkill} activateSkill={skillOpenSignal} onSaveSkill={saveSkill} onSaveSuccess={serverDrivenFileRefresh ? void 0 : refreshFocusedComponent} onSaveEnd={(success, errorMsg) => {
             const componentName_8 = focusedComponent?.name || activeTab?.name || "Component";
             const componentFilePath_1 = focusedComponent?.filePath;
             if (success) toast.success(t("shell.savedToCode", { name: componentName_8 }), {
@@ -4398,7 +4529,7 @@ var BingoEditorInner = ({
               }}>{<ContextMenuTrigger asChild={true} onContextMenu={handleCanvasContextMenu}>{<div data-project-canvas-ready={!!activeTab.loaded && !canvasCameraPending} style={{
                     display: "contents",
                     visibility: canvasCameraPending ? "hidden" : void 0
-                  }}>{<Canvas key={`canvas-${activeTab.id}-${transformKey}`} store={previewStore ?? activeTab.store} backgroundColor={activeTab.backgroundColor} setStore={setStore} selectedElementIds={selectedElementIds} onSelectElement={handleSelectElement} onResizeElement={onResizeElement} onEditText={onEditText} editingTextId={editingTextId} onStartEditText={id_23 => setEditingTextId(id_23)} onStopEditText={() => setEditingTextId(null)} onActivateTextEditor={api => {
+                  }}>{<Canvas key={`canvas-${activeTab.id}-${transformKey}`} store={scenePreview ?? previewStore ?? activeTab.store} backgroundColor={activeTab.backgroundColor} setStore={setStore} selectedElementIds={selectedElementIds} onSelectElement={handleSelectElement} onResizeElement={onResizeElement} onEditText={onEditText} editingTextId={editingTextId} onStartEditText={id_23 => setEditingTextId(id_23)} onStopEditText={() => setEditingTextId(null)} onActivateTextEditor={api => {
                       activeTextEditorRef.current = api;
                     }} onDeactivateTextEditor={() => {
                       activeTextEditorRef.current = null;
@@ -4464,7 +4595,7 @@ var BingoEditor = t0 => {
     $[7] = t1;
     $[8] = t2;
   } else t2 = $[8];
-  return <VariableLibraryProvider key={props.projectPath || "local"} projectPath={props.projectPath}>{t2}</VariableLibraryProvider>;
+  return <VariableLibraryProvider key={props.projectPath || "local"} projectPath={props.projectPath}><ComponentPreviewProvider>{t2}</ComponentPreviewProvider></VariableLibraryProvider>;
 };
 function _temp$12() {
   return typeof window === "undefined" ? null : new URLSearchParams(window.location.search);

@@ -8,6 +8,7 @@ let enabled = false;
 let generation = 0;
 let pending: { startedAt: number; previous: string; generation: number } | null = null;
 let frame: number | null = null;
+let pendingTimeout: ReturnType<typeof setTimeout> | null = null;
 let samples = freshSamples();
 
 function freshSamples() {
@@ -29,7 +30,9 @@ export function resetCanvasPerformance() {
   generation++;
   pending = null;
   if (frame !== null) cancelAnimationFrame(frame);
+  if (pendingTimeout !== null) clearTimeout(pendingTimeout);
   frame = null;
+  pendingTimeout = null;
   samples = freshSamples();
 }
 export function setCanvasPerformanceEnabled(value: boolean) {
@@ -44,13 +47,13 @@ export function measureCanvasWork<T>(kind: WorkKind, work: () => T): T {
 const selectionKey = (ids: Iterable<string>) => JSON.stringify([...ids].sort());
 export function beginCanvasSelection(startedAt: number, previousIds: Iterable<string>) {
   if (!enabled) return;
-  // A newer click supersedes a pending next-frame sample.
+  // Selection and its overlay can commit after the first frame under load.
+  // Keep a short window for that commit; a later click replaces this sample.
   if (frame !== null) cancelAnimationFrame(frame);
   frame = null;
+  if (pendingTimeout !== null) clearTimeout(pendingTimeout);
   pending = { startedAt, previous: selectionKey(previousIds), generation };
-  // Discrete selection commits synchronously. Ignore no-op clicks rather than
-  // attributing a later keyboard/sidebar selection to an earlier canvas click.
-  frame = requestAnimationFrame(() => { frame = null; pending = null; });
+  pendingTimeout = setTimeout(() => { pendingTimeout = null; pending = null; }, 250);
 }
 export function commitCanvasSelection(ids: Set<string>, viewport: HTMLElement | null) {
   if (!enabled || !pending || !viewport || document.hidden) return;
@@ -61,6 +64,8 @@ export function commitCanvasSelection(ids: Set<string>, viewport: HTMLElement | 
   if (selectionKey(paintedIds) !== key) return;
   const click = pending;
   pending = null;
+  if (pendingTimeout !== null) clearTimeout(pendingTimeout);
+  pendingTimeout = null;
   if (frame !== null) cancelAnimationFrame(frame);
   add(samples.selection, performance.now() - click.startedAt);
   frame = requestAnimationFrame(() => {

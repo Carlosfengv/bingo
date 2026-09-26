@@ -13,6 +13,7 @@ import { normalizeReactAttrs } from "./htmlAttrCasing";
 import { storeFromNested } from "../store/ensureV2";
 import { resolveCollectionModes } from "../runtime/variables";
 import { prepareProjectVariableStore } from "./projectVariables";
+import { componentEditableElement, componentLegacyStyleState, componentStyleOverrides } from "../store/componentEditing";
 
 /** Marker embedded in budget truncation stubs — canvas_update hard-rejects if present. */
 var BINGO_TRUNCATED_MARKER = "bingo:truncated";
@@ -92,6 +93,11 @@ function generateElement(store, id, indent, options) {
     return `${spaces}<>\n${children.map(childId => generateElement(store, childId, indent + 1, options)).join("\n")}\n${spaces}</>`;
   }
   if (element.type === "component") {
+    if (options.purpose === "project") {
+      if (["separate", "invalid"].includes(componentLegacyStyleState(element))) throw new Error(`Cannot save <${element.componentName}>: legacy root styles need source review before export. The original canvas data is kept.`);
+      const inactive = componentStyleOverrides(element, options.componentIndex?.[element.componentName]).find(entry => !entry.active && element.componentEditing?.styleRecords?.[entry.property]?.rootTag);
+      if (inactive) throw new Error(`Cannot save <${element.componentName}>: the target for ${inactive.property} is no longer verified. Restore the override or reload the component before saving.`);
+    }
     if (options.iconSyntax === "canvas" && !options.componentIndex?.[element.componentName]) {
       for (const [library, config] of Object.entries(options.iconLibraries ?? {})) {
         if (config?.icons?.[element.componentName]) {
@@ -100,8 +106,9 @@ function generateElement(store, id, indent, options) {
         }
       }
     }
-    const attrs = generateAttributes(id, element.styles, element.props || {}, options);
+    const attrs = generateComponentAttributes(element, options);
     const opening = `${spaces}<${element.componentName}${attrs}`;
+    if (element.sourceExpressions?.children !== undefined) return `${opening}>${element.sourceExpressions.children}</${element.componentName}>`;
     const children = getChildren$2(store, element.id);
     if (children.length === 0) return `${opening} />`;
     return `${opening}>\n${children.map(childId => generateElement(store, childId, indent + 1, options)).join("\n")}\n${spaces}</${element.componentName}>`;
@@ -118,6 +125,26 @@ function generateElement(store, id, indent, options) {
     return `${spaces}<${element.iconName}${attrs} />`;
   }
   return "";
+}
+function generateComponentAttributes(element, options) {
+  const explicitEmptyStyle = componentLegacyStyleState(element) === "mergeable" && Object.keys(element.props.style ?? {}).length === 0 && Object.keys(element.styles ?? {}).length === 0;
+  const explicitNullStyle = explicitEmptyStyle && element.props.style === null;
+  element = componentEditableElement(element);
+  if (explicitEmptyStyle) options = { ...options, explicitEmptyStyle: true, explicitNullStyle };
+  const ordered = element.sourceExpressions?.attributes;
+  if (!ordered) return generateAttributes(element.id, element.styles, element.props || {}, options);
+  let attrs = generateAttributes(element.id, undefined, {}, options);
+  const emitted = new Set();
+  const fieldOptions = { assetResolver: options?.assetResolver, purpose: "editor", explicitEmptyStyle, explicitNullStyle };
+  for (const field of ordered) {
+    if (field.name) emitted.add(field.name);
+    if (["data-element-id", "dataElementId", "data-bingo-variables", "data-bingo-component", "data-bingo-map"].includes(field.name)) continue;
+    if (field.code) attrs += ` ${field.code}`;
+    else if (field.name === "style") attrs += generateAttributes(undefined, element.styles, {}, fieldOptions);
+    else attrs += generateAttributes(undefined, undefined, { [field.name]: element.props?.[field.name] }, fieldOptions);
+  }
+  const extraProps = Object.fromEntries(Object.entries(element.props ?? {}).filter(([name]) => !emitted.has(name)));
+  return attrs + generateAttributes(undefined, emitted.has("style") ? undefined : element.styles, extraProps, fieldOptions);
 }
 function generateAttributes(elementId, styles, props, options) {
   let attrs = "";
@@ -138,6 +165,7 @@ function generateAttributes(elementId, styles, props, options) {
       commented
     } = splitCommentedStyles(styles);
     const cssEntries = Object.entries(renderStyles).map(([key, value]) => [key, resolveStyleValue(value, options?.assetResolver)]);
+    if (!cssEntries.length && !commented.length && options?.explicitEmptyStyle) attrs += options.explicitNullStyle ? " style={null}" : " style={{}}";
     if (cssEntries.length === 1 && commented.length === 0) {
       const styleObj = Object.fromEntries(cssEntries);
       attrs += ` style={${JSON.stringify(styleObj)}}`;
@@ -161,7 +189,7 @@ function generateAttributes(elementId, styles, props, options) {
       const resolved = options?.assetResolver && looksLikeAssetPath$1(value) ? options.assetResolver(value) : value;
       attrs += ` ${key}="${escapeAttribute(resolved)}"`;
     } else if (typeof value === "boolean") {
-      if (value) attrs += ` ${key}`;
+      attrs += value ? ` ${key}` : ` ${key}={false}`;
     } else attrs += ` ${key}={${JSON.stringify(value)}}`;
   });
   return attrs;

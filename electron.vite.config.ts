@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import path from "node:path";
 import { builtinModules } from "node:module";
 import fs from "node:fs";
+import { editorCssBoundary } from "./tools/editor-css-boundary";
 
 const here = process.cwd();
 const workspaceSrc = (p) => path.resolve(here, "packages", p, "src/index.ts");
@@ -121,6 +122,7 @@ export default defineConfig({
   },
   renderer: {
     root: "src/renderer",
+    css: { postcss: { plugins: [editorCssBoundary()] } },
     plugins: [react(), copyNextShims()],
     resolve: { alias: workspaceBrowserAlias },
     esbuild: esbuildTsx,

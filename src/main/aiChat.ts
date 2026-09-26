@@ -10,9 +10,10 @@ import { toPngBase64 } from "./captureImage";
 import { claudeResultConfigDir, registerClaudeResultScope, revokeResultScopesForRun } from "./agentToolResultAccess";
 import { getLocalAgents } from "./aiConfig";
 import { AGENT_INFO, runAgent } from "./agentRuntime";
+import { supportsAskFirst } from "../shared/codingAgents";
 import { BINGO_MCP_TOOL_PREFIX, bingoToolName } from "./brand";
 import { claudeInvocation, findClaudeBinary, getShellEnv$1, isWindows, resolvedClaudeBinary, sanitizeShellOutput, userHome } from "./claudeBinary";
-import { PERMISSION_PROMPT_TOOL, TOOLS_WITHOUT_BOUND_PROJECT, abandonClaimsForChatTab, cancelApprovalsForChat, checkMcpHealth, clearChatCancelled, enqueueCanvasDrawPreview, ensureMcpServerReady, getMcpChatUrl, getProjectThemeSummary, markChatCancelled, mcpEvents, prepareInAppDesignSkill, registerMcpChatSession, seedCoveringReadsFromAttachedElements, setProjectComponentIndex } from "./mcpServer";
+import { PERMISSION_PROMPT_TOOL, TOOLS_WITHOUT_BOUND_PROJECT, abandonClaimsForChatTab, cancelApprovalsForChat, checkMcpHealth, clearChatCancelled, enqueueCanvasDrawPreview, ensureMcpServerReady, getMcpChatUrl, getProjectThemeSummary, markChatCancelled, mcpEvents, prepareInAppDesignSkill, registerMcpChatSession, requestToolApproval, seedCoveringReadsFromAttachedElements, setProjectComponentIndex } from "./mcpServer";
 import { ToolInputStream } from "./toolInputStream";
 import { buildCLIPrompt, buildChatSystemPrompt, ensureV2, extractPartialCanvasDrawArgs, extractPartialFileWriteArgs, isCanvasDrawToolName, isFileWriteToolName, resolveClaudeEffort, storeToLegacyNested, toClaudeEffortEnvValue } from "@bingo/compiler";
 import * as child_process from "child_process";
@@ -247,7 +248,7 @@ var SYSTEM_PROMPT_APPEND = `You are inside **Bingo**, a visual design tool. When
 Folders explicitly attached for one request are available only for that request. A folder mentioned in an older message is not an active attachment; use only the local folders listed for the current request.
 
 Other MCP servers in this session are the user's own connections, the same ones they have in their terminal. Use them when the task calls for it. If the user asks for something that needs a connection that is not available, say so and tell them to add it in the selected coding agent.
-project_ files and local_ files are COMPLETELY DIFFERENT. NEVER fall back to project_write when local_write is denied.
+project_* tools use relative paths under the selected Bingo project. local_* tools use absolute paths under accessible folders; in local mode they can refer to the same project files. Select the tool by the user's target and the required path scope. Never switch tools to bypass denied access.
 
 ## Choosing a local folder
 The accessible local folders include the current project first, followed by extra folders and current-request attachments. When the user says "my codebase" without another explicit target, use the current project without requesting it again. An explicit target in the user's request takes precedence over this default.
@@ -718,8 +719,8 @@ You are running inside **Bingo**, a visual design tool. When the user says "canv
 Use Bingo tools for canvas and file operations. Use the user's other connections when the task calls for them.
 
 ### Tool categories:
-- **project_*** — Bingo project files in cloud DB (relative paths like "components/Button.tsx")
-- **local_***: User's local filesystem (ABSOLUTE paths). Use the accessible folders listed below directly. Call local_folders only if the list is unknown or needs refreshing. ALWAYS read before editing.
+- **project_*** — Files under the selected local Bingo project root (relative paths like "components/Button.tsx"). project_read returns a SHA-256; pass it as expected_hash for a full-file overwrite, or set create_only=true for a new file.
+- **local_***: Accessible local filesystem paths (ABSOLUTE paths), including the selected project when access is enabled. local_read returns a SHA-256; pass it as expected_hash for a full-file overwrite, or set create_only=true for a new file. Call local_folders only if the list is unknown or needs refreshing.
 - **canvas_*** — Visual canvas operations. canvas_read(element_id) then canvas_claim for a claim_id; pass claim_id to canvas_add/update/delete/release.
 - **get_design_context** — Get theme, components, and active canvas-page context together before drawing.
 - **search_components** — Find existing project components by name (returns names, paths, props)
@@ -742,10 +743,10 @@ Ordinary local_* file operations work only within these directories. local_read 
 3. **Edit**: local_edit with exact old_string from the read output
 Never grep repeatedly to reconstruct a file — just read it.
 
-### project_ vs local_ — COMPLETELY DIFFERENT (CRITICAL)
-- **project_** = Bingo design project files (component definitions, design assets)
-- **local_** = user's actual codebase on their computer
-- If user wants to update local code but access is denied → tell them to add the folder from the + menu. NEVER silently fall back to project_write/project_edit — that modifies the wrong files entirely.
+### project_ vs local_ path scopes
+- **project_** = relative paths under the selected Bingo project root.
+- **local_** = absolute paths under folders the user allowed. In local mode these scopes can overlap.
+- If access is denied, tell the user how to grant it. Do not switch tool families to bypass the denied operation.
 
 ### Common user intents:
 - "wire this up", "implement this", "add to my code" → Design→Code: read canvas, create/edit LOCAL files
@@ -771,6 +772,9 @@ Never grep repeatedly to reconstruct a file — just read it.
       ...resolveCliDirs(localPaths, sandboxDir),
       systemPromptAppend: `${SYSTEM_PROMPT_APPEND}\n\n${designSkillInstructions}`
     };
+    if (options.autoApprove === false && !supportsAskFirst(selectedAgent)) {
+      throw new Error(`${AGENT_INFO[selectedAgent].name} cannot return interactive tool approvals to Bingo in this run mode. Select Auto, or switch to Claude or Grok for Ask first.`);
+    }
     if (runtime.effort === "ultracode") runtime.systemPromptAppend += "\n\nUltracode is enabled. Use the Workflow tool for substantive tasks, supplying the orchestration script inline. Workflow agents must use Bingo MCP tools for canvas and file operations and follow the same folder and canvas-claim rules. Monitor the workflow and report its completed result.";
     let prompt = buildCLIPrompt(systemPrompt + themeSummary + mcpNote, messages);
     const sessionUUID = (0, crypto$1.randomUUID)();
@@ -789,6 +793,13 @@ Never grep repeatedly to reconstruct a file — just read it.
           mcpUrl,
           images: allImages,
           autoApprove: options.autoApprove,
+          requestPermission: async (toolName, input) => {
+            if (cancelledSessionIds.has(sessionId)) return false;
+            const decision = await requestToolApproval(projectId, toolName, input, {
+              source: "internal", origin: "grok-acp", chatTabId, sessionId,
+            });
+            return decision.approved && !cancelledSessionIds.has(sessionId);
+          },
           emit,
           onSpawn(process) {
             activeSessions.set(sessionId, { process, projectId, chatTabId });

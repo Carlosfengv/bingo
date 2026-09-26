@@ -78,9 +78,14 @@ app.whenReady().then(async () => {
       editor.sendInputEvent({ type: 'mouseUp', ...p, button: 'left', clickCount: options.count ?? 1, modifiers: options.shift ? ['shift'] : [] });
       await sleep(80);
     }
+    await waitFor(async () => {
+      const p = await point('a', true);
+      return evaluate(editor, `document.elementFromPoint(${p.x},${p.y})?.closest('[data-canvas-root-id]')?.getAttribute('data-canvas-root-id') === 'a'`);
+    }, 'interactive canvas');
     await toolbarButton('画布性能');
     await sleep(100);
     report.beforeClick = await evaluate(editor, `({rect:[...document.querySelectorAll('[data-canvas-root-id]')].map(n=>({id:n.dataset.canvasRootId,rect:n.getBoundingClientRect().toJSON()})),toolbar:document.querySelector('[data-canvas-performance]').getBoundingClientRect().toJSON()})`);
+    check('Canvas roots keep independent absolute positions', report.beforeClick.rect[1].rect.left > report.beforeClick.rect[0].rect.right);
     await click('a', { padding: true });
     check('Native click selects root A', (await selected()).join() === 'a');
     await click('b', { padding: true });
@@ -118,6 +123,9 @@ app.whenReady().then(async () => {
     editor.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' }); editor.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
     await sleep(150);
     await click('b', { padding: true });
+    // The diagnostics table polls every 500 ms; let its baseline catch up.
+    await sleep(650);
+    const geometryBeforeDrag = (await metrics())['元素盒测量'].count;
     const drag = await point('b', true);
     editor.sendInputEvent({ type: 'mouseDown', ...drag, button: 'left', clickCount: 1 });
     editor.sendInputEvent({ type: 'mouseMove', x: drag.x + 12, y: drag.y + 12, movementX: 12, movementY: 12 });
@@ -125,9 +133,25 @@ app.whenReady().then(async () => {
     editor.sendInputEvent({ type: 'mouseMove', x: drag.x + 40, y: drag.y + 30, movementX: 28, movementY: 18 });
     await sleep(100);
     editor.sendInputEvent({ type: 'mouseUp', x: drag.x + 40, y: drag.y + 30, button: 'left', clickCount: 1 });
-    await sleep(200);
+    await sleep(650);
     const afterDrag = await point('b', true);
     check('Dragging still moves selected root', Math.abs(afterDrag.x - drag.x) > 10);
+    report.dragGeometryReads = (await metrics())['元素盒测量'].count - geometryBeforeDrag;
+    check('Dragging refreshes the canvas geometry only once', report.dragGeometryReads < 900);
+    const widthBeforeResize = await evaluate(editor, 'document.querySelector(\'[data-canvas-content] [data-element-id="b"]\').getBoundingClientRect().width');
+    const resizeStart = await evaluate(editor, `(()=>{const r=document.querySelector('[data-selection-overlay-id="b"] [data-resize-handle="se"]').getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`);
+    const geometryBeforeResize = (await metrics())['元素盒测量'].count;
+    editor.sendInputEvent({ type: 'mouseDown', ...resizeStart, button: 'left', clickCount: 1 });
+    editor.sendInputEvent({ type: 'mouseMove', x: resizeStart.x + 32, y: resizeStart.y + 24, movementX: 32, movementY: 24 });
+    await sleep(100);
+    editor.sendInputEvent({ type: 'mouseUp', x: resizeStart.x + 32, y: resizeStart.y + 24, button: 'left', clickCount: 1 });
+    await sleep(650);
+    const widthAfterResize = await evaluate(editor, 'document.querySelector(\'[data-canvas-content] [data-element-id="b"]\').getBoundingClientRect().width');
+    check('Resize handle changes the selected root width', widthAfterResize > widthBeforeResize + 10);
+    report.resizeGeometryReads = (await metrics())['元素盒测量'].count - geometryBeforeResize;
+    check('Resizing refreshes the canvas geometry only once', report.resizeGeometryReads > 500 && report.resizeGeometryReads < 900);
+    const overlayWidthAfterResize = await evaluate(editor, 'document.querySelector(\'[data-selection-overlay-id="b"]\').getBoundingClientRect().width');
+    check('Selection outline follows the resized root', Math.abs(overlayWidthAfterResize - widthAfterResize) < 3);
     await toolbarButton('复制');
     const exported = await waitFor(() => { try { const value = JSON.parse(clipboard.readText()); return value.metrics ? value : null; } catch { return null; } }, 'copied metrics', 3000);
     check('Copy exports numeric diagnostics', exported.nodeCount === 608 && exported.metrics.selection.count > 0);
@@ -180,7 +204,10 @@ app.whenReady().then(async () => {
     app.quit();
   } catch (error) {
     const wc = webContents.getAllWebContents().find(wc => wc.getURL().includes('projectTab='));
-    if (wc) { fs.writeFileSync(path.join(qa, 'failure.png'), (await wc.capturePage()).toPNG()); report.body = await evaluate(wc, 'document.body.innerText'); report.mode = await evaluate(wc, 'localStorage.getItem("bingo-editor-mode")'); }
+    if (wc) {
+      try { fs.writeFileSync(path.join(qa, 'failure.png'), (await wc.capturePage()).toPNG()); } catch {}
+      try { report.body = await evaluate(wc, 'document.body.innerText'); report.mode = await evaluate(wc, 'localStorage.getItem("bingo-editor-mode")'); report.ready = await evaluate(wc, 'document.querySelector("[data-project-canvas-ready]")?.getAttribute("data-project-canvas-ready")'); report.activity = await invoke(wc, 'project-tabs:activity-get', {}); } catch {}
+    }
     report.failure = String(error.stack || error);
     fs.writeFileSync(path.join(qa, 'report.json'), JSON.stringify(report, null, 2));
     console.error(qa, report.failure, report.metrics);

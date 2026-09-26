@@ -113,7 +113,7 @@ test("unregistered ids and symlinks cannot grant access to arbitrary folders", a
 test("local writes use the current project while read-only and external writes remain blocked", async () => {
   await fixture(async ({ project, extra, prompts }) => {
     const file = path.join(project, "tokens.css");
-    assert.equal((await handleLocalWrite("project", { file_path: file, content: "original" }, "chat")).isError, undefined);
+    assert.equal((await handleLocalWrite("project", { file_path: file, content: "original", create_only: true }, "chat")).isError, undefined);
     assert.equal(prompts.length, 0);
     setProjectAccessMode("project", "read-only");
     assert.equal((await handleLocalWrite("project", { file_path: file, content: "changed" }, "chat")).isError, true);
@@ -124,6 +124,25 @@ test("local writes use the current project while read-only and external writes r
     assert.equal((await handleLocalWrite("project", { file_path: outside, content: "changed" }, "chat")).isError, true);
     assert.equal(prompts.length, 1);
     await assert.rejects(fs.stat(outside), { code: "ENOENT" });
+  });
+});
+
+test("local writes create nested directories but reject traversal and symbolic-link escapes", async () => {
+  await fixture(async ({ project, extra }) => {
+    const file = path.join(project, "new", "nested", "component.tsx");
+    assert.equal((await handleLocalWrite("project", { file_path: file, content: "initial", create_only: true }, "chat")).isError, undefined);
+    assert.equal(await fs.readFile(file, "utf8"), "initial");
+    assert.equal((await handleLocalWrite("project", { file_path: file, content: "overwrite", create_only: true }, "chat")).isError, true);
+    assert.equal(await fs.readFile(file, "utf8"), "initial");
+
+    const traversed = `${project}/../escape.ts`;
+    assert.equal((await handleLocalWrite("project", { file_path: traversed, content: "escape", create_only: true }, "chat")).isError, true);
+    await assert.rejects(fs.stat(path.join(path.dirname(project), "escape.ts")), { code: "ENOENT" });
+
+    await fs.symlink(extra, path.join(project, "linked"));
+    const escaped = path.join(project, "linked", "nested", "escape.ts");
+    assert.equal((await handleLocalWrite("project", { file_path: escaped, content: "escape", create_only: true }, "chat")).isError, true);
+    await assert.rejects(fs.stat(path.join(extra, "nested", "escape.ts")), { code: "ENOENT" });
   });
 });
 

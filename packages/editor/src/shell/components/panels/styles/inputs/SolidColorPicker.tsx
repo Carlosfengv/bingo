@@ -506,13 +506,13 @@ function SolidColorPicker(t0) {
   } else t47 = $[93];
   let t48;
   if ($[94] !== t46) {
-    t48 = <InspectorControlShell className="w-18 shrink-0">{t46}{t47}</InspectorControlShell>;
+    t48 = <InspectorControlShell style={{ width: "auto" }}>{t46}{t47}</InspectorControlShell>;
     $[94] = t46;
     $[95] = t48;
   } else t48 = $[95];
   let t49;
   if ($[96] !== t37 || $[97] !== t41 || $[98] !== t48) {
-    t49 = <div className="flex items-center gap-2">{t37}{t41}{t48}</div>;
+    t49 = <div className="items-center gap-2" style={{ display: "grid", gridTemplateColumns: "62px minmax(0, 1fr) 64px" }}>{t37}{t41}{t48}</div>;
     $[96] = t37;
     $[97] = t41;
     $[98] = t48;

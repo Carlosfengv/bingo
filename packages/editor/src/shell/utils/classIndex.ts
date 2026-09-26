@@ -29,7 +29,10 @@ function getProjectStylesheetFingerprint(doc) {
   return "";
 }
 function getCacheKey(doc) {
-  return `${doc.styleSheets.length}:${getProjectStylesheetFingerprint(doc)}`;
+  // Editor controls add and remove transient stylesheets during selection.
+  // Project CSS changes are signaled by bingo-css-updated; counting every
+  // stylesheet here rebuilds the entire class index on every inspector mount.
+  return getProjectStylesheetFingerprint(doc);
 }
 /**
 * Build a map of all CSS custom property values defined on :root.
@@ -157,7 +160,7 @@ if (typeof window !== "undefined") window.addEventListener("bingo-css-updated", 
 var _classIndexVersion = 0;
 /**
 * Build an index of all class selectors → their CSS declarations.
-* Cached until stylesheet count or bingo-css-updated event.
+* Cached until the project stylesheet changes or bingo-css-updated fires.
 */
 function getClassIndex(doc) {
   const key = getCacheKey(doc);

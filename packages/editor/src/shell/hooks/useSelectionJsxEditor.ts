@@ -1,13 +1,14 @@
-import { buildSelectionRootFromParsed, getById, getRootIds, parseJSX, storeSubtreeToLegacyNested } from "@bingo/compiler";
+import { buildSelectionRootFromParsed, getById, getRootIds, lintCanvasDesign, parseJSX, storeSubtreeToLegacyNested } from "@bingo/compiler";
 import { useTranslation } from "@bingo/i18n";
 import * as React from "react";
 
 const PREVIEW_DEBOUNCE_MS = 300;
+const EMPTY_COMPONENT_INDEX = {};
 
 /** Keep an unapplied draft local. A preview or commit belongs to the page,
  * selection and document snapshot against which that draft was started. */
-function useSelectionJsxEditor({ documentId, active = true, selectedElementId, selectedElementSnippet,
-  store, iconLibraries, components, variableLibrary, onPreviewElement, onClearPreview, onReplaceElement }) {
+function useSelectionJsxEditor({ documentId, active = true, readOnly = false, selectedElementId, selectedElementSnippet,
+  store, iconLibraries, components, componentIndex = EMPTY_COMPONENT_INDEX, variableLibrary, onPreviewElement, onClearPreview, onReplaceElement }) {
   const { t } = useTranslation("editor");
   const [draft, setDraft] = React.useState(selectedElementSnippet);
   const [dirty, setDirty] = React.useState(false);
@@ -19,6 +20,7 @@ function useSelectionJsxEditor({ documentId, active = true, selectedElementId, s
   const generation = React.useRef(0);
   const latest = React.useRef(null);
   const drafts = React.useRef(new Map());
+  const applying = React.useRef(null);
   const draftKey = JSON.stringify([documentId, selectedElementId]);
   const cancel = React.useCallback(() => {
     generation.current++;
@@ -32,7 +34,7 @@ function useSelectionJsxEditor({ documentId, active = true, selectedElementId, s
     baseStore.current = retained?.store ?? store;
   }
   React.useLayoutEffect(() => {
-    latest.current = { active, documentId, selectedElementId, store, onPreviewElement, onClearPreview, onReplaceElement };
+    latest.current = { active, readOnly, documentId, selectedElementId, store, onPreviewElement, onClearPreview, onReplaceElement };
   });
   React.useLayoutEffect(() => {
     cancel();
@@ -40,15 +42,17 @@ function useSelectionJsxEditor({ documentId, active = true, selectedElementId, s
     if (dirty && baseStore.current !== store) {
       setError(t("bottomBar.draftConflict")); setPreviewUnapplied(true);
     }
-  }, [documentId, selectedElementId, store, active, components, iconLibraries, variableLibrary]);
+  }, [documentId, selectedElementId, store, active, readOnly, componentIndex, components, iconLibraries, variableLibrary]);
   React.useEffect(() => () => { cancel(); latest.current?.onClearPreview?.(); }, [cancel]);
   const build = jsx => {
     if (!selectedElementId || !getById(store, selectedElementId)) return { error: "No element selected" };
     try {
+      const invalid = lintCanvasDesign(jsx, componentIndex, selectedElementSnippet).find(issue => issue.severity === "error");
+      if (invalid) return { error: invalid.message };
       const parsed = parseJSX(jsx, iconLibraries, components, undefined, { forceNewIds: true });
       const roots = getRootIds(parsed);
       const previous = storeSubtreeToLegacyNested(store, selectedElementId);
-      const built = buildSelectionRootFromParsed(previous, selectedElementId, roots.map(id => storeSubtreeToLegacyNested(parsed, id)), variableLibrary);
+      const built = buildSelectionRootFromParsed(previous, selectedElementId, roots.map(id => storeSubtreeToLegacyNested(parsed, id)), variableLibrary, componentIndex);
       if ("error" in built) return built;
       const original = getById(store, selectedElementId);
       if (original.canvasPosition) built.element.canvasPosition = { ...original.canvasPosition };
@@ -57,7 +61,9 @@ function useSelectionJsxEditor({ documentId, active = true, selectedElementId, s
     } catch (error) { return { error: error instanceof Error ? error.message : String(error) }; }
   };
   const onChange = value => {
+    if (latest.current?.readOnly) return;
     cancel();
+    latest.current?.onClearPreview?.();
     if (!dirty) baseStore.current = store;
     setDraft(value);
     const changed = value !== selectedElementSnippet;
@@ -67,15 +73,21 @@ function useSelectionJsxEditor({ documentId, active = true, selectedElementId, s
     if (!changed) { setPreviewUnapplied(false); latest.current?.onClearPreview?.(); return; }
     if (baseStore.current !== store) { setError(t("bottomBar.draftConflict")); return; }
     const version = generation.current;
-    timer.current = setTimeout(() => {
+    timer.current = setTimeout(async () => {
       timer.current = null;
       const current = latest.current;
-      if (generation.current !== version || !current.active || current.documentId !== documentId
+      if (generation.current !== version || !current.active || current.readOnly || current.documentId !== documentId
         || current.selectedElementId !== selectedElementId || current.store !== store) return;
       const result = build(value);
       setPreviewUnapplied(!result.element);
-      if (result.element) current.onPreviewElement?.(selectedElementId, result.element);
-      else current.onClearPreview?.();
+      setError(result.error ?? null);
+      if (result.element) {
+        try { await current.onPreviewElement?.(selectedElementId, result.element); }
+        catch (error) {
+          if (generation.current !== version) return;
+          setError(error instanceof Error ? error.message : String(error)); setPreviewUnapplied(true);
+        }
+      } else current.onClearPreview?.();
     }, PREVIEW_DEBOUNCE_MS);
   };
   const reset = () => {
@@ -85,15 +97,28 @@ function useSelectionJsxEditor({ documentId, active = true, selectedElementId, s
     latest.current?.onClearPreview?.();
   };
   const apply = () => {
-    if (!dirty || !selectedElementId) return;
+    if (!dirty || !selectedElementId || latest.current?.readOnly) return;
+    if (applying.current?.text === draft) return applying.current.work;
     cancel();
     if (baseStore.current !== latest.current.store) { setError(t("bottomBar.draftConflict")); return; }
     const result = build(draft);
     if (!result.element) { setError(result.error ?? "Invalid JSX"); return; }
-    latest.current.onReplaceElement?.(selectedElementId, result.element);
-    latest.current.onClearPreview?.();
-    drafts.current.delete(draftKey);
-    setDirty(false); setError(null); setPreviewUnapplied(false);
+    const work = (async () => {
+      try {
+        await latest.current.onReplaceElement?.(selectedElementId, result.element);
+        if (drafts.current.get(draftKey)?.text !== draft) return;
+        drafts.current.delete(draftKey);
+        if (latest.current.documentId !== documentId || latest.current.selectedElementId !== selectedElementId) return;
+        latest.current.onClearPreview?.();
+        setDirty(false); setError(null); setPreviewUnapplied(false);
+      } catch (error) {
+        if (drafts.current.get(draftKey)?.text !== draft || latest.current.documentId !== documentId || latest.current.selectedElementId !== selectedElementId) return;
+        setError(error instanceof Error ? error.message : String(error)); setPreviewUnapplied(true);
+      }
+    })();
+    applying.current = { text: draft, work };
+    void work.then(() => { if (applying.current?.work === work) applying.current = null; });
+    return work;
   };
   const pendingKey = drafts.current.keys().next().value;
   return { draft, dirty, error, previewUnapplied, onChange, reset, apply,

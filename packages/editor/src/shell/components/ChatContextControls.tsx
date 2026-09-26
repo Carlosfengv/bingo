@@ -7,6 +7,7 @@
  * author's original file. See luna/RECOVERY.md.
  */
 import { connectionDisplayName, fetchClaudeConnections } from "../hooks/useClaudeContext";
+import { supportsAskFirst } from "../../../../../src/shared/codingAgents";
 import { IconBtn } from "./panels/styles/primitives";
 import { getClaudeEffortLevels, resolveClaudeEffort } from "@bingo/compiler";
 import { Button, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger, FolderIcon, FolderPlusIcon, LockIcon, OverflowSettingsIcon, PaperclipIcon, PinIcon, PlugsIcon, PlusIcon, SparkleIcon, XIcon, cn$2 } from "@bingo/ui";
@@ -539,7 +540,7 @@ function AgentPicker({ catalog, disabled, ...settings }) {
       {!loading && (error || installed.length === 0) && <div role="status" className="px-2 py-2 text-xs text-ed-muted-foreground">{t(error ? "agent.detectError" : "agent.setupHint")}</div>}
       <DropdownMenuItem disabled={loading || saving} onSelect={() => void refresh()}>{t(loading ? "agent.detecting" : "agent.refresh")}</DropdownMenuItem>
       <DropdownMenuSeparator />
-      <PermissionsMenu {...settings} />
+      <PermissionsMenu {...settings} selectedAgent={selectedAgent} />
     </DropdownMenuContent>
   </DropdownMenu>
   <ModelPicker model={selectedModel}
@@ -618,7 +619,8 @@ function PermissionsMenu(t0) {
   const { t } = useTranslation("editor");
   const {
     autoApprove,
-    onAutoApproveChange
+    onAutoApproveChange,
+    selectedAgent
   } = t0;
   const mode = PERMISSION_MODES[autoApprove ? 0 : 1];
   let t1;
@@ -635,7 +637,7 @@ function PermissionsMenu(t0) {
   } else t3 = $[2];
   let t4;
   if (true) {
-    t4 = PERMISSION_MODES.map(({ value, icon: Icon }) => <DropdownMenuRadioItem key={value} value={value} className="h-auto items-start gap-2 py-2 data-[state=checked]:bg-ed-accent">{<div className="flex min-w-0 items-start gap-2">{<Icon className="size-4 shrink-0 text-ed-muted-foreground" />}{<div className="min-w-0 leading-4">{<div>{t(value === "auto" ? "chat.autoPermission" : "chat.askPermission")}</div>}{<div className="mt-0.5 text-ed-muted-foreground">{t(value === "auto" ? "chat.autoPermissionDescription" : "chat.askPermissionDescription")}</div>}</div>}</div>}</DropdownMenuRadioItem>);
+    t4 = PERMISSION_MODES.map(({ value, icon: Icon }) => <DropdownMenuRadioItem key={value} value={value} disabled={value === "ask" && !supportsAskFirst(selectedAgent)} className="h-auto items-start gap-2 py-2 data-[state=checked]:bg-ed-accent">{<div className="flex min-w-0 items-start gap-2">{<Icon className="size-4 shrink-0 text-ed-muted-foreground" />}{<div className="min-w-0 leading-4">{<div>{t(value === "auto" ? "chat.autoPermission" : "chat.askPermission")}</div>}{<div className="mt-0.5 text-ed-muted-foreground">{t(value === "auto" ? "chat.autoPermissionDescription" : supportsAskFirst(selectedAgent) ? "chat.askPermissionDescription" : "chat.askUnsupportedDescription")}</div>}</div>}</div>}</DropdownMenuRadioItem>);
     $[3] = t4;
   } else t4 = $[3];
   let t5;

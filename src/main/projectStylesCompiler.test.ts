@@ -47,6 +47,32 @@ test("local assets become resolvable URLs and participate in cache invalidation"
   });
 });
 
+test("root-relative CSS assets resolve from public without dropping canvas utilities", async () => {
+  await fixture({
+    "app/globals.css": '@import "tailwindcss" source(none); @theme { --color-fg-default: #123456; } @font-face { font-family: Test; src: url("/fonts/Test.ttf") format("truetype"); }',
+    "public/fonts/Test.ttf": "fixture-font-bytes",
+    ".bingo/design/pages/page.json": '{"className":"text-fg-default"}',
+  }, async root => {
+    await installFixtureTailwind(root);
+    const result = await compileProjectStyles({ root, cssFiles: [path.join(root, "app/globals.css")] });
+    assert.match(result.css, /data:font\/ttf/);
+    assert.match(result.css, /\.text-fg-default\s*\{/);
+    assert.ok(result.dependencies.includes(path.join(root, "public/fonts/Test.ttf")));
+  });
+});
+
+test("root-relative CSS assets cannot follow public symlinks outside the project", async () => {
+  await fixture({ "index.css": '.card { background: url("/outside.svg"); }' }, async root => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "bingo-styles-outside-"));
+    try {
+      await fs.writeFile(path.join(outside, "outside.svg"), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+      await fs.mkdir(path.join(root, "public"));
+      await fs.symlink(path.join(outside, "outside.svg"), path.join(root, "public/outside.svg"));
+      await assert.rejects(compileProjectStyles({ root, cssFiles: [path.join(root, "index.css")] }), /outside the project/);
+    } finally { await fs.rm(outside, { recursive: true, force: true }); }
+  });
+});
+
 test("missing import fails at compile time instead of shipping a broken stylesheet", async () => {
   await fixture({ "index.css": '@import "./missing.css";' }, async root => {
     await assert.rejects(compileProjectStyles({ root, cssFiles: [path.join(root, "index.css")] }), /missing\.css/);

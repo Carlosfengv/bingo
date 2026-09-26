@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
+import { editorCssBoundary } from "../tools/editor-css-boundary";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const nodeModules = path.join(here, "node_modules");
@@ -28,6 +29,7 @@ const phosphorIconAliases = Object.fromEntries(
 const pkg = (p) => path.resolve(here, "../packages", p, "src/index.ts");
 
 export default defineConfig({
+  css: { postcss: { plugins: [editorCssBoundary()] } },
   plugins: [react()],
   resolve: {
     alias: {

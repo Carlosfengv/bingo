@@ -48,7 +48,8 @@ function isSafeProjectPath(path) {
 function normalizeProjectCopyFileArgs(args) {
   const raw = Array.isArray(args.files) ? args.files : args.local_path !== void 0 || args.project_path !== void 0 ? [{
     local_path: args.local_path,
-    project_path: args.project_path
+    project_path: args.project_path,
+    expected_hash: args.expected_hash
   }] : [];
   if (raw.length === 0) return {
     ok: false,
@@ -67,6 +68,10 @@ function normalizeProjectCopyFileArgs(args) {
     };
     const localPath = entry.local_path;
     const projectPath = entry.project_path;
+    if (entry.expected_hash !== void 0 && !/^[a-f0-9]{64}$/i.test(String(entry.expected_hash))) return {
+      ok: false,
+      error: `Invalid expected_hash for ${projectPath}. Read the destination again before overwriting.`
+    };
     if (typeof localPath !== "string" || !localPath.trim()) return {
       ok: false,
       error: "each copy needs a non-empty local_path"
@@ -86,7 +91,8 @@ function normalizeProjectCopyFileArgs(args) {
     seen.add(projectPath);
     files.push({
       local_path: localPath,
-      project_path: projectPath
+      project_path: projectPath,
+      expected_hash: entry.expected_hash
     });
   }
   return {

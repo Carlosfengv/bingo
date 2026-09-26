@@ -151,11 +151,12 @@ async function saveFileLocally(projectId, options) {
   }
 
   const store = ensureV2(elements);
+  const index = { ...(componentIndex || {}), ...componentIndexFor(projectId) };
   const originalHash = crypto.createHash("sha256").update(originalCode).digest("hex");
   let generatedJSX;
   try {
     const variables = await invokeLocalStore({ op: "read-variable-library", root: projectId });
-    generatedJSX = generateJSX(store, 0, { purpose: "project", variableLibrary: variables.library, variablePageModes: store.variableModes ?? variables.defaultModes });
+    generatedJSX = generateJSX(store, 0, { purpose: "project", componentIndex: index, variableLibrary: variables.library, variablePageModes: store.variableModes ?? variables.defaultModes });
   } catch (error) {
     const failed = await failure(error, { stage: "generate-source" });
     return { success: false, error: failed.message, incidentId: failed.report.incidentId };
@@ -168,7 +169,6 @@ async function saveFileLocally(projectId, options) {
   // The renderer can briefly hold the previous snapshot while a rebuild is
   // being applied. Prefer the compiler-owned index so deleted or renamed
   // components cannot be mapped back through stale paths during that window.
-  const index = { ...(componentIndex || {}), ...componentIndexFor(projectId) };
 
   const componentImports = getComponentImportMappings(deps, index, filePath, {
     preferAlias: true,

@@ -10,7 +10,7 @@ import { setCompositionDragData, setElementDragData } from "../../../shared/util
 import { generatePrefixedId } from "../../../shared/utils/idUtils";
 import { PanelEmptyState } from "./PanelEmptyState";
 import { PanelSearchInput } from "./PanelSearchInput";
-import { CompositionPreview, collectCompositionPreviewNames, getCompositionParseContext, getCompositionParseSignature, parseCompositionImports, parseCompositionRootsByExport } from "./compositionDrag";
+import { CompositionPreview, collectCompositionPreviewNames, getCompositionParseContext, getCompositionParseSignature, parseCompositionImports, parseCompositionRootsByExport, readCompositionSnapshot } from "./compositionDrag";
 import { buildCompositionTemplates, componentDisplayName, getCompositionPathForBase, isCompositionFile, parseCompositionFile } from "@bingo/compiler";
 import { appI18n, useTranslation } from "@bingo/i18n";
 import { Button, CaretLeftIcon, CaretRightIcon, FolderIcon, InfoIcon$1, ScrollArea, SparkleIcon, Text$4, Tooltip, TooltipContent, TooltipTrigger } from "@bingo/ui";
@@ -282,7 +282,8 @@ var AssetsPanel = ({
   const compositionImports = (0, import_react.useMemo)(() => parseCompositionImports(compositionContent), [compositionContent]);
   const compositionParseContext = (0, import_react.useMemo)(() => getCompositionParseContext(compositionImports, iconLibraries, componentIndex, allIconLibraries), [compositionImports, iconLibraries, componentIndex, allIconLibraries]);
   const compositionParseSignature = (0, import_react.useMemo)(() => getCompositionParseSignature(compositionJsxByExport?.values() ?? [], compositionParseContext), [compositionJsxByExport, compositionParseContext]);
-  const compositionRootsByExport = (0, import_react.useMemo)(() => compositionJsxByExport ? parseCompositionRootsByExport(compositionJsxByExport, compositionParseContext) : void 0, [compositionJsxByExport, compositionParseSignature]);
+  const editableCompositionJsx = compositionIsCurrent ? loadedComposition.editableJsxByExport ?? compositionJsxByExport : compositionJsxByExport;
+  const compositionRootsByExport = (0, import_react.useMemo)(() => editableCompositionJsx ? parseCompositionRootsByExport(editableCompositionJsx, compositionParseContext) : void 0, [editableCompositionJsx, compositionParseSignature]);
   (0, import_react.useEffect)(() => {
     if (!selectedFile || !onEnsureComponentNames) return;
     onEnsureComponentNames(collectCompositionPreviewNames(selectedFile.components, compositionJsxByExport?.values() ?? []));
@@ -292,12 +293,12 @@ var AssetsPanel = ({
     const key = `${sourceId}:${path}:${refreshKey}`;
     if (compositionReadRef.current?.key !== key) compositionReadRef.current = {
       key,
-      promise: readCompositionFile(path)
+      promise: readCompositionSnapshot(readCompositionFile, path)
     };
     return {
       path,
       sourceId,
-      content: await compositionReadRef.current.promise,
+      ...await compositionReadRef.current.promise,
       refreshKey
     };
   });

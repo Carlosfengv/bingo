@@ -21,6 +21,21 @@ test("rapid edits prepare only the latest snapshot and duplicate snapshots do no
   q.dispose();
 });
 
+test("seeding a loaded document does not save until its content changes", async () => {
+  const saved: string[] = [];
+  const q = createVersionedSaveQueue<string>({ delayMs: 60_000, equal: Object.is,
+    save: async (_, value) => { saved.push(value); } });
+  q.seed("page", "loaded");
+  q.update("page", "loaded");
+  await q.flush();
+  assert.deepEqual(saved, []);
+  assert.equal(q.hasPending(), false);
+  q.update("page", "edited");
+  await q.flush();
+  assert.deepEqual(saved, ["edited"]);
+  q.dispose();
+});
+
 test("slow writes serialize and cannot acknowledge newer edits; flush includes new pages", async () => {
   const gate = deferred();
   const saved: string[] = [];

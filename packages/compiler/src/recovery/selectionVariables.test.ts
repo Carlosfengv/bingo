@@ -166,6 +166,12 @@ test("project export materializes nested capture scopes and explicit resets belo
     { id: "capture", type: "capture", original: { componentName: "Page" }, theme: { version: 1, localCollectionModes: { colors: "dark" } }, children: [label()] },
     label("reset", "Reset", { theme: { version: 1, localCollectionModes: { colors: "light" } } }),
   ] };
+  assert.throws(() => generateJSX(ensureV2([original]), 0, { purpose: "project", variableLibrary: library }), /without changing its style argument/,
+    "fragment scopes cannot add a style argument to arbitrary components without changing defaults");
+  // Existing nonempty style arguments can carry a declaration without changing
+  // whether the component receives its own parameter default.
+  original.children[0].children[0].styles = { color: "var(--foreground)" };
+  original.children[1].styles = { color: "var(--foreground)" };
   const code = generateJSX(ensureV2([original]), 0, { purpose: "project", variableLibrary: library, includeDataElementId: true });
   const parsed = parseJSX(code, {}, {});
   assert.equal(parsed.byId.get("label").styles["--foreground"], "#eeeeee");

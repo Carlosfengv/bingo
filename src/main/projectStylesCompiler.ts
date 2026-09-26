@@ -70,6 +70,26 @@ export async function compileProjectStyles({ root, workspaceRoot = root, sourceF
     outfile: path.join(root, ".bingo-preview.css"), logLevel: "silent",
     loader: Object.fromEntries([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".woff", ".woff2", ".ttf", ".otf"].map(ext => [ext, "dataurl"])),
     plugins: [{ name: "project-styles", setup(builder) {
+      builder.onResolve({ filter: /^\// }, ({ path: assetPath, kind }) => {
+        if (kind !== "url-token" || assetPath.startsWith("//")) return;
+        // CSS root URLs address the app's public directory. Resolve them before
+        // esbuild processes url(), otherwise a valid /fonts/* reference aborts
+        // the entire stylesheet build when the project is reopened in Bingo.
+        const publicRoot = path.join(root, "public");
+        let relativePath;
+        try { relativePath = decodeURIComponent(assetPath.slice(1).split(/[?#]/, 1)[0]); }
+        catch { return; }
+        const file = path.resolve(publicRoot, relativePath);
+        const relative = path.relative(publicRoot, file);
+        if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return;
+        try {
+          const canonical = path.relative(fs.realpathSync(root), fs.realpathSync(file));
+          if (canonical === ".." || canonical.startsWith(`..${path.sep}`) || path.isAbsolute(canonical)) {
+            return { errors: [{ text: `Public CSS asset resolves outside the project: ${assetPath}` }] };
+          }
+        } catch { /* Let esbuild report a missing asset. */ }
+        return { path: file };
+      });
       builder.onLoad({ filter: /\.css$/ }, async ({ path: file }) => {
         dependencies.add(file);
         let contents = fs.readFileSync(file, "utf8");

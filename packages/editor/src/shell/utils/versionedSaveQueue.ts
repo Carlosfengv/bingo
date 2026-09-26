@@ -40,6 +40,13 @@ export function createVersionedSaveQueue<T>(options: {
     return entry.running;
   }
   return {
+    /** Loaded documents already exist on disk and must not start dirty. */
+    seed(key: string, value: T) {
+      if (disposed || entries.has(key)) return;
+      const version = ++nextVersion;
+      entries.set(key, { latest: { version, value }, saved: version });
+    },
+    hasEntry(key: string) { return entries.has(key); },
     update(key: string, value: T) {
       if (disposed) return;
       let entry = entries.get(key);

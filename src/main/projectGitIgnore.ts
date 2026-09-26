@@ -156,11 +156,12 @@ async function inspectProjectGit(projectRoot) {
   }
 }
 
-function appendIgnoreRule(projectRoot, rule = IGNORE_RULE, comment = IGNORE_COMMENT) {
+function appendIgnoreRule(projectRoot, rule = IGNORE_RULE, comment = IGNORE_COMMENT, beforeWrite) {
   const gitignorePath = path.join(path.resolve(projectRoot), ".gitignore");
   assertRegularWritableTarget(gitignorePath);
   const exists = fs.existsSync(gitignorePath);
-  const original = exists ? fs.readFileSync(gitignorePath, "utf8") : "";
+  const previousBytes = exists ? fs.readFileSync(gitignorePath) : null;
+  const original = previousBytes?.toString("utf8") ?? "";
   const newline = original.includes("\r\n") ? "\r\n" : "\n";
   const normalizedLines = original.split(/\r?\n/).map((line) => line.trim());
   if (normalizedLines.includes(rule)) {
@@ -174,6 +175,7 @@ function appendIgnoreRule(projectRoot, rule = IGNORE_RULE, comment = IGNORE_COMM
     if (lastMeaningful && lastMeaningful !== comment) separator += newline;
   }
   const next = `${original}${separator}${comment}${newline}${rule}${newline}`;
+  beforeWrite?.({ previousBytes, writtenContent: next });
   const temp = `${gitignorePath}.bingo-${process.pid}-${Date.now()}.tmp`;
   try {
     let mode = 0o644;
@@ -186,7 +188,27 @@ function appendIgnoreRule(projectRoot, rule = IGNORE_RULE, comment = IGNORE_COMM
       path: gitignorePath,
     });
   }
-  return { changed: true, gitignorePath, previousContent: original };
+  return { changed: true, gitignorePath, previousContent: original, previousBytes, writtenContent: next };
+}
+
+/** Undo only our exact append. A later user edit always wins. */
+function restoreIgnoreRule(change) {
+  if (!change?.changed) return true;
+  const { gitignorePath, writtenContent, previousBytes } = change;
+  assertRegularWritableTarget(gitignorePath);
+  if (!fs.existsSync(gitignorePath) || fs.readFileSync(gitignorePath, "utf8") !== writtenContent) return false;
+  if (previousBytes === null) {
+    fs.unlinkSync(gitignorePath);
+    return true;
+  }
+  const temp = `${gitignorePath}.bingo-${process.pid}-${Date.now()}.restore.tmp`;
+  try {
+    fs.writeFileSync(temp, previousBytes, { flag: "wx", mode: fs.statSync(gitignorePath).mode & 0o777 });
+    fs.renameSync(temp, gitignorePath);
+    return true;
+  } finally {
+    try { fs.unlinkSync(temp); } catch {}
+  }
 }
 
 async function ensureProjectConfigIgnored(projectRoot) {
@@ -215,7 +237,7 @@ async function ensureProjectConfigIgnored(projectRoot) {
   return { changed: write.changed, before, after, gitignorePath: write.gitignorePath };
 }
 
-async function ensureProjectDesignIgnored(projectRoot) {
+async function ensureProjectDesignIgnored(projectRoot, beforeWrite) {
   const root = fs.realpathSync(projectRoot);
   const gitRoot = await findGitRoot(root);
   const relative = gitRoot ? path.relative(gitRoot, path.join(root, ".bingo", "design")).split(path.sep).join("/") : null;
@@ -223,10 +245,17 @@ async function ensureProjectDesignIgnored(projectRoot) {
     const tracked = await runGit(gitRoot, ["ls-files", "-z", "--", relative]);
     if (tracked.stdout) throw new GitIgnoreError("IGNORE_NOT_EFFECTIVE", "Design data is already tracked by Git. An ignore rule cannot stop tracking existing files; uncheck this option to continue.");
   }
-  const result = appendIgnoreRule(root, "/.bingo/design/", "# Bingo design data (pages, history, chats and assets)");
-  if (gitRoot) {
-    const ignored = await runGit(gitRoot, ["check-ignore", "-q", "--no-index", "--", `${relative}/`], { allowExitOne: true });
-    if (!ignored.ok) throw new GitIgnoreError("IGNORE_NOT_EFFECTIVE", "The design ignore rule was written, but other Git rules override it.");
+  const result = appendIgnoreRule(root, "/.bingo/design/", "# Bingo design data (pages, history, chats and assets)", beforeWrite);
+  try {
+    if (gitRoot) {
+      const ignored = await runGit(gitRoot, ["check-ignore", "-q", "--no-index", "--", `${relative}/`], { allowExitOne: true });
+      if (!ignored.ok) throw new GitIgnoreError("IGNORE_NOT_EFFECTIVE", "The design ignore rule was written, but other Git rules override it.");
+    }
+  } catch (error) {
+    if (result.changed && !restoreIgnoreRule(result)) {
+      throw new GitIgnoreError("IGNORE_ROLLBACK_NEEDED", "The design ignore check failed after .gitignore changed again. Review that file before retrying.", { path: result.gitignorePath, cause: error });
+    }
+    throw error;
   }
   return result;
 }
@@ -239,5 +268,6 @@ export {
   appendIgnoreRule,
   ensureProjectConfigIgnored,
   ensureProjectDesignIgnored,
+  restoreIgnoreRule,
   inspectProjectGit,
 };

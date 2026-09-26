@@ -71,6 +71,8 @@ function wireToStore(wire) {
   return internal;
 }
 function sanitizeLoadedElement(element) {
+  if (element.componentEditing && element.componentEditing.schemaVersion !== 1) throw new Error("Unsupported component editing metadata version. Update the editor before changing this document.");
+  if (element.componentEditing?.sourceBinding && element.componentEditing.sourceBinding.schemaVersion !== 1) throw new Error("Unsupported component source association version.");
   if (element.type === "text") return element;
   const props = sanitizeElementProps(element.props);
   if (props === element.props) return element;

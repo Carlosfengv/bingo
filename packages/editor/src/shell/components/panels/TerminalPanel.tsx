@@ -55,83 +55,77 @@ function TerminalPanel({
     const bridge = getBridge$2();
     const container = containerRef.current;
     if (!bridge || !container) return;
-    const term = new import_xterm.Terminal({
-      fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--ed-font-mono").trim(),
-      fontSize: 12,
-      cursorBlink: true,
-      theme: resolvedTheme
-    });
-    const fit = new import_addon_fit.FitAddon();
-    term.loadAddon(fit);
-    term.open(container);
-    termRef.current = term;
-    fitRef.current = fit;
-    term.attachCustomKeyEventHandler(event => {
-      if (event.type !== "keydown") return true;
-      if (event.key === "Escape") return false;
-      if (event.key === "Tab" && event.shiftKey) return false;
-      return true;
-    });
-    const safeFit = () => {
-      if (container.clientWidth === 0 || container.clientHeight === 0) return null;
-      try {
-        fit.fit();
-        return {
-          cols: term.cols,
-          rows: term.rows
-        };
-      } catch {
-        return null;
-      }
-    };
     let disposed = false;
     const offFns = [];
-    const dims = safeFit();
-    bridge.invoke("terminal:create", {
-      cols: dims?.cols ?? 80,
-      rows: dims?.rows ?? 24,
-      initialCommand: commandAtMount()
-    }).then(res => {
-      if (disposed) {
-        if (res.ok) bridge.send("terminal:dispose", {
-          id: res.id
-        });
-        return;
-      }
-      if (!res.ok) {
-        term.writeln(`\x1b[31mFailed to start terminal: ${res.error}\x1b[0m`);
-        return;
-      }
-      sessionIdRef.current = res.id;
-      offFns.push(bridge.on("terminal:data", payload => {
-        const p = payload;
-        if (p?.id === res.id) term.write(p.data);
-      }));
-      offFns.push(bridge.on("terminal:exit", payload => {
-        const p = payload;
-        if (p?.id === res.id) term.writeln(`\r\n\x1b[90m[process exited with code ${p.exitCode}]\x1b[0m`);
-      }));
-      term.onData(data => {
-        if (sessionIdRef.current) bridge.send("terminal:input", {
-          id: sessionIdRef.current,
-          data
-        });
+    let term = null;
+    let ro = null;
+    // React StrictMode mounts and immediately cleans up effects in development.
+    // Defer xterm.open until that rehearsal has finished: disposing it in the
+    // same frame leaves a queued xterm render callback without a renderer.
+    const frame = requestAnimationFrame(() => {
+      if (disposed) return;
+      term = new import_xterm.Terminal({
+        fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--ed-font-mono").trim(),
+        fontSize: 12,
+        cursorBlink: true,
+        theme: resolvedTheme
       });
+      const fit = new import_addon_fit.FitAddon();
+      term.loadAddon(fit);
+      term.open(container);
+      termRef.current = term;
+      fitRef.current = fit;
+      term.attachCustomKeyEventHandler(event => {
+        if (event.type !== "keydown") return true;
+        if (event.key === "Escape") return false;
+        if (event.key === "Tab" && event.shiftKey) return false;
+        return true;
+      });
+      const safeFit = () => {
+        if (disposed || container.clientWidth === 0 || container.clientHeight === 0) return null;
+        try { fit.fit(); return { cols: term.cols, rows: term.rows }; }
+        catch { return null; }
+      };
+      const dims = safeFit();
+      if (active) term.focus();
+      bridge.invoke("terminal:create", {
+        cols: dims?.cols ?? 80,
+        rows: dims?.rows ?? 24,
+        initialCommand: commandAtMount()
+      }).then(res => {
+        if (disposed) {
+          if (res.ok) bridge.send("terminal:dispose", { id: res.id });
+          return;
+        }
+        if (!res.ok) {
+          term.writeln(`\x1b[31mFailed to start terminal: ${res.error}\x1b[0m`);
+          return;
+        }
+        sessionIdRef.current = res.id;
+        offFns.push(bridge.on("terminal:data", payload => {
+          if (!disposed && payload?.id === res.id) term.write(payload.data);
+        }));
+        offFns.push(bridge.on("terminal:exit", payload => {
+          if (!disposed && payload?.id === res.id) term.writeln(`\r\n\x1b[90m[process exited with code ${payload.exitCode}]\x1b[0m`);
+        }));
+        const input = term.onData(data => {
+          if (!disposed && sessionIdRef.current) bridge.send("terminal:input", { id: sessionIdRef.current, data });
+        });
+        offFns.push(() => input.dispose());
+      }).catch(error => {
+        if (!disposed) term.writeln(`\x1b[31mFailed to start terminal: ${String(error)}\x1b[0m`);
+      });
+      ro = new ResizeObserver(() => {
+        const dims = safeFit();
+        const id = sessionIdRef.current;
+        if (dims && id) bridge.send("terminal:resize", { id, cols: dims.cols, rows: dims.rows });
+      });
+      ro.observe(container);
     });
-    const sendResize = () => {
-      const d = safeFit();
-      const id = sessionIdRef.current;
-      if (d && id) bridge.send("terminal:resize", {
-        id,
-        cols: d.cols,
-        rows: d.rows
-      });
-    };
-    const ro = new ResizeObserver(() => sendResize());
-    ro.observe(container);
     return () => {
       disposed = true;
-      ro.disconnect();
+      cancelAnimationFrame(frame);
+      ro?.disconnect();
       for (const off of offFns) off();
       if (sessionIdRef.current) {
         bridge.send("terminal:dispose", {
@@ -139,7 +133,7 @@ function TerminalPanel({
         });
         sessionIdRef.current = null;
       }
-      term.dispose();
+      term?.dispose();
       termRef.current = null;
       fitRef.current = null;
     };

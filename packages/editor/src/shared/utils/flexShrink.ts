@@ -26,7 +26,9 @@ function normalizeFlexShrinkOps(storeAfter, ops) {
   };
   const addShrink = id => {
     const el = getById(cur, id);
-    if (!el || !isFlexParent(cur, getParentId(cur, id))) return;
+    // Code components own their layout defaults. Inserting or copying an
+    // instance must not invent an appearance override on its opaque root.
+    if (!el || el.type === "component" || !isFlexParent(cur, getParentId(cur, id))) return;
     const styles = el.styles ?? {};
     if (styles.flex !== void 0 || styles.flexShrink !== void 0) return;
     commit(createSetStylesOperation(cur, id, {
@@ -35,7 +37,9 @@ function normalizeFlexShrinkOps(storeAfter, ops) {
     }));
   };
   const removeShrink = id => {
-    const styles = getById(cur, id)?.styles;
+    const element = getById(cur, id);
+    if (element?.type === "component") return;
+    const styles = element?.styles;
     if (!styles || styles.flexShrink !== 0 && styles.flexShrink !== "0") return;
     const rest = {
       ...styles

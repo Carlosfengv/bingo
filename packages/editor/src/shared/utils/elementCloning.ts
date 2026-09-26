@@ -55,6 +55,10 @@ function cloneElementWithNewIds(element, offsetPosition = {
   const el = structuredClone(element);
   const newId = generatePrefixedId(el.type);
   delete el.sourceInfo;
+  if (el.componentEditing?.sourceBinding) {
+    if (el.componentEditing.sourceBinding.template) delete el.componentEditing.sourceBinding.template;
+    else delete el.componentEditing.sourceBinding;
+  }
   if (!hasNestedChildren$2(el)) return {
     ...el,
     id: newId

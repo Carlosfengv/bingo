@@ -149,14 +149,9 @@ function EditorView({
         setCssLoaded(true);
         return;
       }
-      if (!payload?.cssUrl) {
-        setCssError(null);
-        setCssLoaded(true);
-        return;
-      }
-      loadProjectStylesheet(projectId, payload.cssUrl, {
-        fontUrls: payload.fontUrls,
-        compiledClasses: payload.compiledClasses,
+      loadProjectStylesheet(projectId, payload?.cssUrl, {
+        fontUrls: payload?.fontUrls,
+        compiledClasses: payload?.compiledClasses,
         onCompiledClasses: (classes) => classes.forEach((name) => compiledClassNames.add(name)),
       }).then(() => { if (active && request === cssRequest) { setCssError(null); setCssLoaded(true); } })
         .catch(cause => {

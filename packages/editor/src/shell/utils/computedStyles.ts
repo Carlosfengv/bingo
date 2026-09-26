@@ -23,18 +23,25 @@ function camelToKebab(str) {
 function kebabToCamel(str) {
   return str.replace(/-([a-z])/g, g => g[1].toUpperCase());
 }
+// getClassIndex returns a new array when project CSS changes. Reuse the
+// lookup between selections so choosing one element only visits its classes.
+const classLookups = new WeakMap();
+function classLookup(classIndex) {
+  let indexMap = classLookups.get(classIndex);
+  if (indexMap) return indexMap;
+  indexMap = new Map();
+  for (const entry of classIndex) {
+    const list = indexMap.get(entry.className) || [];
+    list.push({ declarations: entry.declarations, variant: entry.variant });
+    indexMap.set(entry.className, list);
+  }
+  classLookups.set(classIndex, indexMap);
+  return indexMap;
+}
 function getCascadeBatch(classes, classIndex) {
   const map = new Map();
   const byClass = new Map();
-  const indexMap = new Map();
-  for (const entry of classIndex) {
-    const list = indexMap.get(entry.className) || [];
-    list.push({
-      declarations: entry.declarations,
-      variant: entry.variant
-    });
-    indexMap.set(entry.className, list);
-  }
+  const indexMap = classLookup(classIndex);
   const propOwner = new Map();
   for (const cls of classes) {
     const entries = indexMap.get(cls);

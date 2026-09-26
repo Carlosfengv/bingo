@@ -1,6 +1,7 @@
 import * as React from "react";
 import { emptyVariableLibrary, bindElementVariable, detachElementVariable, findElementVariableBinding, isPaintOnlyVariableModeChange, resolveCollectionModes, resolveVariableValues, setElementVariableMode, sameCollectionModes, prepareVariableStore, validateVariableLibrary, literalForProperty, variableModesSignature } from "../../../../compiler/src/runtime/variables";
-import { createSetStylesOperation } from "../utils/operations";
+import { createVariableElementOperations } from "../utils/variableEditing";
+import { registerComponentPreviewProjection } from "../utils/componentScenePreview";
 import { measureCanvasWork } from "../../canvas/lib/canvasPerformance";
 import { readCssVariableUsage } from "../../canvas/utils/cssVariableUsage";
 import { collectVariableConsumers, createVariableConsumerResolver } from "../../../../compiler/src/runtime/variableConsumers";
@@ -136,7 +137,7 @@ export function VariableLibraryProvider({ projectPath, children }) {
   return <VariableLibraryContext.Provider value={value}><VariableSnapshotContext.Provider value={renderSnapshot}>{children}</VariableSnapshotContext.Provider></VariableLibraryContext.Provider>;
 }
 
-export function VariableEditorProvider({ store, selectedIds, onCommit, readOnly, children }) {
+export function VariableEditorProvider({ store, selectedIds, onCommit, readOnly, componentIndex, children }) {
   const variables = useVariableSnapshot();
   const ids = React.useMemo(() => Array.from(selectedIds || []) as string[], [selectedIds]);
   const pageModes = store.variableModes ?? variables?.defaultModes ?? {};
@@ -150,18 +151,10 @@ export function VariableEditorProvider({ store, selectedIds, onCommit, readOnly,
     resolvedById.set(id, value);
     return value;
   }, [store, variables.library, pageModes, resolvedById]);
-  const changeElements = React.useCallback((transform) => {
+  const changeElements = React.useCallback((transform, editStyles = false) => {
     if (readOnly) return;
-    onCommit(current => ids.flatMap(id => {
-      const old = current.byId.get(id); if (!old) return [];
-      const next = transform(old, current);
-      if (old === next || JSON.stringify(old) === JSON.stringify(next)) return [];
-      const ops: any[] = [];
-      if (next.styles !== old.styles) ops.push(createSetStylesOperation(current, id, next.styles));
-      ops.push({ type: "set_theme", elementId: id, oldTheme: old.theme, newTheme: next.theme });
-      return ops.filter(Boolean);
-    }));
-  }, [readOnly, onCommit, ids]);
+    onCommit(current => createVariableElementOperations(current, ids, transform, componentIndex, editStyles));
+  }, [readOnly, onCommit, ids, componentIndex]);
   const value = React.useMemo(() => ({
     store, ids, readOnly, pageModes, resolve, resolveModes,
     bindingFor: (id, property) => findElementVariableBinding(store.byId.get(id), variables.library, property),
@@ -176,11 +169,11 @@ export function VariableEditorProvider({ store, selectedIds, onCommit, readOnly,
         return [{ type: "set_variable_modes", oldModes: current.variableModes, newModes: modes }];
       });
     },
-    bind: (property, tokenId, alpha = 1) => changeElements(element => bindElementVariable(element, variables.library, property, tokenId, alpha)),
+    bind: (property, tokenId, alpha = 1) => changeElements(element => bindElementVariable(element, variables.library, property, tokenId, alpha), true),
     detach: property => changeElements((element, current) => {
       const { modes } = resolveCollectionModes(current, element.id, variables.library, current.variableModes ?? variables.defaultModes);
       return detachElementVariable(element, variables.library, property, resolveVariableValues(variables.library, modes).values);
-    }),
+    }, true),
   }), [store, ids, readOnly, pageModes, resolve, resolveModes, variables.library, variables.defaultModes, onCommit, changeElements]);
   return <VariableEditorContext.Provider value={value}>{children}</VariableEditorContext.Provider>;
 }
@@ -266,6 +259,7 @@ export function useVariableRenderStore(store, restrictToConsumers = false, style
   }
   if (cached.variants.has(signature)) return cached.variants.get(signature);
   const prepared = measureCanvasWork("variables", () => prepareVariableStore(store, variables.library, modes, undefined, usedCssNames));
+  registerComponentPreviewProjection(store, prepared);
   // Canvas and preview deliberately use different declaration sets. Keep both
   // identities, with a bound for transient CSS edits/default-mode combinations.
   if (cached.variants.size >= 4) cached.variants.delete(cached.variants.keys().next().value!);

@@ -372,6 +372,12 @@ export function detachElementVariable(element: any, library: VariableLibrary, pr
 
 /** Render-only copy; persisted designs retain variable references, never resolved colors. */
 const noDeclarations = {};
+// Keep the authored argument separate from runtime declarations. A component
+// with no style argument must still execute its own parameter default.
+const variableStyleProjections = new WeakMap<object, { styles: any; declarations: Record<string, string> }>();
+export function variableStyleProjection(element: object) {
+  return variableStyleProjections.get(element);
+}
 export function prepareVariableStore(store: any, library: VariableLibrary, pageModes: CollectionModes = store.variableModes || {}, additionalScopeRoots?: ReadonlySet<string>, usedCssNames?: ReadonlySet<string>) {
   if (!library.tokens.length) return store;
   const byId = new Map(store.byId);
@@ -390,16 +396,18 @@ export function prepareVariableStore(store: any, library: VariableLibrary, pageM
     let variants = index.preparedElements.get(element);
     const cached = variants?.get(declarations);
     if (cached) { if (cached !== element) byId.set(id, cached); continue; }
-    let styles = isScopeBoundary ? { ...element.styles, ...declarations } : element.styles;
+    let authoredStyles = element.styles;
     for (const binding of element.theme?.bindings || []) {
       const token = index.tokenById.get(binding.tokenId);
       if (binding.target !== "style" || !token || !canBindVariable(token, binding.property)) continue;
       const expression = variableExpression(token, binding.property, binding.alpha);
-      if (styles?.[binding.property] === expression) continue;
-      if (styles === element.styles) styles = { ...styles };
-      styles[binding.property] = expression;
+      if (authoredStyles?.[binding.property] === expression) continue;
+      if (authoredStyles === element.styles) authoredStyles = { ...authoredStyles };
+      authoredStyles[binding.property] = expression;
     }
+    const styles = isScopeBoundary ? { ...authoredStyles, ...declarations } : authoredStyles;
     const prepared = styles !== element.styles ? { ...element, styles } : element;
+    if (prepared !== element) variableStyleProjections.set(prepared, { styles: authoredStyles, declarations });
     if (!variants) index.preparedElements.set(element, variants = new WeakMap());
     variants.set(declarations, prepared);
     if (prepared !== element) byId.set(id, prepared);

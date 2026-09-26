@@ -17,7 +17,7 @@
 
 import { build } from "esbuild";
 import { compileProjectStyles } from "./projectStylesCompiler";
-import { extractComponentPropMetadata } from "./componentPropMetadata";
+import { extractComponentMetadata } from "./componentPropMetadata";
 import { isDesignStyleSource } from "./projectDesignStyles";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -34,10 +34,11 @@ import {
   validateProjectBuildFingerprint,
 } from "./projectBuildFingerprint";
 import { projectForWebContents, broadcastToEditors } from "./windowManager";
+import { publishLocalModules, storeCompiledModule } from "./localModuleServer";
 
 const SKIP_DIRS = new Set([
   "node_modules", ".git", ".bingo", "dist", "build", "out", ".next", "coverage",
-  "__tests__", "__mocks__",
+  "__tests__", "__mocks__", "tests",
 ]);
 const SOURCE_EXT = [".tsx", ".ts", ".jsx", ".js"];
 const CSS_EXT = [".css"];
@@ -83,6 +84,26 @@ function browserReactRequirePlugin() {
         contents: `import * as runtime from ${JSON.stringify(args.path)}; module.exports = runtime.default ?? runtime;`,
         loader: "js",
       }));
+    },
+  };
+}
+
+/** Export the entry's own router instance so canvas previews can supply its context. */
+function routerBoundaryPlugin(file, source) {
+  const routerImport = /\bfrom\s*["'](react-router(?:-dom)?)["']/.exec(source);
+  if (!routerImport || /\b(?:BrowserRouter|HashRouter|MemoryRouter|RouterProvider|StaticRouter)\b/.test(source)) return null;
+  const loader = file.endsWith(".tsx") ? "tsx" : file.endsWith(".jsx") ? "jsx" : file.endsWith(".ts") ? "ts" : "js";
+  return {
+    name: "bingo-router-boundary",
+    setup(buildApi) {
+      buildApi.onLoad({ filter: /\.[jt]sx?$/ }, args => {
+        if (fs.realpathSync(args.path) !== fs.realpathSync(file)) return null;
+        return {
+          contents: `${source}\nexport { MemoryRouter as __bingoMemoryRouter, useInRouterContext as __bingoInRouterContext } from ${JSON.stringify(routerImport[1])};`,
+          loader,
+          resolveDir: path.dirname(file),
+        };
+      });
     },
   };
 }
@@ -260,6 +281,23 @@ function pathAliases(root, configFile = null) {
   return aliases;
 }
 
+/** Resolve an imported callsite identity using the same aliases as compilation. */
+export function resolveProjectComponentImport(root, importer, specifier) {
+  const importerDir = path.dirname(path.resolve(root, importer));
+  let target;
+  if (specifier.startsWith(".")) target = path.resolve(importerDir, specifier);
+  else {
+    const config = nearestConfig(importerDir, findWorkspaceRoot(root));
+    const aliases = pathAliases(config ? path.dirname(config) : root, config);
+    const key = Object.keys(aliases).sort((a, b) => b.length - a.length).find(name => specifier === name || specifier.startsWith(`${name}/`));
+    if (key) target = path.join(aliases[key], specifier.slice(key.length));
+  }
+  if (!target) return null;
+  const candidates = [target, ...[".tsx", ".ts", ".jsx", ".js", "/index.tsx", "/index.ts", "/index.jsx", "/index.js"].map(extension => target + extension)];
+  const found = candidates.find(file => { try { return fs.statSync(file).isFile(); } catch { return false; } });
+  return found ? fs.realpathSync(found) : null;
+}
+
 function tsconfigAliasPlugin(projectRoot, workspaceRoot) {
   const configCache = new Map();
   const defaultConfig = nearestConfig(projectRoot, workspaceRoot);
@@ -424,6 +462,8 @@ async function compileProject(root, controls = {}) {
       const file = files[fileIndex];
       const rel = toRel(root, file);
       try {
+        const source = fs.readFileSync(file, "utf8");
+        const routerPlugin = routerBoundaryPlugin(file, source);
         const result = await build({
           entryPoints: [file],
           absWorkingDir: workspaceRoot,
@@ -435,7 +475,7 @@ async function compileProject(root, controls = {}) {
           target: "es2020",
           jsx: "automatic",
           external: EXTERNAL,
-          plugins: [browserReactRequirePlugin(), aliasPlugin],
+          plugins: [browserReactRequirePlugin(), aliasPlugin, ...(routerPlugin ? [routerPlugin] : [])],
           logLevel: "silent",
           // A CSS import inside a component becomes a separate file esbuild would
           // reference from the bundle; from a data: URL that import cannot
@@ -443,8 +483,21 @@ async function compileProject(root, controls = {}) {
           loader: { ".css": "empty", ".png": "dataurl", ".jpg": "dataurl", ".svg": "dataurl" },
         });
         assertActive();
-        const props = extractComponentPropMetadata(fs.readFileSync(file, "utf8"));
-        results[fileIndex] = { rel, result, props };
+        const props = extractComponentMetadata(source);
+        const inputsForEntry = [];
+        for (const inputPath of Object.keys(result.metafile?.inputs || {})) {
+          const buildInput = buildInputPath(inputPath, workspaceRoot);
+          if (buildInput) inputsForEntry.push(buildInput);
+        }
+        const output = result.outputFiles?.[0];
+        const meta = Object.values(result.metafile?.outputs || {})[0] || {};
+        results[fileIndex] = {
+          rel,
+          props,
+          inputsForEntry: [...new Set(inputsForEntry)].sort(),
+          codeUrl: output ? await storeCompiledModule(output.contents) : null,
+          exportNames: Array.isArray(meta.exports) ? meta.exports : [],
+        };
       } catch (error) {
         if (error?.code === "BUILD_CANCELLED") throw error;
         const message = String(error?.errors?.[0]?.text || error?.message || error);
@@ -464,29 +517,21 @@ async function compileProject(root, controls = {}) {
       buildFailures.push(entry.failure);
       continue;
     }
-    const { rel, result, props } = entry;
-    const inputsForEntry = [];
-    for (const inputPath of Object.keys(result.metafile?.inputs || {})) {
-      const buildInput = buildInputPath(inputPath, workspaceRoot);
-      if (buildInput) inputsForEntry.push(buildInput);
-    }
-    entryInputs[rel] = [...new Set(inputsForEntry)].sort();
-    const output = result.outputFiles?.[0];
-    if (!output) continue;
-    const meta = Object.values(result.metafile.outputs)[0] || {};
+    const { rel, props, inputsForEntry, codeUrl, exportNames } = entry;
+    entryInputs[rel] = inputsForEntry;
+    if (!codeUrl) continue;
     modules.push({
       path: rel,
-      codeUrl: dataUrl(output.text, "text/javascript"),
+      codeUrl,
       cssImports: [],
     });
-    const exportNames = Array.isArray(meta.exports) ? meta.exports : [];
     for (const exportName of exportNames) {
-      if (exportName === "default") continue;
-      componentIndex[exportName] = { path: rel, exportName, ...(props[exportName] ? { props: props[exportName] } : {}) };
+      if (exportName === "default" || exportName.startsWith("__bingo")) continue;
+      componentIndex[exportName] = { path: rel, exportName, ...props[exportName] };
     }
     if (exportNames.includes("default")) {
       const base = path.basename(rel).replace(/\.[^.]+$/, "");
-      if (/^[A-Z]/.test(base)) componentIndex[base] = { path: rel, exportName: "default", ...(props.default ? { props: props.default } : {}) };
+      if (/^[A-Z]/.test(base)) componentIndex[base] = { path: rel, exportName: "default", ...props.default };
     }
   }
 
@@ -612,8 +657,20 @@ function watchedChangeMatters(filename) {
     /(?:^|\/)(?:package\.json|[jt]sconfig\.json|pnpm-workspace\.yaml|[^/]+\.config\.[cm]?[jt]s)$/.test(name.replace(/\\/g, "/"));
 }
 
+function inputStatSignature(stat) {
+  return stat ? `${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}:${stat.ino}` : null;
+}
+
 function scheduleSessionBuild(session, changedPath) {
   if (!sessionIsActive(session)) return;
+  // The native watcher and fallback observe the same inputs. A native event
+  // must advance their shared baseline so polling does not publish it again.
+  const trackingSessions = changedPath ? activeSessionsForRoot(session.root).filter(active => active.sharedInputStats?.has(changedPath)) : [];
+  if (trackingSessions.length) {
+    let stat;
+    try { stat = fs.statSync(changedPath); } catch { stat = null; }
+    for (const active of trackingSessions) active.sharedInputStats.set(changedPath, inputStatSignature(stat));
+  }
   projectInputRevisions.set(session.root, (projectInputRevisions.get(session.root) || 0) + 1);
   let dirtyPaths = projectDirtyPaths.get(session.root);
   if (!dirtyPaths) {
@@ -633,6 +690,13 @@ function scheduleSessionBuild(session, changedPath) {
     }
   }, 200);
   projectBuildTimers.set(session.root, timer);
+}
+
+/** Writes made by the app must not depend on a best-effort OS watch event. */
+export function notifyLocalSourceWrite(root: string, filePath: string) {
+  const resolvedRoot = path.resolve(root);
+  const session = activeSessionsForRoot(resolvedRoot)[0];
+  if (session) scheduleSessionBuild(session, path.resolve(resolvedRoot, filePath));
 }
 
 function watchDirectory(session, dir, recursive) {
@@ -658,6 +722,41 @@ function refreshSessionWatchers(session, compiled) {
     if (isWithin(session.root, file)) continue;
     watchDirectory(session, path.dirname(file), false);
   }
+  // Shared workspace inputs are registered only after the first build. Native
+  // directory watchers can miss an edit during registration (notably on macOS).
+  // Reconcile only these known files; never poll the whole project/dependency tree.
+  const previous = session.sharedInputStats ?? new Map();
+  const tracked = new Map();
+  for (const file of compiled.dependencyFiles || []) {
+    if (isWithin(session.root, file) || !isWithin(compiled.workspaceRoot, file) || file.includes(`${path.sep}node_modules${path.sep}`)) continue;
+    if (previous.has(file)) tracked.set(file, previous.get(file));
+    else {
+      try { tracked.set(file, inputStatSignature(fs.statSync(file))); }
+      catch { tracked.set(file, null); }
+    }
+  }
+  session.sharedInputStats = tracked;
+  if (tracked.size && !session.sharedInputTimer) {
+    session.sharedInputTimer = setInterval(async () => {
+      if (!sessionIsActive(session) || session.sharedInputPolling) return;
+      session.sharedInputPolling = true;
+      try {
+        await Promise.all([...session.sharedInputStats.keys()].map(async file => {
+          const observed = session.sharedInputStats;
+          const previousSignature = observed.get(file);
+          const stat = await fs.promises.stat(file).catch(() => null);
+          if (!sessionIsActive(session) || session.sharedInputStats !== observed || observed.get(file) !== previousSignature) return;
+          const signature = inputStatSignature(stat);
+          if (signature !== session.sharedInputStats.get(file)) {
+            session.sharedInputStats.set(file, signature);
+            scheduleSessionBuild(session, file);
+          }
+        }));
+      } finally { session.sharedInputPolling = false; }
+    }, 500);
+    session.sharedInputTimer.unref?.();
+  }
+  if (!tracked.size && session.sharedInputTimer) { clearInterval(session.sharedInputTimer); session.sharedInputTimer = undefined; }
 }
 
 async function buildAndEmit(session, initial) {
@@ -701,6 +800,9 @@ async function buildAndEmit(session, initial) {
     const completedBuild = await sharedBuild;
     compiled = completedBuild.result;
     if ((projectInputRevisions.get(root) || 0) !== completedBuild.inputRevision) {
+      // An edit can arrive during a requested rebuild, before the watcher's
+      // debounce fires. Drain that revision before resolving the rebuild call.
+      session.pending = true;
       return false;
     }
   } catch (error) {
@@ -709,6 +811,7 @@ async function buildAndEmit(session, initial) {
       broadcast(sessionEvent(session, "modules:build_cancelled", {}, buildId));
       return false;
     }
+    session.buildError = String(error?.message || error);
     // End the stylesheet-loading phase before surfacing the actionable project
     // requirement message in the renderer.
     if (initial) {
@@ -739,12 +842,19 @@ async function buildAndEmit(session, initial) {
   refreshSessionWatchers(session, compiled);
   lastIndex.set(root, compiled.componentIndex);
   lastBuildIssues.set(root, [...compiled.buildFailures, ...(compiled.cssError ? [compiled.cssError] : [])]);
+  session.buildError = lastBuildIssues.get(root).join("\n") || null;
   if (compiled.complete) rememberSuccessfulBuild(root, compiled);
+  let moduleRefs;
+  try { moduleRefs = await publishLocalModules(root, compiled.modules); }
+  catch (error) {
+    broadcast(sessionEvent(session, "modules:build_failed", { error: String(error?.message || error) }, buildId));
+    return false;
+  }
 
   // Order matters: the module catalog must exist before the index that
   // references it is applied.
   broadcast(sessionEvent(session, initial ? "modules:ready" : "modules:updated", {
-    modules: compiled.modules,
+    modules: moduleRefs,
     replace: !initial,
   }, buildId));
   broadcast(sessionEvent(session, initial ? "components:ready" : "components:updated", {
@@ -781,7 +891,7 @@ async function restoreCachedBuild(session) {
   if (!sessionIsActive(session)) return true;
   const current = await getProjectBuildCache(session.root);
   if (!valid || current !== cached) {
-    await deleteProjectBuildCache(session.root, { disk: true });
+    if (!valid) await deleteProjectBuildCache(session.root, { disk: true });
     recordCompilerDiagnostic({
       projectId: session.root,
       runId: session.sessionId,
@@ -799,7 +909,8 @@ async function restoreCachedBuild(session) {
   lastBuildIssues.set(session.root, [...(compiled.buildFailures ?? []), ...(compiled.cssError ? [compiled.cssError] : [])]);
   rememberSuccessfulBuild(session.root, compiled);
   broadcast(sessionEvent(session, "project:status", { stage: "restoring", cacheSource: cached.source }, buildId));
-  broadcast(sessionEvent(session, "modules:ready", { modules: compiled.modules, cacheSource: cached.source }, buildId));
+  const moduleRefs = await publishLocalModules(session.root, compiled.modules);
+  broadcast(sessionEvent(session, "modules:ready", { modules: moduleRefs, cacheSource: cached.source }, buildId));
   broadcast(sessionEvent(session, "components:ready", { componentIndex: compiled.componentIndex, cacheSource: cached.source }, buildId));
   broadcast(sessionEvent(session, "css:ready", { cssUrl: compiled.cssUrl, error: compiled.cssError, cacheSource: cached.source }, buildId));
   session.hasPublishedSnapshot = true;
@@ -820,23 +931,26 @@ async function prepareSession(session) {
   if (sessionIsActive(session)) await runBuildQueue(session, true);
 }
 
-async function runBuildQueue(session, initial) {
+function runBuildQueue(session, initial) {
   if (!sessionIsActive(session)) return;
   if (session.running) {
     session.pending = true;
-    return;
+    return session.buildPromise;
   }
   session.running = true;
-  let nextInitial = initial;
-  try {
-    do {
-      session.pending = false;
-      const published = await buildAndEmit(session, nextInitial);
-      if (published) nextInitial = false;
-    } while (session.pending && sessionIsActive(session));
-  } finally {
-    session.running = false;
-  }
+  session.buildPromise = (async () => {
+    let nextInitial = initial;
+    try {
+      do {
+        session.pending = false;
+        const published = await buildAndEmit(session, nextInitial);
+        if (published) nextInitial = false;
+      } while (session.pending && sessionIsActive(session));
+    } finally {
+      session.running = false;
+    }
+  })();
+  return session.buildPromise;
 }
 
 export { compileProject, componentIndexFor, buildIssuesFor };
@@ -881,6 +995,7 @@ async function disconnectLocalBuilder({ root, sessionId }) {
     session.cancelled = true;
     session.buildId += 1;
     clearTimeout(session.timer);
+    clearInterval(session.sharedInputTimer);
     for (const watcher of session.watchers.values()) watcher.close();
     session.watchers.clear();
     sessions.delete(resolvedSessionId);
@@ -908,6 +1023,8 @@ async function rebuildLocalBuilder({ root, sessionId }) {
   await Promise.all(activeSessionsForRoot(resolvedRoot).map((activeSession) =>
     runBuildQueue(activeSession, !activeSession.hasPublishedSnapshot)
   ));
+  if (!sessionIsActive(session)) return { ok: false, error: "Project builder session closed during rebuild" };
+  if (session.buildError) return { ok: false, error: session.buildError };
   return { ok: true };
 }
 

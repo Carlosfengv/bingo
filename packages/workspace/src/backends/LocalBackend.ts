@@ -18,6 +18,7 @@ function createLocalBackend(projectId, options = {}) {
   const root = projectId;
   const componentFilePaths = new Map();
   const canvasRevisions = new Map();
+  const sourceHashes = new Map();
 
   /** Paths arrive either bare or prefixed with the project id. */
   const rel = (filePath) => {
@@ -29,11 +30,13 @@ function createLocalBackend(projectId, options = {}) {
   return {
     // ---------------------------------------------------------------- files
     loadFile: async (filePath) => {
-      const raw = await invoke("read-file", root, { rel: rel(filePath) });
-      if (raw == null) {
+      const target = rel(filePath);
+      const snapshot = await invoke("read-file-snapshot", root, { rel: target });
+      if (!snapshot) {
         return { success: false, error: `Failed to load ${filePath}: not found` };
       }
-      return { success: true, filePath: rel(filePath), raw };
+      sourceHashes.set(target, snapshot.hash);
+      return { success: true, filePath: target, raw: snapshot.content, hash: snapshot.hash };
     },
 
     saveFile: async (opts) => {
@@ -41,19 +44,37 @@ function createLocalBackend(projectId, options = {}) {
       if (!target || opts?.code == null) {
         return { success: false, error: "Missing filePath or code" };
       }
-      await invoke("write-file", root, { rel: target, content: opts.code });
+      const expectedHash = opts.expectedHash ?? sourceHashes.get(target);
+      const written = await invoke("write-file", root, { rel: target, content: opts.code,
+        ...(expectedHash ? { expectedHash } : { createOnly: true }) });
+      sourceHashes.set(target, written.hash);
       options.onFileChanged?.(target, opts.code);
       return { success: true, filePath: target, code: opts.code, instanceProps: opts.instanceProps };
     },
 
     readFileRaw: async (filePath) => {
-      const raw = await invoke("read-file", root, { rel: rel(filePath) });
-      if (raw == null) throw new Error(`Failed to read ${filePath}`);
-      return raw;
+      const target = rel(filePath);
+      const snapshot = await invoke("read-file-snapshot", root, { rel: target });
+      if (!snapshot) throw new Error(`Failed to read ${filePath}`);
+      sourceHashes.set(target, snapshot.hash);
+      return snapshot.content;
     },
 
-    writeFileRaw: async (filePath, content) => {
-      await invoke("write-file", root, { rel: rel(filePath), content });
+    readFileSnapshot: async (filePath) => {
+      const target = rel(filePath);
+      const snapshot = await invoke("read-file-snapshot", root, { rel: target });
+      if (!snapshot) throw new Error(`Failed to read ${filePath}`);
+      sourceHashes.set(target, snapshot.hash);
+      return snapshot;
+    },
+
+    writeFileRaw: async (filePath, content, openingHash) => {
+      const target = rel(filePath);
+      const expectedHash = openingHash === null ? null : openingHash ?? sourceHashes.get(target);
+      const written = await invoke("write-file", root, { rel: target, content,
+        ...(expectedHash ? { expectedHash } : { createOnly: true }) });
+      sourceHashes.set(target, written.hash);
+      return written;
     },
 
     listFiles: async (dir = "", pattern = "") => {
@@ -68,6 +89,10 @@ function createLocalBackend(projectId, options = {}) {
       const target = rel(filePath || componentFilePaths.get(componentName) || componentName);
       if (filePath) componentFilePaths.set(componentName, target);
       const versions = await invoke("file-versions", root, { rel: target });
+      if (!sourceHashes.has(target)) {
+        const snapshot = await invoke("read-file-snapshot", root, { rel: target });
+        sourceHashes.set(target, snapshot?.hash ?? null);
+      }
       return { success: true, versions: versions || [] };
     },
 
@@ -81,10 +106,18 @@ function createLocalBackend(projectId, options = {}) {
     },
 
     restoreFileVersion: async (componentName, versionFilename, filePath) => {
+      const target = rel(filePath || componentName);
+      if (!sourceHashes.has(target)) {
+        const snapshot = await invoke("read-file-snapshot", root, { rel: target });
+        sourceHashes.set(target, snapshot?.hash ?? null);
+      }
+      const expectedHash = sourceHashes.get(target);
       const result = await invoke("restore-file-version", root, {
-        rel: rel(filePath || componentName),
+        rel: target,
         versionId: versionFilename,
+        ...(expectedHash === null ? { createOnly: true } : { expectedHash }),
       });
+      if (result?.hash) sourceHashes.set(target, result.hash);
       return result?.success ? { success: true } : { success: false, error: result?.error };
     },
 

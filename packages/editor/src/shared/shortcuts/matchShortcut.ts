@@ -35,10 +35,15 @@ function isTypingTarget(e) {
   const role = target.getAttribute?.("role");
   return role === "textbox" || role === "combobox";
 }
+/** Native control activation/navigation must not also pan, rename, or nudge
+ * the selected canvas element. Includes descendants such as button icons. */
+function isInteractiveTarget(e) {
+  return isTypingTarget(e) || !!e.target?.closest?.('button, a[href], summary, [role="button"], [role="checkbox"], [role="switch"], [role="slider"], [role="menuitem"], [role="tab"]');
+}
 /** True when focus is inside the BottomBar / History CodeMirror host.
 *  Cmd+F should stay find-in-file there instead of jumping to layer search. */
 function isCodeEditorTarget(e) {
   return !!e.target?.closest?.(".bingo-code-editor");
 }
 
-export { isCodeEditorTarget, isTypingTarget, matchesShortcut };
+export { isCodeEditorTarget, isInteractiveTarget, isTypingTarget, matchesShortcut };

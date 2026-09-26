@@ -16,7 +16,7 @@ import { isInsertTool, useActiveTool } from "../../shared/contexts/ActiveToolCon
 import { useAssetResolver } from "../../shared/contexts/AssetContext";
 import { useUploadImage } from "../../shared/hooks/useUploadImage";
 import { LOCAL_SHORTCUTS } from "../../shared/shortcuts/catalog";
-import { isTypingTarget, matchesShortcut } from "../../shared/shortcuts/matchShortcut";
+import { isInteractiveTarget, isTypingTarget, matchesShortcut } from "../../shared/shortcuts/matchShortcut";
 import { publishHover, subscribeHover } from "../../shared/state/hoverChannel";
 import { createImageElement, getImageFromDropEvent, getPendingPanelDragElement, isCanvasInsertDrag, isCanvasInsertDragType, looksLikeHTML } from "../../shared/utils/clipboard";
 import { resolveDropTarget } from "../../shared/utils/dropPlan";
@@ -441,12 +441,18 @@ function CanvasRootTrees(props) {
     {getRootIds(store).map(rootId => {
       const element = getById(store, rootId);
       if (!element) return null;
+      const appEntryPath = props.componentIndex?.[element.componentName]?.path;
+      const appPreviewFrame = element.type === "component" &&
+        /(?:^|\/)App\.[jt]sx?$/.test(appEntryPath || "") &&
+        element.styles?.width == null && element.props?.style?.width == null;
       return <div key={rootId} data-canvas-root-id={rootId} className="absolute" style={{
-        top: element.canvasPosition?.y ?? 20,
-        left: element.canvasPosition?.x ?? 20,
+        position: "absolute",
+        top: element.canvasPosition?.y ?? (appPreviewFrame ? element.styles?.top ?? 20 : 20),
+        left: element.canvasPosition?.x ?? (appPreviewFrame ? element.styles?.left ?? 20 : 20),
+        ...(appPreviewFrame ? { width: 1280 } : {}),
         opacity: props.draggedIds.has(rootId) ? 0 : 1,
       }}><ElementErrorBoundary elementId={rootId} silent={rootId.startsWith("el-draw-")} resetKey={`${rootId}:${store.byId.size}`}>
-        {renderElement(rootId, store, renderOptions)}
+        {renderElement(rootId, store, appPreviewFrame ? { ...renderOptions, isFrameRoot: true } : renderOptions)}
       </ElementErrorBoundary></div>;
     })}
   </CanvasSelectionContext.Provider>;
@@ -1628,8 +1634,7 @@ function Canvas(t0) {
     t81 = () => {
       const handleKeyDown_0 = e_11 => {
         if (e_11.code === "Space") {
-          const target_1 = e_11.target;
-          if (target_1.tagName === "INPUT" || target_1.tagName === "TEXTAREA" || target_1.isContentEditable) return;
+          if (isInteractiveTarget(e_11)) return;
           e_11.preventDefault();
           setSpacePressed(true);
           isSpacePressedGlobal = true;
@@ -2031,6 +2036,7 @@ function Canvas(t0) {
   let t120;
   if ($[233] === Symbol.for("react.memo_cache_sentinel")) {
     t120 = {
+      position: "relative",
       minWidth: "4000px",
       minHeight: "4000px",
       width: "max-content",

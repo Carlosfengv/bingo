@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 const DESIGN_SCHEMA_VERSION = 1;
@@ -65,13 +66,14 @@ function readJson(file, missingCode = "DESIGN_MISSING") {
   }
 }
 
-function atomicWriteJson(paths, file, value) {
+function atomicWriteJson(paths, file, value, beforeCreate) {
   assertSafeDesignPath(paths, file);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
   const text = `${JSON.stringify(value, null, 2)}\n`;
   let current = null;
   try { current = fs.readFileSync(file, "utf8"); } catch {}
   if (current === text) return crypto.createHash("sha256").update(text).digest("hex");
+  if (current === null) beforeCreate?.(file, Buffer.from(text));
+  fs.mkdirSync(path.dirname(file), { recursive: true });
   const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${crypto.randomUUID()}.tmp`);
   let descriptor;
   try {
@@ -90,14 +92,45 @@ function atomicWriteJson(paths, file, value) {
   return crypto.createHash("sha256").update(text).digest("hex");
 }
 
+function removeDeadDesignLock(file) {
+  let original;
+  let stat;
+  try {
+    stat = fs.lstatSync(file);
+    if (!stat.isFile()) return false;
+    original = fs.readFileSync(file, "utf8");
+  } catch { return false; }
+  let owner;
+  try { owner = JSON.parse(original); } catch { return false; }
+  if (owner?.hostname !== os.hostname() || !Number.isInteger(owner.pid) || owner.pid <= 0 || !owner.token) return false;
+  try { process.kill(owner.pid, 0); return false; } catch (error) {
+    if (error?.code !== "ESRCH") return false;
+  }
+  try {
+    const current = fs.lstatSync(file);
+    if (current.dev !== stat.dev || current.ino !== stat.ino || fs.readFileSync(file, "utf8") !== original) return false;
+    fs.unlinkSync(file);
+    return true;
+  } catch { return false; }
+}
+
+function recoverDeadDesignWriteLock(root) {
+  const paths = pathsFor(root);
+  assertSafeDesignPath(paths, paths.lock);
+  return removeDeadDesignLock(paths.lock);
+}
+
 function withDesignWriteLock(paths, operation) {
   assertSafeDesignPath(paths, paths.lock);
   fs.mkdirSync(paths.designRoot, { recursive: true });
   const token = crypto.randomUUID();
   let descriptor;
   try {
-    descriptor = fs.openSync(paths.lock, "wx", 0o600);
-    fs.writeFileSync(descriptor, `${JSON.stringify({ token, pid: process.pid })}\n`, "utf8");
+    try { descriptor = fs.openSync(paths.lock, "wx", 0o600); } catch (error) {
+      if (error?.code !== "EEXIST" || !removeDeadDesignLock(paths.lock)) throw error;
+      descriptor = fs.openSync(paths.lock, "wx", 0o600);
+    }
+    fs.writeFileSync(descriptor, `${JSON.stringify({ token, pid: process.pid, hostname: os.hostname(), createdAt: Date.now() })}\n`, "utf8");
     fs.closeSync(descriptor);
     descriptor = undefined;
   } catch (error) {
@@ -279,7 +312,7 @@ function pageRecord(params, existing = {}) {
   };
 }
 
-function savePortablePage(root, params, expectedRevision) {
+function savePortablePage(root, params, expectedRevision, beforeWrite) {
   const paths = pathsFor(root);
   return withDesignWriteLock(paths, () => {
     const { value: manifest } = readManifest(root);
@@ -296,9 +329,17 @@ function savePortablePage(root, params, expectedRevision) {
     }
     const next = pageRecord(params, existing);
     delete next._revision;
+    if (present) {
+      const previous = pageRecord(existing, existing);
+      delete previous._revision;
+      if (JSON.stringify(previous) === JSON.stringify(next)) {
+        return { ...existing, changed: false };
+      }
+    }
+    beforeWrite?.(present ? existing : null);
     const revision = atomicWriteJson(paths, file, next);
     if (!present) atomicWriteJson(paths, paths.manifest, { ...manifest, pages: [...manifest.pages, { id: params.id }] });
-    return { ...next, sortOrder: present ? manifest.pages.findIndex(entry => entry.id === params.id) : manifest.pages.length, _revision: revision };
+    return { ...next, sortOrder: present ? manifest.pages.findIndex(entry => entry.id === params.id) : manifest.pages.length, _revision: revision, changed: true };
   });
 }
 
@@ -344,12 +385,12 @@ function createPortableDesign(root, pages = [], options = {}) {
       const written = writeAsset(paths, asset.filename, asset.bytes);
       if (asset.name && written !== asset.name) throw new ProjectDesignError("DESIGN_INVALID", "Portable asset hash does not match its prepared reference.");
     }
-    for (const page of normalized) atomicWriteJson(paths, portablePageFile(paths, page.id), page);
+    for (const page of normalized) atomicWriteJson(paths, portablePageFile(paths, page.id), page, options.beforeCreate);
     atomicWriteJson(paths, paths.manifest, {
       schemaVersion: DESIGN_SCHEMA_VERSION,
       documentId: UUID_RE.test(String(options.documentId || "")) ? options.documentId : crypto.randomUUID(),
       pages: normalized.map(page => ({ id: page.id })),
-    });
+    }, options.beforeCreate);
     return listPortablePages(root);
   });
 }
@@ -375,6 +416,7 @@ export {
   listPortablePages,
   portableDesignRevision,
   readPortablePage,
+  recoverDeadDesignWriteLock,
   reorderPortablePages,
   savePortableAsset,
   savePortablePage,

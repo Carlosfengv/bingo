@@ -1,4 +1,4 @@
-type ComponentInfo = { path?: string; props?: Record<string, { type?: string }> };
+type ComponentInfo = { path?: string; props?: Record<string, { type?: string; required?: boolean; default?: string | number | boolean | null }>; editing?: { rootStyle?: string } };
 export type ComponentCatalog = Record<string, ComponentInfo>;
 
 // Discovery hints only: matching a synonym does not establish API compatibility.

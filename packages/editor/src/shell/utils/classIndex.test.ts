@@ -31,6 +31,9 @@ test("CSS load invalidates pending classes, suggestions and resolved spacing tok
   const after = getClassIndex(doc);
   assert.notEqual(before, after);
   assert.equal(getClassIndex(doc), after);
+  doc.styleSheets.push({ cssRules: [] });
+  assert.equal(getClassIndex(doc), after, "unrelated transient stylesheets do not rebuild the project class index");
+  doc.styleSheets.pop();
   assert.deepEqual(duringNotification, [{ className: "gap-16", value: "64px" }]);
   assert.equal(getClassesForProperty(doc, "paddingTop", 1)[0].value, "48px");
   assert.deepEqual([...getCascadeBatch(["gap-16", "p-12"], after).byClass.keys()], ["gap-16", "p-12"]);

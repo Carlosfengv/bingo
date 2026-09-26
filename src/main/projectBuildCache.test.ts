@@ -56,7 +56,10 @@ test("persists a complete build and restores it after the memory cache is cleare
     assert.ok(restored);
     assert.equal(restored.source, "disk");
     assert.deepEqual(restored.snapshot.componentIndex, snapshot.componentIndex);
-    assert.equal(restored.snapshot.modules[0].codeUrl, snapshot.modules[0].codeUrl);
+    assert.match(restored.snapshot.modules[0].codeUrl, /^http:\/\/127\.0\.0\.1:/);
+    assert.equal(await (await fetch(restored.snapshot.modules[0].codeUrl)).text(), "export const Card = () => null;");
+    await clearProjectBuildCache({ disk: true });
+    assert.equal(await (await fetch(restored.snapshot.modules[0].codeUrl)).text(), "export const Card = () => null;");
     assert.equal(restored.snapshot.cssUrl, snapshot.cssUrl);
   } finally {
     await clearProjectBuildCache({ disk: true });

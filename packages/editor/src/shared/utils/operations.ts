@@ -13,6 +13,8 @@ import { applyOps } from "../../../../compiler/src/store/apply";
 import { ensureV2 } from "../../../../compiler/src/store/ensureV2";
 import { getById, getChildren$2, getIndex, getParentId, getRootIds } from "../../../../compiler/src/store/read";
 import { storeSubtreeToLegacyNested } from "../../../../compiler/src/store/legacy";
+import { componentEditableElement, nextComponentStyleRecords } from "../../../../compiler/src/store/componentEditing";
+import { preserveSavedSourceBinding } from "./componentSourceSave";
 
 /**
 * Apply a single editor operation to a flat Store.
@@ -48,10 +50,11 @@ function applyOperationToStore(store, op) {
         type: "set_styles",
         id: op.elementId,
         styles: op.newStyles,
+        ...(Object.prototype.hasOwnProperty.call(op, "newComponentEditing") ? { componentEditing: preserveSavedSourceBinding(getById(store, op.elementId), op.newComponentEditing) } : {}),
         scaleAnchorTransform: op.newScaleAnchorTransform,
         scalePivot: op.newScalePivot,
         canvasPosition: op.newCanvasPosition
-      }, ...(op.oldTheme !== undefined || op.newTheme !== undefined ? [{ type: "set_theme", id: op.elementId, theme: op.newTheme }] : [])]);
+      }, ...(Object.prototype.hasOwnProperty.call(op, "newLegacyProps") ? [{ type: "set_props", id: op.elementId, props: op.newLegacyProps }] : []), ...(op.oldTheme !== undefined || op.newTheme !== undefined ? [{ type: "set_theme", id: op.elementId, theme: op.newTheme }] : [])]);
     case "set_props":
       return applyOps(store, [{
         type: "set_props",
@@ -182,6 +185,8 @@ function invertOperation(op) {
         elementId: op.elementId,
         oldStyles: op.newStyles,
         newStyles: op.oldStyles || {},
+        ...(Object.prototype.hasOwnProperty.call(op, "newLegacyProps") ? { oldLegacyProps: op.newLegacyProps, newLegacyProps: op.oldLegacyProps } : {}),
+        ...(Object.prototype.hasOwnProperty.call(op, "newComponentEditing") ? { oldComponentEditing: op.newComponentEditing, newComponentEditing: op.oldComponentEditing ?? null } : {}),
         oldTheme: op.newTheme,
         newTheme: op.oldTheme,
         oldScaleAnchorTransform: op.newScaleAnchorTransform,
@@ -231,6 +236,15 @@ function invertOperation(op) {
 */
 function invertOperations(ops) {
   return ops.map(invertOperation).reverse();
+}
+
+/** Preserve the first undo state and the final values of a continuous style edit. */
+export function mergeStyleOperations(previous, next) {
+  const merged = { ...previous, ...next, oldStyles: previous.oldStyles };
+  for (const key of ["oldTheme", "oldComponentEditing", "oldLegacyProps", "oldScaleAnchorTransform", "oldScalePivot", "oldCanvasPosition"]) {
+    if (Object.hasOwn(previous, key)) merged[key] = previous[key];
+  }
+  return merged;
 }
 /**
 * Create an insert operation for adding an element.
@@ -295,9 +309,10 @@ function createSetPositionOperation(store, elementId, newPosition) {
 /**
 * Create a set_styles operation.
 */
-function createSetStylesOperation(store, elementId, newStyles, scaleAnchorTransform, scalePivot) {
+function createSetStylesOperation(store, elementId, newStyles, scaleAnchorTransform, scalePivot, componentInfo, normalizeLegacyStyles = false) {
   const element = getById(store, elementId);
   if (!element) return null;
+  const editingElement = normalizeLegacyStyles ? componentEditableElement(element) : element;
   const nextScales = getTransformScales(newStyles.transform);
   const oldScales = getTransformScales(element.styles?.transform);
   const removesScale = scalePivot === void 0 && (element.scalePivot || element.scaleAnchorTransform || Math.abs(oldScales.x - 1) > 1e-6 || Math.abs(oldScales.y - 1) > 1e-6) && newStyles.transform !== element.styles?.transform && Math.abs(nextScales.x - 1) < 1e-6 && Math.abs(nextScales.y - 1) < 1e-6;
@@ -330,6 +345,8 @@ function createSetStylesOperation(store, elementId, newStyles, scaleAnchorTransf
       newTheme: { ...element.theme, bindings: element.theme.bindings.filter(binding => binding.target !== "style" || newStyles[binding.property] === element.styles?.[binding.property]) }
     } : {}),
     newStyles,
+    ...(editingElement !== element ? { oldLegacyProps: element.props, newLegacyProps: editingElement.props } : {}),
+    ...(element.type === "component" ? { oldComponentEditing: element.componentEditing ?? null, newComponentEditing: nextComponentStyleRecords(editingElement, newStyles, componentInfo) } : {}),
     ...(canvasPosition ? {
       oldCanvasPosition: element.canvasPosition ?? null,
       newCanvasPosition: canvasPosition

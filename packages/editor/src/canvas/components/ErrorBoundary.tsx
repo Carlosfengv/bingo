@@ -66,6 +66,12 @@ var ElementErrorBoundary = class extends import_react.Component {
     };
     return null;
   }
+  componentDidMount() {
+    if (!this.state.hasError) this.props.onSuccess?.();
+  }
+  componentDidUpdate() {
+    if (!this.state.hasError) this.props.onSuccess?.();
+  }
   componentDidCatch(error, errorInfo) {
     let serializedProps = "[unserializable]";
     try {

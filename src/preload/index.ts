@@ -9,6 +9,8 @@
 import * as electron from "electron";
 
 const INVOKE_CHANNELS = new Set([
+  "component-instance:save",
+  "component-style:adapt",
   "project-tabs:activity-get",
   "bingo:open-presentation",
   "project-tabs:get", "project-tabs:open", "project-tabs:activate", "project-tabs:reload", "project-tabs:home", "project-tabs:close", "project-tabs:list",
