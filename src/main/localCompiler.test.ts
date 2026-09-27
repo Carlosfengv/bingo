@@ -14,6 +14,7 @@ import {
   rebuildLocalBuilder,
   notifyLocalSourceWrite,
   subscribeLocalBuilderEvents,
+  waitForProjectBuildCache,
 } from "./localCompiler";
 import { clearProjectBuildCache, configureProjectBuildCache } from "./projectBuildCache";
 
@@ -318,6 +319,7 @@ test("restores a verified build from disk after the in-memory cache is cleared",
   try {
     await connectLocalBuilder({ root, sessionId: "disk-first-open" });
     await waitForEvent(events, (event) => event.sessionId === "disk-first-open" && event.type === "components:ready");
+    await waitForProjectBuildCache(root);
     await disconnectLocalBuilder({ root, sessionId: "disk-first-open" });
     await clearProjectBuildCache();
 
@@ -343,6 +345,137 @@ test("restores a verified build from disk after the in-memory cache is cleared",
     await disconnectLocalBuilder({ root, sessionId: "disk-first-open" });
     await disconnectLocalBuilder({ root, sessionId: "disk-second-open" });
     await disconnectLocalBuilder({ root, sessionId: "disk-third-open" });
+    await clearProjectBuildCache({ disk: true });
+    configureProjectBuildCache(null);
+    await fs.rm(workspace, { recursive: true, force: true });
+    await fs.rm(userDataRoot, { recursive: true, force: true });
+  }
+});
+
+test("restores usable modules from a partial disk build and retries only failed entries", async () => {
+  const userDataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bingo-partial-cache-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bingo-partial-project-"));
+  const events = [];
+  const unsubscribe = subscribeLocalBuilderEvents(event => events.push(event));
+  configureProjectBuildCache(userDataRoot);
+  await clearProjectBuildCache({ disk: true });
+  try {
+    await fs.writeFile(path.join(root, "package.json"), JSON.stringify({ name: "partial" }));
+    await fs.mkdir(path.join(root, "node_modules"));
+    await fs.writeFile(path.join(root, "Card.tsx"), "export function Card() { return <div>card</div>; }");
+    await fs.writeFile(path.join(root, "Badge.tsx"), "import { label } from 'missing-label'; export function Badge() { return <div>{label}</div>; }");
+    await connectLocalBuilder({ root, sessionId: "partial-first" });
+    const first = await waitForEvent(events, event => event.sessionId === "partial-first" && event.type === "components:ready");
+    assert.ok(first.payload.componentIndex.Card);
+    assert.equal(first.payload.componentIndex.Badge, undefined);
+    await waitForProjectBuildCache(root);
+    await disconnectLocalBuilder({ root, sessionId: "partial-first" });
+    await clearProjectBuildCache();
+
+    const reopenedAt = events.length;
+    await connectLocalBuilder({ root, sessionId: "partial-second" });
+    const cached = await waitForEvent(events, event => event.sessionId === "partial-second" && event.type === "components:ready");
+    assert.equal(cached.payload.cacheSource, "disk");
+    assert.ok(cached.payload.componentIndex.Card);
+    await waitForEvent(events, event => event.sessionId === "partial-second" && event.type === "components:updated");
+    const progress = events.slice(reopenedAt).find(event => event.sessionId === "partial-second" && event.type === "modules:build_progress");
+    assert.equal(progress?.payload.total, 1);
+    await waitForProjectBuildCache(root);
+    await disconnectLocalBuilder({ root, sessionId: "partial-second" });
+    await clearProjectBuildCache();
+
+    const packageRoot = path.join(root, "node_modules/missing-label");
+    await fs.mkdir(packageRoot, { recursive: true });
+    await fs.writeFile(path.join(packageRoot, "package.json"), JSON.stringify({ name: "missing-label", main: "index.js" }));
+    await fs.writeFile(path.join(packageRoot, "index.js"), "export const label = 'ready';");
+    const installedAt = events.length;
+    await connectLocalBuilder({ root, sessionId: "partial-installed" });
+    const rebuilt = await waitForEvent(events, event => event.sessionId === "partial-installed" && event.type === "components:ready" && event.payload.componentIndex.Badge);
+    assert.ok(rebuilt.payload.componentIndex.Card);
+    const installedProgress = events.slice(installedAt).find(event => event.sessionId === "partial-installed" && event.type === "modules:build_progress");
+    assert.equal(installedProgress?.payload.total, 2);
+  } finally {
+    unsubscribe();
+    await disconnectLocalBuilder({ root, sessionId: "partial-first" });
+    await disconnectLocalBuilder({ root, sessionId: "partial-second" });
+    await disconnectLocalBuilder({ root, sessionId: "partial-installed" });
+    await waitForProjectBuildCache(root);
+    await clearProjectBuildCache({ disk: true });
+    configureProjectBuildCache(null);
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(userDataRoot, { recursive: true, force: true });
+  }
+});
+
+test("a changed shared dependency rebuilds only its disk-cached importers", async () => {
+  const userDataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bingo-disk-incremental-"));
+  const workspace = await createWorkspace();
+  const root = path.join(workspace, "apps/web");
+  const sharedFile = path.join(workspace, "packages/shared/src/Thing.tsx");
+  const events = [];
+  const unsubscribe = subscribeLocalBuilderEvents(event => events.push(event));
+  configureProjectBuildCache(userDataRoot);
+  await clearProjectBuildCache({ disk: true });
+  try {
+    await fs.writeFile(path.join(root, "src/Badge.tsx"), "export function Badge() { return <span>badge</span>; }");
+    await connectLocalBuilder({ root, sessionId: "incremental-first" });
+    const first = await waitForEvent(events, event => event.sessionId === "incremental-first" && event.type === "modules:ready");
+    await waitForProjectBuildCache(root);
+    await disconnectLocalBuilder({ root, sessionId: "incremental-first" });
+    await clearProjectBuildCache();
+
+    await fs.writeFile(sharedFile, "import './shared.css'; export function Thing() { return <strong className='shared'>changed</strong>; }");
+    const cursor = events.length;
+    await connectLocalBuilder({ root, sessionId: "incremental-second" });
+    const ready = await waitForEvent(events, event => event.sessionId === "incremental-second" && event.type === "modules:ready");
+    const progress = events.slice(cursor).find(event => event.sessionId === "incremental-second" && event.type === "modules:build_progress");
+    assert.equal(progress?.payload.incremental, true);
+    assert.equal(progress?.payload.total, 1);
+    assert.equal(ready.payload.cacheSource, undefined);
+    const before = Object.fromEntries(first.payload.modules.map(module => [module.path, module.codeUrl]));
+    const after = Object.fromEntries(ready.payload.modules.map(module => [module.path, module.codeUrl]));
+    assert.equal(after["src/Badge.tsx"], before["src/Badge.tsx"]);
+    assert.notEqual(after["src/Card.tsx"], before["src/Card.tsx"]);
+  } finally {
+    unsubscribe();
+    await disconnectLocalBuilder({ root, sessionId: "incremental-first" });
+    await disconnectLocalBuilder({ root, sessionId: "incremental-second" });
+    await waitForProjectBuildCache(root);
+    await clearProjectBuildCache({ disk: true });
+    configureProjectBuildCache(null);
+    await fs.rm(workspace, { recursive: true, force: true });
+    await fs.rm(userDataRoot, { recursive: true, force: true });
+  }
+});
+
+test("a changed project package manifest invalidates every disk-cached entry", async () => {
+  const userDataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bingo-disk-config-"));
+  const workspace = await createWorkspace();
+  const root = path.join(workspace, "apps/web");
+  const events = [];
+  const unsubscribe = subscribeLocalBuilderEvents(event => events.push(event));
+  configureProjectBuildCache(userDataRoot);
+  await clearProjectBuildCache({ disk: true });
+  try {
+    await fs.writeFile(path.join(root, "src/Badge.tsx"), "export function Badge() { return <span>badge</span>; }");
+    await connectLocalBuilder({ root, sessionId: "config-first" });
+    await waitForEvent(events, event => event.sessionId === "config-first" && event.type === "components:ready");
+    await waitForProjectBuildCache(root);
+    await disconnectLocalBuilder({ root, sessionId: "config-first" });
+    await clearProjectBuildCache();
+
+    await fs.writeFile(path.join(root, "package.json"), JSON.stringify({ name: "web", dependencies: { react: "^19.0.0" }, description: "changed" }));
+    const cursor = events.length;
+    await connectLocalBuilder({ root, sessionId: "config-second" });
+    await waitForEvent(events, event => event.sessionId === "config-second" && event.type === "components:ready");
+    const progress = events.slice(cursor).find(event => event.sessionId === "config-second" && event.type === "modules:build_progress");
+    assert.equal(progress?.payload.incremental, false);
+    assert.equal(progress?.payload.total, 2);
+  } finally {
+    unsubscribe();
+    await disconnectLocalBuilder({ root, sessionId: "config-first" });
+    await disconnectLocalBuilder({ root, sessionId: "config-second" });
+    await waitForProjectBuildCache(root);
     await clearProjectBuildCache({ disk: true });
     configureProjectBuildCache(null);
     await fs.rm(workspace, { recursive: true, force: true });

@@ -76,12 +76,9 @@ test("rejects a disk snapshot when a cached module is corrupted", async () => {
   try {
     await setProjectBuildCache(projectRoot, fixtureSnapshot(), fixtureFingerprint());
     await clearProjectBuildCache();
-    const modulesDirectory = path.join(
-      userDataRoot,
-      "build-cache/v1",
-      projectKey(projectRoot),
-      "snapshots/fixture-snapshot/modules",
-    );
+    const projectDirectory = path.join(userDataRoot, "build-cache/v1", projectKey(projectRoot));
+    const current = JSON.parse(await fs.readFile(path.join(projectDirectory, "current.json"), "utf8"));
+    const modulesDirectory = path.join(projectDirectory, "snapshots", current.snapshotId, "modules");
     const [moduleFile] = await fs.readdir(modulesDirectory);
     await fs.writeFile(path.join(modulesDirectory, moduleFile), "corrupt");
 

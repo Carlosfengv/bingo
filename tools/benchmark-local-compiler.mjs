@@ -5,11 +5,13 @@ import { performance } from "node:perf_hooks";
 
 import compilerModule from "../src/main/localCompiler.ts";
 import cacheModule from "../src/main/projectBuildCache.ts";
+import moduleServer from "../src/main/localModuleServer.ts";
 
 const {
   connectLocalBuilder,
   disconnectLocalBuilder,
   subscribeLocalBuilderEvents,
+  waitForProjectBuildCache,
 } = compilerModule;
 const {
   clearProjectBuildCache,
@@ -46,6 +48,7 @@ async function measureOpen(sessionId) {
     durationMs: Math.round(durationMs * 10) / 10,
     cacheSource: ready.payload.cacheSource || null,
     compiled: sessionEvents.some((event) => event.type === "modules:build_started"),
+    rebuiltEntries: sessionEvents.find((event) => event.type === "modules:build_progress")?.payload?.total ?? 0,
   };
 }
 
@@ -60,9 +63,14 @@ try {
   await clearProjectBuildCache({ disk: true });
 
   const cold = await measureOpen("benchmark-cold");
+  await waitForProjectBuildCache(projectRoot);
   const memory = await measureOpen("benchmark-memory");
   await clearProjectBuildCache();
   const disk = await measureOpen("benchmark-disk");
+  await fs.writeFile(path.join(sourceRoot, "Component0001.tsx"), "export function Component0001() { return <strong>changed while closed</strong>; }");
+  await clearProjectBuildCache();
+  const changedDisk = await measureOpen("benchmark-changed-disk");
+  await waitForProjectBuildCache(projectRoot);
 
   const incrementalOpenCursor = events.length;
   await connectLocalBuilder({ root: projectRoot, sessionId: "benchmark-incremental" });
@@ -78,11 +86,13 @@ try {
     entries: incrementalProgress?.payload?.total ?? null,
   };
   await disconnectLocalBuilder({ root: projectRoot, sessionId: "benchmark-incremental" });
+  await waitForProjectBuildCache(projectRoot);
 
-  process.stdout.write(`${JSON.stringify({ sourceCount, cold, memory, disk, incremental }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ sourceCount, cold, memory, disk, changedDisk, incremental }, null, 2)}\n`);
 } finally {
   unsubscribe();
   await clearProjectBuildCache({ disk: true });
   configureProjectBuildCache(null);
+  moduleServer.stopLocalModuleServer();
   await fs.rm(benchmarkRoot, { recursive: true, force: true });
 }

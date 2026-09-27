@@ -31,7 +31,7 @@ import {
 } from "./projectBuildCache";
 import {
   captureProjectBuildFingerprint,
-  validateProjectBuildFingerprint,
+  inspectProjectBuildFingerprint,
 } from "./projectBuildFingerprint";
 import { projectForWebContents, broadcastToEditors } from "./windowManager";
 import { publishLocalModules, storeCompiledModule } from "./localModuleServer";
@@ -116,10 +116,16 @@ const projectBuildPromises = new Map();
 const projectInputRevisions = new Map();
 /** Changed absolute paths accumulated while an active project is watched. */
 const projectDirtyPaths = new Map();
-/** Recent complete snapshots provide dependency graphs for incremental rebuilds. */
+/** Recent snapshots provide dependency graphs and reusable successful entries. */
 const lastSuccessfulBuilds = new Map();
 /** One debounce timer per project prevents duplicate rebuilds from many sessions. */
 const projectBuildTimers = new Map();
+/** Disk writes run after publication and stay ordered per project. */
+const projectCacheWrites = new Map();
+/** A newly compiled in-memory snapshot can be reused before its disk copy finishes. */
+const projectCacheCaptures = new Map();
+/** Share cache validation and invalidation across simultaneous project tabs. */
+const projectCacheInspections = new Map();
 
 /**
  * The most recent component index per project.
@@ -382,6 +388,7 @@ function buildInputPath(inputPath, workspaceRoot) {
  * that module.
  */
 async function compileProject(root, controls = {}) {
+  const scanStartedAt = Date.now();
   const allFiles = validateProjectRoot(root).sort();
   const canonicalRoot = fs.realpathSync(root);
   const workspaceRoot = findWorkspaceRoot(root);
@@ -391,7 +398,7 @@ async function compileProject(root, controls = {}) {
     return buildInputPath(file, workspaceRoot) || path.resolve(file);
   }))];
   const currentSourcePaths = allFiles.map((file) => toRel(root, file));
-  const previousSourcePaths = (previous?.modules || []).map((module) => module.path).sort();
+  const previousSourcePaths = (previous?.sourcePaths || (previous?.modules || []).map((module) => module.path)).slice().sort();
   const sourceSetUnchanged = currentSourcePaths.length === previousSourcePaths.length &&
     currentSourcePaths.every((file, index) => file === previousSourcePaths[index]);
   const previousInputs = new Set(Object.values(previous?.entryInputs || {}).flat().map((file) => path.resolve(file)));
@@ -404,14 +411,15 @@ async function compileProject(root, controls = {}) {
     return !previousInputs.has(file) && !previousCss.has(file);
   });
   const incremental = Boolean(
-    previous?.complete &&
+    previous &&
     previous.entryInputs &&
-    changedPaths.length > 0 &&
+    (changedPaths.length > 0 || previous.failedEntries?.length > 0 || previous.cssError) &&
     sourceSetUnchanged &&
     !structuralChange
   );
   const affectedPaths = new Set();
   if (incremental) {
+    for (const failedEntry of previous.failedEntries || []) affectedPaths.add(failedEntry);
     for (const [entryPath, inputs] of Object.entries(previous.entryInputs)) {
       const resolvedInputs = new Set((inputs || []).map((file) => path.resolve(file)));
       if (changedPaths.some((file) => resolvedInputs.has(file))) affectedPaths.add(entryPath);
@@ -435,9 +443,11 @@ async function compileProject(root, controls = {}) {
     ? Object.fromEntries(Object.entries(previous.entryInputs || {}).filter(([entryPath]) => !affectedPaths.has(entryPath)))
     : {};
   const buildFailures = [];
+  const failedEntries = [];
   const aliasPlugin = tsconfigAliasPlugin(root, workspaceRoot);
   const dependencyFiles = new Set(allFiles.map((file) => path.resolve(file)));
   const buildInputFiles = new Set(allFiles.map((file) => path.resolve(file)));
+  const bundleStartedAt = Date.now();
   const assertActive = () => {
     if (controls.isCancelled?.()) {
       const error = new Error("Build cancelled");
@@ -508,13 +518,15 @@ async function compileProject(root, controls = {}) {
       }
     }
   };
-  const concurrency = Math.min(2, files.length);
+  const concurrency = Math.min(4, files.length);
   await Promise.all(Array.from({ length: concurrency }, () => compileNext()));
+  const bundleFinishedAt = Date.now();
 
   for (const entry of results) {
     if (!entry) continue;
     if (entry.failure) {
       buildFailures.push(entry.failure);
+      failedEntries.push(entry.rel);
       continue;
     }
     const { rel, props, inputsForEntry, codeUrl, exportNames } = entry;
@@ -535,7 +547,9 @@ async function compileProject(root, controls = {}) {
     }
   }
 
-  for (const input of Object.values(entryInputs).flat()) {
+  const distinctInputs = new Set();
+  for (const inputs of Object.values(entryInputs)) for (const input of inputs) distinctInputs.add(input);
+  for (const input of distinctInputs) {
     buildInputFiles.add(input);
     const resolved = dependencyPath(input, workspaceRoot);
     if (resolved) dependencyFiles.add(resolved);
@@ -551,12 +565,14 @@ async function compileProject(root, controls = {}) {
   }
 
   // Follow actual stylesheet entries and compile their imports before injection.
+  const mergeFinishedAt = Date.now();
   const cssFiles = new Set(collect(root, CSS_EXT).map((file) => path.resolve(file)));
   for (const dependency of dependencyFiles) {
     if (CSS_EXT.some((extension) => dependency.endsWith(extension))) cssFiles.add(dependency);
   }
   let css = "";
   let cssError = null;
+  const styleStartedAt = Date.now();
   try {
     const compiledStyles = await compileProjectStyles({ root, workspaceRoot, sourceFiles: allFiles, cssFiles: [...cssFiles] });
     css = compiledStyles.css;
@@ -569,6 +585,7 @@ async function compileProject(root, controls = {}) {
     cssError = String(error?.errors?.[0]?.text || error?.message || error);
   }
   const cssUrl = css ? dataUrl(css, "text/css") : null;
+  const finishedAt = Date.now();
 
   return {
     modules,
@@ -579,11 +596,19 @@ async function compileProject(root, controls = {}) {
     buildInputFiles: [...buildInputFiles],
     cssFiles: [...cssFiles],
     entryInputs,
+    sourcePaths: currentSourcePaths,
+    failedEntries,
     workspaceRoot,
     complete: buildFailures.length === 0 && !cssError,
     buildFailures,
     incremental,
     rebuiltEntries: files.map((file) => toRel(root, file)),
+    stageTimings: {
+      scanMs: bundleStartedAt - scanStartedAt,
+      bundleMs: bundleFinishedAt - bundleStartedAt,
+      mergeMs: mergeFinishedAt - bundleFinishedAt,
+      stylesMs: finishedAt - styleStartedAt,
+    },
   };
 }
 
@@ -639,7 +664,7 @@ function activeSessionsForRoot(root) {
   return [...sessions.values()].filter((session) => session.root === root && sessionIsActive(session));
 }
 
-function rememberSuccessfulBuild(root, compiled) {
+function rememberBuild(root, compiled) {
   lastSuccessfulBuilds.delete(root);
   lastSuccessfulBuilds.set(root, compiled);
   while (lastSuccessfulBuilds.size > 3) {
@@ -767,6 +792,7 @@ async function buildAndEmit(session, initial) {
   recordCompilerDiagnostic({ projectId: root, runId: session.sessionId, operationId, source: "compiler", eventName: "build.started", payload: { buildId, initial } });
   broadcast(sessionEvent(session, "modules:build_started", { initial }, buildId));
   let compiled;
+  let compiledInputRevision;
   try {
     let sharedBuild = projectBuildPromises.get(root);
     if (!sharedBuild) {
@@ -784,13 +810,6 @@ async function buildAndEmit(session, initial) {
             }
           },
         });
-        if (result.complete && (projectInputRevisions.get(root) || 0) === inputRevision) {
-          const fingerprint = await captureProjectBuildFingerprint(root, result);
-          if ((projectInputRevisions.get(root) || 0) === inputRevision) {
-            await setProjectBuildCache(root, result, fingerprint);
-            rememberSuccessfulBuild(root, result);
-          }
-        }
         return { result, inputRevision };
       })().finally(() => {
         if (projectBuildPromises.get(root) === sharedBuild) projectBuildPromises.delete(root);
@@ -799,6 +818,7 @@ async function buildAndEmit(session, initial) {
     }
     const completedBuild = await sharedBuild;
     compiled = completedBuild.result;
+    compiledInputRevision = completedBuild.inputRevision;
     if ((projectInputRevisions.get(root) || 0) !== completedBuild.inputRevision) {
       // An edit can arrive during a requested rebuild, before the watcher's
       // debounce fires. Drain that revision before resolving the rebuild call.
@@ -843,7 +863,7 @@ async function buildAndEmit(session, initial) {
   lastIndex.set(root, compiled.componentIndex);
   lastBuildIssues.set(root, [...compiled.buildFailures, ...(compiled.cssError ? [compiled.cssError] : [])]);
   session.buildError = lastBuildIssues.get(root).join("\n") || null;
-  if (compiled.complete) rememberSuccessfulBuild(root, compiled);
+  rememberBuild(root, compiled);
   let moduleRefs;
   try { moduleRefs = await publishLocalModules(root, compiled.modules); }
   catch (error) {
@@ -865,6 +885,28 @@ async function buildAndEmit(session, initial) {
   // identical stylesheet URLs.
   broadcast(sessionEvent(session, "css:ready", { cssUrl: compiled.cssUrl, error: compiled.cssError }, buildId));
   session.hasPublishedSnapshot = true;
+  if ((projectInputRevisions.get(root) || 0) === compiledInputRevision) {
+    // The editor can use the compiled modules immediately. Fingerprinting and
+    // copying them into the persistent cache should not hold the loading UI.
+    const previousWrite = projectCacheWrites.get(root);
+    const cacheCapture = (async () => {
+      await previousWrite?.catch(() => {});
+      if ((projectInputRevisions.get(root) || 0) !== compiledInputRevision) return;
+      const fingerprint = await captureProjectBuildFingerprint(root, compiled);
+      if ((projectInputRevisions.get(root) || 0) === compiledInputRevision) {
+        // setProjectBuildCache remembers the snapshot synchronously before its
+        // disk work starts. Keep the nested promise so capture can settle now.
+        return { persist: setProjectBuildCache(root, compiled, fingerprint) };
+      }
+    })();
+    projectCacheCaptures.set(root, cacheCapture);
+    const clearCapture = () => { if (projectCacheCaptures.get(root) === cacheCapture) projectCacheCaptures.delete(root); };
+    void cacheCapture.then(clearCapture, clearCapture);
+    const cacheWrite = cacheCapture.then((captured) => captured?.persist);
+    projectCacheWrites.set(root, cacheWrite);
+    void cacheWrite.catch(error => console.warn(`[localCompiler] Could not cache project build: ${error?.message || error}`))
+      .finally(() => { if (projectCacheWrites.get(root) === cacheWrite) projectCacheWrites.delete(root); });
+  }
   recordCompilerDiagnostic({
     projectId: root,
     runId: session.sessionId,
@@ -878,36 +920,81 @@ async function buildAndEmit(session, initial) {
       moduleCount: compiled.modules.length,
       incremental: compiled.incremental === true,
       rebuiltEntryCount: compiled.rebuiltEntries?.length ?? compiled.modules.length,
+      stageTimings: compiled.stageTimings,
     },
   });
   return true;
 }
 
+async function inspectCachedBuild(root) {
+  if (projectBuildPromises.has(root)) return { kind: "building" };
+  let pending = projectCacheInspections.get(root);
+  if (!pending) {
+    pending = (async () => {
+      const cached = await getProjectBuildCache(root);
+      if (!cached) return { kind: "missing" };
+      const inputRevision = projectInputRevisions.get(root) || 0;
+      const startedAt = Date.now();
+      const inspection = await inspectProjectBuildFingerprint(root, cached.fingerprint)
+        .catch(() => ({ valid: false, incremental: false, changedPaths: ["*"], reason: "validation_failed" }));
+      if ((projectInputRevisions.get(root) || 0) !== inputRevision) {
+        inspection.valid = false;
+        inspection.incremental = false;
+        inspection.changedPaths = ["*"];
+        inspection.reason = "changed_during_validation";
+      }
+      if (inspection.valid && await getProjectBuildCache(root) === cached) {
+        return { kind: "valid", cached, durationMs: Date.now() - startedAt };
+      }
+      await deleteProjectBuildCache(root);
+      if (inspection.incremental && cached.snapshot?.entryInputs) {
+        rememberBuild(root, cached.snapshot);
+        let dirty = projectDirtyPaths.get(root);
+        if (!dirty) {
+          dirty = new Set();
+          projectDirtyPaths.set(root, dirty);
+        }
+        for (const file of inspection.changedPaths) dirty.add(file);
+      } else {
+        lastSuccessfulBuilds.delete(root);
+        projectDirtyPaths.set(root, new Set(["*"]));
+      }
+      return { kind: "rebuild", reason: inspection.reason, changedCount: inspection.changedPaths.length, durationMs: Date.now() - startedAt };
+    })().finally(() => {
+      if (projectCacheInspections.get(root) === pending) projectCacheInspections.delete(root);
+    });
+    projectCacheInspections.set(root, pending);
+  }
+  return pending;
+}
+
 async function restoreCachedBuild(session) {
-  const cached = await getProjectBuildCache(session.root);
-  if (!cached) return false;
-  const startedAt = Date.now();
-  const valid = await validateProjectBuildFingerprint(session.root, cached.fingerprint).catch(() => false);
-  if (!sessionIsActive(session)) return true;
-  const current = await getProjectBuildCache(session.root);
-  if (!valid || current !== cached) {
-    if (!valid) await deleteProjectBuildCache(session.root, { disk: true });
+  // A just-finished build may still be fingerprinting after its modules were
+  // published. Reuse that work instead of racing into another full compile.
+  await projectCacheCaptures.get(session.root)?.catch(() => {});
+  const inspected = await inspectCachedBuild(session.root);
+  if (!sessionIsActive(session)) return "cancelled";
+  if (inspected.kind === "rebuild") {
     recordCompilerDiagnostic({
       projectId: session.root,
       runId: session.sessionId,
       source: "compiler",
       eventName: "cache.miss",
-      durationMs: Date.now() - startedAt,
-      payload: { reason: valid ? "invalidated_during_validation" : "inputs_changed" },
+      durationMs: inspected.durationMs,
+      payload: { reason: inspected.reason, changedCount: inspected.changedCount },
     });
-    return false;
+    return "rebuild";
   }
+  if (inspected.kind === "building") return "rebuild";
+  if (inspected.kind !== "valid") return "missing";
+  const cached = inspected.cached;
+  const startedAt = Date.now();
   const compiled = cached.snapshot;
   const buildId = ++session.buildId;
   refreshSessionWatchers(session, compiled);
   lastIndex.set(session.root, compiled.componentIndex);
   lastBuildIssues.set(session.root, [...(compiled.buildFailures ?? []), ...(compiled.cssError ? [compiled.cssError] : [])]);
-  rememberSuccessfulBuild(session.root, compiled);
+  rememberBuild(session.root, compiled);
   broadcast(sessionEvent(session, "project:status", { stage: "restoring", cacheSource: cached.source }, buildId));
   const moduleRefs = await publishLocalModules(session.root, compiled.modules);
   broadcast(sessionEvent(session, "modules:ready", { modules: moduleRefs, cacheSource: cached.source }, buildId));
@@ -922,12 +1009,19 @@ async function restoreCachedBuild(session) {
     durationMs: Date.now() - startedAt,
     payload: { source: cached.source, moduleCount: compiled.modules.length },
   });
-  return true;
+  return compiled.complete ? "complete" : "partial";
 }
 
 async function prepareSession(session) {
   broadcast(sessionEvent(session, "project:status", { stage: "checking" }));
-  if (await restoreCachedBuild(session)) return;
+  const restored = await restoreCachedBuild(session);
+  if (restored === "complete" || restored === "cancelled") return;
+  if (restored === "partial") {
+    // Failed entries and stylesheet errors can recover when dependencies are
+    // installed. Retry them after the usable snapshot has reached the editor.
+    if (sessionIsActive(session)) void runBuildQueue(session, false);
+    return;
+  }
   if (sessionIsActive(session)) await runBuildQueue(session, true);
 }
 
@@ -954,6 +1048,9 @@ function runBuildQueue(session, initial) {
 }
 
 export { compileProject, componentIndexFor, buildIssuesFor };
+export function waitForProjectBuildCache(root: string) {
+  return projectCacheWrites.get(path.resolve(root)) || Promise.resolve();
+}
 
 async function loadLocalModule({ root, specifier }) {
   try {

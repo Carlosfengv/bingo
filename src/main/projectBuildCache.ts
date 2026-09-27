@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { readLocalModuleBytes, registerCachedModule } from "./localModuleServer";
+import { cacheLocalModule, registerCachedModule } from "./localModuleServer";
 
 const CACHE_SCHEMA_VERSION = 1;
-const COMPILER_SIGNATURE = "local-compiler-v12-skip-test-styles";
+const COMPILER_SIGNATURE = "local-compiler-v14-incremental-disk-cache";
 const MAX_IDLE_PROJECTS = 3;
 const MAX_CACHE_BYTES = 256 * 1024 * 1024;
 const MAX_DISK_CACHE_BYTES = 2 * 1024 * 1024 * 1024;
@@ -12,6 +12,7 @@ const MAX_DISK_CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 const entries = new Map();
 const pendingLoads = new Map();
+const pendingPersists = new Map();
 let diskCacheRoot = null;
 let cacheEpoch = 0;
 
@@ -161,16 +162,21 @@ async function pruneDiskCache(protectedRoot) {
 async function persistProjectBuildCache(root, snapshot, fingerprint) {
   if (!diskCacheRoot) return;
   const epoch = cacheEpoch;
-  const snapshotId = fingerprint.digest;
+  const snapshotId = `${fingerprint.digest}-${crypto.randomUUID()}`;
   const paths = snapshotPaths(root, snapshotId);
   const temporaryDirectory = `${paths.snapshotDirectory}.tmp-${process.pid}-${crypto.randomUUID()}`;
   const moduleRecords = [];
+  const writtenModules = new Set();
   try {
     await fs.mkdir(path.join(temporaryDirectory, "modules"), { recursive: true });
     for (const module of snapshot.modules || []) {
-      const contents = await readLocalModuleBytes(module.codeUrl);
-      const hash = contentHash(contents);
-      await fs.writeFile(path.join(temporaryDirectory, "modules", `${hash}.js`), contents);
+      const knownHash = /^http:\/\/127\.0\.0\.1:\d+\/module\/[^/]+\/([a-f0-9]{64})\.js$/.exec(module.codeUrl)?.[1];
+      const destination = path.join(temporaryDirectory, "modules", `${knownHash || contentHash(decodeDataUrl(module.codeUrl))}.js`);
+      const hash = path.basename(destination, ".js");
+      if (!writtenModules.has(hash)) {
+        await cacheLocalModule(module.codeUrl, destination);
+        writtenModules.add(hash);
+      }
       moduleRecords.push({ path: module.path, hash, cssImports: module.cssImports || [] });
     }
     let css = null;
@@ -192,6 +198,10 @@ async function persistProjectBuildCache(root, snapshot, fingerprint) {
       buildInputFiles: snapshot.buildInputFiles || [],
       cssFiles: snapshot.cssFiles || [],
       entryInputs: snapshot.entryInputs || {},
+      sourcePaths: snapshot.sourcePaths || [],
+      failedEntries: snapshot.failedEntries || [],
+      buildFailures: snapshot.buildFailures || [],
+      cssError: snapshot.cssError || null,
       workspaceRoot: snapshot.workspaceRoot,
       complete: snapshot.complete === true,
       createdAt: Date.now(),
@@ -240,7 +250,9 @@ async function loadProjectBuildCache(root) {
       manifest.compilerSignature !== COMPILER_SIGNATURE ||
       manifest.root !== path.resolve(root) ||
       manifest.snapshotId !== current.snapshotId ||
-      manifest.complete !== true
+      !Array.isArray(manifest.sourcePaths) ||
+      !Array.isArray(manifest.failedEntries) ||
+      (!manifest.complete && manifest.failedEntries.length === 0 && !manifest.cssError)
     ) return null;
     const modules = await mapWithConcurrency(manifest.modules || [], 2, async (module) => {
       if (!/^[a-f0-9]{64}$/.test(module.hash || "")) throw new Error("Invalid cached module hash");
@@ -268,9 +280,12 @@ async function loadProjectBuildCache(root) {
       buildInputFiles: manifest.buildInputFiles || [],
       cssFiles: manifest.cssFiles || [],
       entryInputs: manifest.entryInputs || {},
+      sourcePaths: manifest.sourcePaths,
+      failedEntries: manifest.failedEntries,
       workspaceRoot: manifest.workspaceRoot || manifest.fingerprint?.workspaceRoot || root,
-      complete: true,
-      buildFailures: [],
+      complete: manifest.complete === true,
+      buildFailures: manifest.buildFailures || [],
+      cssError: manifest.cssError || null,
     }, manifest.fingerprint, "disk");
     void writeJsonAtomic(path.join(projectDirectory, "current.json"), {
       ...current,
@@ -309,15 +324,27 @@ async function getProjectBuildCache(root) {
 async function setProjectBuildCache(root, snapshot, fingerprint) {
   const entry = remember(root, snapshot, fingerprint);
   if (!entry) return null;
-  await persistProjectBuildCache(root, snapshot, fingerprint).catch((error) => {
+  const pending = persistProjectBuildCache(root, snapshot, fingerprint).catch((error) => {
     console.warn(`[projectBuildCache] Could not persist build cache: ${error?.message || error}`);
   });
+  let writes = pendingPersists.get(root);
+  if (!writes) {
+    writes = new Set();
+    pendingPersists.set(root, writes);
+  }
+  writes.add(pending);
+  try { await pending; }
+  finally {
+    writes.delete(pending);
+    if (!writes.size) pendingPersists.delete(root);
+  }
   return entry;
 }
 
 async function deleteProjectBuildCache(root, options = {}) {
   entries.delete(root);
   if (options.disk === true && diskCacheRoot) {
+    await Promise.allSettled([...(pendingPersists.get(root) || [])]);
     await fs.rm(path.join(diskCacheRoot, projectKey(root)), { recursive: true, force: true });
   }
 }
@@ -326,6 +353,7 @@ async function clearProjectBuildCache(options = {}) {
   cacheEpoch += 1;
   entries.clear();
   if (options.disk === true && diskCacheRoot) {
+    await Promise.allSettled([...pendingPersists.values()].flatMap(writes => [...writes]));
     await fs.rm(diskCacheRoot, { recursive: true, force: true });
   }
 }

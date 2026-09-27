@@ -150,6 +150,26 @@ export async function readLocalModuleBytes(codeUrl: string): Promise<Buffer> {
   return fsPromises.readFile(file);
 }
 
+/** Keep compiled output in the persistent cache without copying large bundles. */
+export async function cacheLocalModule(codeUrl: string, destination: string): Promise<string> {
+  const digest = digestFromUrl(codeUrl);
+  if (digest) {
+    const file = sources.get(digest);
+    if (!file) throw new Error("Compiled module is no longer available");
+    try {
+      await fsPromises.link(file, destination);
+    } catch (error: any) {
+      if (error?.code !== "EXDEV") throw error;
+      await fsPromises.copyFile(file, destination);
+    }
+    return digest;
+  }
+  const contents = decodeModule(codeUrl);
+  const hash = crypto.createHash("sha256").update(contents).digest("hex");
+  await fsPromises.writeFile(destination, contents);
+  return hash;
+}
+
 export async function publishLocalModules(root: string, modules: ModuleRef[]): Promise<ModuleRef[]> {
   const current = new Set<string>();
   const refs: ModuleRef[] = [];
