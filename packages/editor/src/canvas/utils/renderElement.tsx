@@ -18,7 +18,7 @@ import { MediaWithFallback } from "../components/MediaWithFallback";
 import { TextEditor } from "../components/TextEditor";
 import { WebviewRenderer } from "../components/WebviewRenderer";
 import { yieldsToCoveredRoot } from "./coveredRoot";
-import { countClick } from "./selection";
+import { countClick, resolveNearestDivTarget } from "./selection";
 import { coerceClassName, getById, getChildren$2, getParentId, isPlainObject$2, resolveTextOwner, sanitizeDomRenderProps } from "@bingo/compiler";
 import { appI18n } from "@bingo/i18n";
 import * as import_react from "react";
@@ -132,6 +132,18 @@ function isElementInteractive(selectionMode, _currentParentId, interactiveParent
   if (_currentParentId === null) return true;
   if (interactiveParentIds && interactiveParentIds.has(_currentParentId)) return true;
   return false;
+}
+function elementIdsOnPath(node) {
+  const path = [];
+  for (let current = node; current; current = current.parentElement) {
+    if (current.hasAttribute?.("data-canvas-content")) break;
+    const id = current.getAttribute?.("data-element-id")
+      ?? current.getAttribute?.("data-hover-label-id")
+      ?? current.getAttribute?.("data-selection-label-id")
+      ?? current.getAttribute?.("data-root-label-id");
+    if (id) path.push(id);
+  }
+  return path;
 }
 /** Walk up from `leafId` to the nearest ancestor that paints its text with a
 *  gradient (background-clip:text), returning that element's styles — or
@@ -269,26 +281,43 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
   const commonProps = {
     "data-element-id": element.id,
     onClick: options.onSelectElement ? e => {
-      if (!takesPointer()) return;
+      const liveStore = options.liveStoreRef?.current ?? store;
+      const path = elementIdsOnPath(e.target);
+      const preferredDiv = resolveNearestDivTarget(liveStore, path);
+      // Read the modifier from this click as well as the hover mode: a quick
+      // Command/Control click can arrive before the window key listener runs.
+      if (!(e.metaKey || e.ctrlKey) && !preferredDiv && !takesPointer()) return;
       e.stopPropagation();
-      const path = [];
-      for (let node = e.target; node; node = node.parentElement) {
-        const id = node.getAttribute?.("data-element-id");
-        if (id) path.push(id);
-      }
-      options.onSelectElement(resolveTextOwner(options.liveStoreRef?.current ?? store, element.id), e.shiftKey, {
+      const modified = e.shiftKey || e.metaKey || e.ctrlKey || e.altKey;
+      const clickCount = countClick(e.clientX, e.clientY, Date.now(), `${path[0] ?? element.id}:${e.shiftKey}:${e.metaKey || e.ctrlKey}:${e.altKey}`);
+      const targetId = e.metaKey || e.ctrlKey ? element.id : preferredDiv ?? element.id;
+      options.onSelectElement(resolveTextOwner(liveStore, targetId), e.shiftKey, {
         x: e.clientX,
         y: e.clientY,
-        detail: countClick(e.clientX, e.clientY),
+        detail: modified ? 1 : clickCount,
         path
       });
     } : void 0,
     onMouseOver: options.onHoverElement ? e => {
+      const liveStore = options.liveStoreRef?.current ?? store;
+      const preferredDiv = liveSelectionMode() === "deepest" ? null : resolveNearestDivTarget(liveStore, elementIdsOnPath(e.target));
+      if (preferredDiv) {
+        e.stopPropagation();
+        options.onHoverElement(preferredDiv);
+        return;
+      }
       const interactive = takesPointer();
       if (interactive && (element.type !== "text" || liveSelectionMode() === "deepest")) e.stopPropagation();
-      if (interactive) options.onHoverElement(resolveTextOwner(options.liveStoreRef?.current ?? store, element.id));
+      if (interactive) options.onHoverElement(resolveTextOwner(liveStore, element.id));
     } : void 0,
     onMouseLeave: options.onHoverElement ? e => {
+      const liveStore = options.liveStoreRef?.current ?? store;
+      const preferredDiv = liveSelectionMode() === "deepest" ? null : resolveNearestDivTarget(liveStore, elementIdsOnPath(e.target));
+      if (preferredDiv) {
+        e.stopPropagation();
+        options.onHoverElement(resolveNearestDivTarget(liveStore, elementIdsOnPath(e.relatedTarget)));
+        return;
+      }
       const interactive = takesPointer();
       if (interactive && (element.type !== "text" || liveSelectionMode() === "deepest")) e.stopPropagation();
       if (interactive) options.onHoverElement(null);

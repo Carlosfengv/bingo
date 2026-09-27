@@ -1,4 +1,4 @@
-import { createLayerRowsIndex, searchLayerRows, selectedLayerRanges, isInsideLayerSelection } from "../../utils/layerRows";
+import { createLayerRowsIndex, layerRangeIds, searchLayerRows, selectedLayerRanges, isInsideLayerSelection } from "../../utils/layerRows";
 import { VariableLayerBadge } from "../../../shared/theme/VariableControls";
 /*
  * Reconstructed from the shipped Bingo bundle by luna/tools/rebuild.mjs.
@@ -954,33 +954,19 @@ function LayersPanel(t0) {
       }}>{<ContextMenuTrigger asChild={true} onContextMenu={() => onContextMenuRow?.(element_5.id)}>{<div data-layer-id={element_5.id} data-layer-wrap={element_5.id} data-layer-depth={row_5.depth} draggable={!isEditingThis && !flat} onDragStart={e_9 => handleDragStart(e_9, element_5.id)} onDragEnd={handleDragEnd} className={cn$2("flex h-6.5 min-w-full w-max items-center gap-0.5 rounded-[5px] py-0 pl-3 pr-1 group relative", DROP_INSIDE_ROW, !isSelected && !isInherited && "hover:bg-ed-layer-hover data-[canvas-hover]:bg-ed-layer-hover", isSelected && "bg-ed-layer-active", isSelected && row_5.subtreeEnd > index_4 + 1 && "rounded-b-none", isInherited && "rounded-none hover:bg-ed-layer-child-hover data-[canvas-hover]:bg-ed-layer-child-hover", isDragging && "opacity-50")} style={{
             paddingLeft: `${indentOf$1(row_5.depth)}px`
           }} onClick={e_10 => {
-            const anchor = anchorIdRef.current;
-            if (e_10.shiftKey && anchor && selectedElementIds.has(anchor) && onSelectElements) {
-              const parentKey = getParentId(store, anchor);
-              if (parentKey !== null) {
-                const siblings = getChildren$2(store, parentKey);
-                const anchorIdx = siblings.indexOf(anchor);
-                let effectiveId = element_5.id;
-                while (effectiveId !== null && siblings.indexOf(effectiveId) === -1) {
-                  const p = getParentId(store, effectiveId);
-                  if (p === null || p === "ROOT") {
-                    effectiveId = null;
-                    break;
-                  }
-                  effectiveId = p;
-                }
-                const clickedIdx = effectiveId !== null ? siblings.indexOf(effectiveId) : -1;
-                if (anchorIdx !== -1 && clickedIdx !== -1) {
-                  const start = Math.min(anchorIdx, clickedIdx);
-                  const end = Math.max(anchorIdx, clickedIdx);
-                  onSelectElements([...selectedElementIds, ...siblings.slice(start, end + 1)]);
-                  return;
-                }
+            if (e_10.shiftKey && onSelectElements) {
+              const savedAnchor = anchorIdRef.current;
+              const anchor = savedAnchor && selectedElementIds.has(savedAnchor) && rowModel.indexById.has(savedAnchor)
+                ? savedAnchor
+                : [...selectedElementIds].find(id => rowModel.indexById.has(id));
+              if (anchor) {
+                onSelectElements(layerRangeIds(rowModel, anchor, element_5.id));
+                return;
               }
             }
             const toggle = e_10.metaKey || e_10.ctrlKey;
-            onSelectElement(element_5.id, e_10.shiftKey || toggle);
-            if (!e_10.shiftKey) anchorIdRef.current = element_5.id;
+            onSelectElement(element_5.id, toggle);
+            anchorIdRef.current = element_5.id;
             if (filtering && !toggle && !e_10.shiftKey) onFocusElement?.(element_5.id);
           }}>{<div className="flex h-full w-4 shrink-0 items-center justify-center">{currentlyHasChildren && !flat && <Button variant="ghost" size="icon-3xs" isChildText={false} aria-label={t(isCollapsed ? "layers.expand" : "layers.collapseOne", { name: getElementLabel(element_5) })} onClick={e_11 => {
                 e_11.stopPropagation();

@@ -59,6 +59,14 @@ export function searchLayerRows(rows: Array<{ id: string; depth: number }>): Lay
   return indexRows(rows.map((row, index) => ({ ...row, subtreeEnd: index + 1 })));
 }
 
+/** Shift selects the inclusive range in the visible layer list. */
+export function layerRangeIds({ rows, indexById }: LayerRows, anchorId: string, targetId: string): string[] {
+  const anchor = indexById.get(anchorId);
+  const target = indexById.get(targetId);
+  if (anchor === undefined || target === undefined) return [];
+  return rows.slice(Math.min(anchor, target), Math.max(anchor, target) + 1).map(row => row.id);
+}
+
 /** Work scales with selected ids, not with the number of expanded rows. */
 export function selectedLayerRanges({ rows, indexById }: LayerRows, selected: ReadonlySet<string>) {
   const indexes: number[] = [];

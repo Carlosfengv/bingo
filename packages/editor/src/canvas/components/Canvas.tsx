@@ -37,6 +37,7 @@ import { mapScreenPoint, previewZoomDrift } from "../utils/dragFrame";
 import { dragPreviewBoxSize, withDragPreviewSize } from "../utils/dragPreviewGeometry";
 import { createCanvasRenderCache } from "../utils/renderCache";
 import { collectAdoptedChildren, renderElement } from "../utils/renderElement";
+import { resetClickSequence } from "../utils/selection";
 import { collectSnapLines, visibleSnapRects } from "../utils/snapping";
 import { CANVAS_ZOOM_STEP, MIN_CANVAS_SCALE, clampCanvasScale, zoomScaleForWheel } from "../utils/zoom";
 import { AgentFollowFrame } from "./AgentFollowFrame";
@@ -607,6 +608,7 @@ function Canvas(t0) {
       const addToSelection = t18 === void 0 ? false : t18;
       const down_0 = pointerDownAtRef.current;
       const dragged = !!click && !!down_0 && Math.hypot(click.x - down_0.x, click.y - down_0.y) > DRAG_ACTIVATION_DISTANCE;
+      if (dragged || altKeyDownRef.current) resetClickSequence();
       onSelectElement(id, addToSelection, altKeyDownRef.current, dragged ? void 0 : click);
     };
     $[10] = onSelectElement;

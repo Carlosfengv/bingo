@@ -7,16 +7,20 @@
  * author's original file. See luna/RECOVERY.md.
  */
 import { yieldsToCoveredRoot } from "./coveredRoot";
+import { resolveNearestDivTarget } from "./selection";
 import { getParentId, resolveTextOwner } from "@bingo/compiler";
 
 /**
-* The element a pointer landing on `hitId` should target, in topmost mode.
-*
-* Mirrors what a left-click selects: walk up to the shallowest element whose
-* parent hands the pointer to its children, let a child covering its root hand
-* it back, then resolve a text leaf to the wrapper that owns it.
+ * The element a pointer landing on `hitId` should target.
+ *
+* Prefer the nearest authored div, as normal canvas clicks and hover do. When
+* there is no div, retain the existing entered-branch and covered-root rules.
 */
 function resolvePointerTarget(store, hitId, interactiveParentIds, drilledParentId) {
+  const path = [];
+  for (let id = hitId; id && id !== "ROOT"; id = getParentId(store, id)) path.push(id);
+  const preferredDiv = resolveNearestDivTarget(store, path);
+  if (preferredDiv) return preferredDiv;
   let targetId = hitId;
   for (let parent = getParentId(store, targetId); parent && parent !== "ROOT" && !interactiveParentIds?.has(parent); parent = getParentId(store, targetId)) targetId = parent;
   while (yieldsToCoveredRoot(store, targetId, drilledParentId)) {

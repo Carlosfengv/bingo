@@ -31,7 +31,7 @@ import { applyFigmaImagePatchesToStore } from "../../canvas/utils/figma";
 import { cameraToFitRect } from "../../canvas/utils/fitCamera";
 import { cameraToFitFollowRect, componentNamesForWritePath, followRectForTarget, followTargetIds, instanceIdsForComponentNames, liveCanvasComponentNames, unionFollowRects } from "../../canvas/utils/followAiCamera";
 import { resolvePointerTarget } from "../../canvas/utils/pointerTarget";
-import { isDescendClick, resolveDescendTarget, sameSelection } from "../../canvas/utils/selection";
+import { interactiveParentsForSelection, isDescendClick, normalizeSelection, resetClickSequence, resolveDescendTarget, sameSelection, toggleSelection } from "../../canvas/utils/selection";
 import { ActiveToolProvider } from "../../shared/contexts/ActiveToolContext";
 import { AssetProvider } from "../../shared/contexts/AssetContext";
 import { ComponentPreviewProvider, useComponentPreview } from "../../shared/contexts/ComponentPreviewContext";
@@ -95,7 +95,7 @@ import { ElementHeader, PropsPanel } from "./panels/PropsPanel";
 import { SkillsPanel } from "./panels/SkillsPanel";
 import { StylesPanelTabs } from "./panels/StylesPanelTabs";
 import { WebviewEditPanel } from "./panels/WebviewEditPanel";
-import { buildFigmaImageStylePatches, canAcceptChild, convertFigmaClipboardHtmlSync, emptyStore, ensureV2, generateCompleteFile, generateJSX, getById, getChildren$2, getDescendantIds, getIndex, getParentId, getRootIds, hasChildren$1, isCompositionFile, isDescendant, isFigmaClipboardHtml, isTextOwner, parseJSX, resolveTextOwner, sanitizeElementProps, storeSubtreeToLegacyNested, toWire } from "@bingo/compiler";
+import { buildFigmaImageStylePatches, canAcceptChild, convertFigmaClipboardHtmlSync, emptyStore, ensureV2, generateCompleteFile, generateJSX, getById, getChildren$2, getDescendantIds, getIndex, getParentId, getRootIds, hasChildren$1, isCompositionFile, isDescendant, isFigmaClipboardHtml, parseJSX, resolveTextOwner, sanitizeElementProps, storeSubtreeToLegacyNested, toWire } from "@bingo/compiler";
 import { ContextMenu$1, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuTrigger, ScrollArea, SparkleIcon, Tabs, TabsContent, TabsList, TabsTrigger, Toaster, Tooltip } from "@bingo/ui";
 import { FigmaLogo as g$3 } from "@phosphor-icons/react/dist/icons/FigmaLogo";
 import * as import_react from "react";
@@ -952,6 +952,7 @@ var BingoEditorInner = ({
     if (getById(storeRef.current, childId)?.type === "text") setEditingTextId(childId);
   };
   const handleSelectElement = (id_3, addToSelection = false, altKey = false, click) => {
+    if (!click) resetClickSequence();
     if (altKey) return;
     if (id_3 === null) {
       applySelection(new Set());
@@ -959,41 +960,9 @@ var BingoEditorInner = ({
       return;
     }
     if (addToSelection) {
-      if (click && isDescendClick(click)) for (const selectedId of selectedElementIdsRef.current) {
-        const childId_0 = descendInto(selectedId, click.path);
-        if (childId_0) {
-          const next_8 = new Set(selectedElementIdsRef.current);
-          next_8.delete(selectedId);
-          next_8.add(resolveTextOwner(storeRef.current, childId_0));
-          applySelection(next_8);
-          setDrilledParentId(selectedId);
-          editTextOnDescent(childId_0);
-          return;
-        }
-      }
-      setSelectedElementIds(prev_10 => {
-        const next_9 = new Set(prev_10);
-        if (next_9.has(id_3)) next_9.delete(id_3);else {
-          const store = storeRef.current;
-          const isDescendantOf = (childId_1, parentId_0) => {
-            let currentId = childId_1;
-            while (currentId) {
-              const parentKey = getParentId(store, currentId);
-              if (!parentKey || parentKey === "ROOT") return false;
-              if (parentKey === parentId_0) return true;
-              currentId = parentKey;
-            }
-            return false;
-          };
-          for (const selectedId_0 of Array.from(next_9)) {
-            if (isDescendantOf(id_3, selectedId_0)) next_9.delete(selectedId_0);
-            if (isDescendantOf(selectedId_0, id_3)) next_9.delete(selectedId_0);
-          }
-          next_9.add(id_3);
-        }
-        if (next_9.size === 0) next_9.add(id_3);
-        return next_9;
-      });
+      const next_9 = toggleSelection(storeRef.current, selectedElementIdsRef.current, id_3);
+      applySelection(next_9);
+      if (next_9.size === 0) setDrilledParentId(null);
     } else {
       const current_0 = selectedElementIdsRef.current;
       if (click && isDescendClick(click) && current_0.size === 1) {
@@ -1012,7 +981,10 @@ var BingoEditorInner = ({
     }
   };
   const handleSelectElements = ids_0 => {
-    setSelectedElementIds(new Set(ids_0));
+    resetClickSequence();
+    const next = normalizeSelection(storeRef.current, ids_0);
+    applySelection(next);
+    if (next.size === 0) setDrilledParentId(null);
   };
   const [editingTextId, setEditingTextId] = (0, import_react.useState)(null);
   const activeTextEditorRef = (0, import_react.useRef)(null);
@@ -2032,19 +2004,7 @@ var BingoEditorInner = ({
     setPreviewStore(null);
   }
   const interactiveParentIds = (() => {
-    const ids_2 = new Set();
-    for (const rootId of getRootIds(currentStore)) if (!isTextOwner(currentStore, rootId)) ids_2.add(rootId);
-    for (const selectedId_1 of selectedElementIds) {
-      let currentId_0 = selectedId_1;
-      while (currentId_0) {
-        const parentKey_2 = getParentId(currentStore, currentId_0);
-        if (!parentKey_2 || parentKey_2 === "ROOT") break;
-        ids_2.add(parentKey_2);
-        currentId_0 = parentKey_2;
-      }
-    }
-    if (drilledParentId) ids_2.add(drilledParentId);
-    return ids_2;
+    return interactiveParentsForSelection(currentStore, selectedElementIds, drilledParentId);
   })();
   const interactiveParentIdsRef = (0, import_react.useRef)(interactiveParentIds);
   (0, import_react.useLayoutEffect)(() => {

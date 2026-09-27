@@ -6,7 +6,7 @@
  * this is build output with the build's own rewrites undone -- not the
  * author's original file. See luna/RECOVERY.md.
  */
-import { getParentId } from "@bingo/compiler";
+import { getParentId } from "../../../../compiler/src/store/read";
 
 /**
 * Same ids, order-independent. Selection is held in a Set, so a fresh instance
@@ -23,7 +23,7 @@ function sameSelection(a, b) {
 *  Past the platform double-click interval on purpose: a burst is deliberate,
 *  and a gap this long already reads as a fresh gesture. */
 var SEQUENCE_MS = 500;
-/** How far a click may land from the last one and still continue it. Generous,
+/** How far a click on the same node may land from the last one and still continue it. Generous,
 *  because a hand clicking five times in a second does not hold still — and a
 *  reset here costs the user a level with no feedback that anything happened. */
 var SEQUENCE_SLOP = 16;
@@ -31,6 +31,7 @@ var sequenceCount = 0;
 var sequenceAt = 0;
 var sequenceX = 0;
 var sequenceY = 0;
+var sequenceTarget = null;
 /**
 * Position of this click in its rapid sequence: 1 for the first, then 2, 3, 4…
 * for as long as the clicks keep coming at the same spot.
@@ -40,12 +41,18 @@ var sequenceY = 0;
 * click over at 1, so every 4th click read as the beginning of a new sequence
 * and the descent stalled a level short — once per three clicks, forever.
 */
-function countClick(x, y, now = Date.now()) {
-  sequenceCount = now - sequenceAt < SEQUENCE_MS && Math.hypot(x - sequenceX, y - sequenceY) <= SEQUENCE_SLOP ? sequenceCount + 1 : 1;
+function countClick(x, y, now = Date.now(), target = null) {
+  sequenceCount = target === sequenceTarget && now - sequenceAt < SEQUENCE_MS && Math.hypot(x - sequenceX, y - sequenceY) <= SEQUENCE_SLOP ? sequenceCount + 1 : 1;
   sequenceAt = now;
   sequenceX = x;
   sequenceY = y;
+  sequenceTarget = target;
   return sequenceCount;
+}
+function resetClickSequence() {
+  sequenceCount = 0;
+  sequenceAt = 0;
+  sequenceTarget = null;
 }
 /**
 * Whether this click descends a level. The first click of a sequence selects;
@@ -76,4 +83,58 @@ function resolveDescendTarget(store, parentId, path) {
   return null;
 }
 
-export { countClick, isDescendClick, resolveDescendTarget, sameSelection };
+/** Prefer the nearest authored div on the hit path, including its own box. */
+function resolveNearestDivTarget(store, path) {
+  for (const id of path) {
+    const element = store.byId.get(id);
+    if (element?.type === "html" && element.tag === "div") return id;
+  }
+  return null;
+}
+
+/** A parent represents its whole subtree; never store it alongside a child. */
+function normalizeSelection(store, ids) {
+  const candidates = new Set(ids);
+  const result = new Set();
+  for (const id of candidates) {
+    if (!store.byId.has(id)) continue;
+    let parent = getParentId(store, id);
+    while (parent && parent !== "ROOT" && !candidates.has(parent)) parent = getParentId(store, parent);
+    if (!parent || parent === "ROOT") result.add(id);
+  }
+  return result;
+}
+
+/** Shift on canvas and Command/Control in the layer list toggle one node. */
+function toggleSelection(store, selected, id) {
+  const next = new Set(selected);
+  if (next.has(id)) {
+    next.delete(id);
+    return next;
+  }
+  const isAncestor = (ancestor, child) => {
+    for (let parent = getParentId(store, child); parent && parent !== "ROOT"; parent = getParentId(store, parent)) {
+      if (parent === ancestor) return true;
+    }
+    return false;
+  };
+  for (const selectedId of next) {
+    if (isAncestor(selectedId, id) || isAncestor(id, selectedId)) next.delete(selectedId);
+  }
+  next.add(id);
+  return next;
+}
+
+/** Non-div fallback clicks pass to children after their branch is entered. */
+function interactiveParentsForSelection(store, selected, drilledParentId) {
+  const ids = new Set();
+  for (const selectedId of selected) {
+    for (let parent = getParentId(store, selectedId); parent && parent !== "ROOT"; parent = getParentId(store, parent)) {
+      ids.add(parent);
+    }
+  }
+  if (drilledParentId) ids.add(drilledParentId);
+  return ids;
+}
+
+export { countClick, interactiveParentsForSelection, isDescendClick, normalizeSelection, resetClickSequence, resolveDescendTarget, resolveNearestDivTarget, sameSelection, toggleSelection };

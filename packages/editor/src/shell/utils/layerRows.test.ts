@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createLayerRowsIndex, isInsideLayerSelection, searchLayerRows, selectedLayerRanges } from "./layerRows";
+import { createLayerRowsIndex, isInsideLayerSelection, layerRangeIds, searchLayerRows, selectedLayerRanges } from "./layerRows";
 
 function fixture() {
   return {
@@ -57,4 +57,14 @@ test("search hits remain separate shells, including a text match with its contex
   assert.deepEqual(shells, [{ start: 0, end: 1 }, { start: 2, end: 3 }]);
   assert.equal(stickyParents.size, 0);
   assert.equal(isInsideLayerSelection(1, shells), false);
+});
+
+test("shift range follows visible rows across branches and works in reverse", () => {
+  const index = createLayerRowsIndex();
+  const model = index.get(fixture(), new Set());
+  assert.deepEqual(layerRangeIds(model, "card", "b"), ["card", "text", "sibling", "b"]);
+  assert.deepEqual(layerRangeIds(model, "b", "card"), ["card", "text", "sibling", "b"]);
+  assert.deepEqual(layerRangeIds(model, "missing", "b"), []);
+  const collapsed = index.get(fixture(), new Set(["card"]));
+  assert.deepEqual(layerRangeIds(collapsed, "card", "b"), ["card", "sibling", "b"]);
 });

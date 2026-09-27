@@ -534,7 +534,6 @@ function HoverOverlay(t0) {
             } : void 0} onMouseDown={!isReadOnly && onSelectElement ? e_0 => {
               if (e_0.button !== 0) return;
               e_0.preventDefault();
-              if (!selectedElementIds.has(hoverElementId)) onSelectElement(hoverElementId, e_0.shiftKey);
               const domEl_1 = document.querySelector(`[data-element-id="${hoverElementId}"]`);
               if (domEl_1) {
                 const pointerEvent = new PointerEvent("pointerdown", {
@@ -1129,7 +1128,6 @@ function RootLabel(t0) {
       if (noInteract) return;
       if (e.button !== 0) return;
       e.preventDefault();
-      if (!isSelected) onSelectElement?.(rootId, e.shiftKey);
       const domEl = document.querySelector(`[data-element-id="${rootId}"]`);
       if (domEl) {
         const pointerEvent = new PointerEvent("pointerdown", {
@@ -1167,7 +1165,10 @@ function RootLabel(t0) {
   } else t12 = $[23];
   let t13;
   if ($[24] !== rootId || $[25] !== t10 || $[26] !== t11 || $[27] !== t12 || $[28] !== t6 || $[29] !== t9) {
-    t13 = <div data-root-label-id={rootId} className={t6} style={t9} onMouseDown={t10} onMouseEnter={t11}>{t12}</div>;
+    t13 = <div data-root-label-id={rootId} className={t6} style={t9} onMouseDown={t10} onMouseEnter={t11} onClick={e => {
+      e.stopPropagation();
+      if (!noInteract) onSelectElement?.(rootId, e.shiftKey);
+    }}>{t12}</div>;
     $[24] = rootId;
     $[25] = t10;
     $[26] = t11;
