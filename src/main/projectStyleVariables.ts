@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import postcss from "postcss";
+import valueParser from "postcss-value-parser";
 
 const EXCLUDED_DIRECTORIES = new Set(["node_modules", ".git", ".next", ".nuxt", "dist", "build", "out", "coverage", ".cache", ".turbo"]);
 const COLOR_NAME = /(?:^|-)(?:color|background|foreground|surface|text|border|accent|primary|secondary|muted|card|popover|ring|fill|stroke|brand|destructive)(?:-|$)/i;
@@ -102,10 +103,34 @@ function modeTarget(decl: any, file: string) {
 }
 
 function inferType(name: string, values: string[]) {
+  if (values.some(value => parseLightDark(value))) return "color";
   const direct = values.filter(value => !/^var\(/.test(value.trim()));
   if (direct.some(value => COLOR_VALUE.test(value.trim())) || COLOR_NAME.test(name) && direct.some(value => CHANNEL_VALUE.test(value.trim()))) return "color";
   if (direct.length && direct.every(value => NUMBER_VALUE.test(value.trim())) || NUMBER_NAME.test(name) && direct.every(value => NUMBER_VALUE.test(value.trim()))) return "number";
   return null;
+}
+
+function parseLightDark(value: string) {
+  const nodes = valueParser(value).nodes.filter(node => node.type !== "space");
+  if (nodes.length !== 1 || nodes[0].type !== "function" || nodes[0].value.toLowerCase() !== "light-dark" || nodes[0].unclosed) return null;
+  const parts: any[][] = [[], []];
+  let branch = 0;
+  for (const node of nodes[0].nodes) {
+    if (node.type === "comment" || node.type === "function" && node.unclosed) return null;
+    if (node.type === "div" && node.value === ",") {
+      if (branch++) return null;
+    } else parts[branch].push(node);
+  }
+  if (branch !== 1 || parts.some(part => !part.length)) return null;
+  const spans = parts.map(part => {
+    const meaningful = part.filter(node => node.type !== "space");
+    if (!meaningful.length) return null;
+    const start = meaningful[0].sourceIndex;
+    const end = meaningful.at(-1).sourceEndIndex;
+    const text = value.slice(start, end);
+    return COLOR_VALUE.test(text.trim()) ? { value: text.trim(), start, end } : null;
+  });
+  return spans.every(Boolean) ? { light: spans[0]!, dark: spans[1]! } : null;
 }
 
 function bindingTemplate(name: string, type: string, values: string[]) {
@@ -135,6 +160,10 @@ export function scanProjectStyleVariables(root: string, manifest?: any) {
     ast.walkDecls(/^--/, (decl: any) => {
       const name = decl.prop.slice(2);
       const value = decl.value.trim();
+      if (parseLightDark(value)) {
+        modes.set("light", { id: "light", name: "Light" });
+        modes.set("dark", { id: "dark", name: "Dark" });
+      }
       const directAlias = value.match(/^var\(\s*--([\w-]+)\s*\)$/);
       // Tailwind @theme files sometimes register an existing token with
       // `--token: var(--token)`. It adds no variable value and must not become
@@ -155,7 +184,8 @@ export function scanProjectStyleVariables(root: string, manifest?: any) {
     const base = modes.get("default")!;
     if (hasDark && !hasLight) { modes.delete("default"); base.id = "light"; base.name = "Light"; modes.set("light", base); }
   }
-  const orderedModes = [...modes.values()].sort((a, b) => (a.id === "light" || a.id === "default" ? -1 : b.id === "light" || b.id === "default" ? 1 : a.id === "dark" ? -1 : b.id === "dark" ? 1 : a.name.localeCompare(b.name)));
+  const modeRank = (id: string) => id === "light" ? 0 : id === "default" ? 1 : id === "dark" ? 2 : 3;
+  const orderedModes = [...modes.values()].sort((a, b) => modeRank(a.id) - modeRank(b.id) || a.name.localeCompare(b.name));
   const defaultModeId = orderedModes[0].id;
   const collectionId = "project-styles";
   const conflicts: any[] = [];
@@ -178,13 +208,13 @@ export function scanProjectStyleVariables(root: string, manifest?: any) {
     if (!changed) break;
   }
   for (const [name, sourceDeclarations] of declarations) {
-    for (const declaration of sourceDeclarations) if (declaration.modeId === "default" && defaultModeId === "light") declaration.modeId = "light";
+    for (const declaration of sourceDeclarations) if (declaration.modeId === "default" && defaultModeId === "light" && !hasLight) declaration.modeId = "light";
     const values = sourceDeclarations.map(item => item.value);
     const type = inferredTypes.get(name);
     if (!type) continue;
     const byMode = new Map<string, any[]>();
     for (const declaration of sourceDeclarations) byMode.set(declaration.modeId, [...(byMode.get(declaration.modeId) || []), declaration]);
-    const base = byMode.get(defaultModeId)?.at(-1);
+    const base = byMode.get(defaultModeId)?.at(-1) || byMode.get("default")?.at(-1);
     if (!base) continue;
     const template = bindingTemplate(name, type, values);
     const valuesByMode: Record<string, any> = {};
@@ -194,9 +224,15 @@ export function scanProjectStyleVariables(root: string, manifest?: any) {
       const matches = byMode.get(mode.id) || [];
       if (matches.length > 1) { writable = false; conflicts.push({ token: name, mode: mode.id, files: matches.map(item => path.relative(root, item.file)) }); }
       const declaration = matches.at(-1) || base;
-      const alias = declaration.value.match(/^var\(\s*--([\w-]+)\s*\)$/);
-      valuesByMode[mode.id] = { kind: "literal", value: declaration.value, ...(matches.length ? {} : { inheritedFromModeId: defaultModeId }) };
-      sourceModes[mode.id] = matches.length ? { ...declaration, file: path.relative(root, declaration.file) } : { inherited: true };
+      const lightDark = parseLightDark(declaration.value);
+      const branch = mode.id === "light" || mode.id === "dark" ? mode.id : null;
+      const value = lightDark && branch ? lightDark[branch].value : declaration.value;
+      const alias = value.match(/^var\(\s*--([\w-]+)\s*\)$/);
+      valuesByMode[mode.id] = { kind: "literal", value, ...(matches.length || lightDark ? {} : { inheritedFromModeId: defaultModeId }) };
+      sourceModes[mode.id] = lightDark ? branch
+        ? { ...declaration, file: path.relative(root, declaration.file), expressionKind: "light-dark", branch }
+        : { inherited: true, writable: false }
+        : matches.length ? { ...declaration, file: path.relative(root, declaration.file) } : { inherited: true };
       if (alias) valuesByMode[mode.id].aliasCssName = alias[1];
     }
     tokens.push({ id: stableId("css-token", name), name: humanize(name), type, collectionId, cssName: name, valuesByMode, ...(template ? { bindingTemplate: template } : {}), ...(type === "number" ? { sourceNumber: true } : {}), sourceRef: { kind: "css", variable: `--${name}`, modes: sourceModes, writable } });
@@ -213,6 +249,10 @@ export function scanProjectStyleVariables(root: string, manifest?: any) {
     const targets = (modeTargets.get(mode.id === "light" && !hasLight ? "default" : mode.id) || []).map(target => ({ ...target, file: path.relative(root, target.file) }));
     const unique = [...new Map(targets.map(target => [JSON.stringify(target), target])).values()];
     if (unique.length === 1) normalizedTargets[mode.id] = unique[0];
+  }
+  for (const token of tokens) for (const mode of orderedModes) {
+    const source = token.sourceRef.modes[mode.id];
+    if (source?.inherited && !normalizedTargets[mode.id]) source.writable = false;
   }
   const collection = { id: collectionId, name: "Project styles", defaultModeId, modes: orderedModes.map(mode => ({ id: mode.id, name: mode.name[0].toUpperCase() + mode.name.slice(1) })), sourceRef: { kind: "css", files: Object.keys(revisions), modeTargets: normalizedTargets } };
   return { library: { version: 1, collections: [collection], tokens }, files: Object.keys(revisions), revisions, warnings, conflicts };
@@ -257,6 +297,7 @@ export function planCssVariableWrites(root: string, before: any, after: any) {
       if (JSON.stringify(value) === JSON.stringify(oldValue)) continue;
       const cssValue = valueToCss(value, afterTokens);
       const declaration = oldToken.sourceRef.modes?.[modeId];
+      if (declaration?.writable === false) throw new Error(`The ${modeId} value follows the CSS color scheme and cannot be edited directly.`);
       const collection = before.collections.find((item: any) => item.id === oldToken.collectionId);
       const target = declaration?.file ? declaration : collection?.sourceRef?.modeTargets?.[modeId];
       if (!target?.file) throw new Error(`Cannot locate a writable ${modeId} block for --${oldToken.cssName}.`);
@@ -265,7 +306,13 @@ export function planCssVariableWrites(root: string, before: any, after: any) {
       if (!container) throw new Error(`The source block for --${oldToken.cssName} changed. Reload variables.`);
       let existing: any = null;
       container.walkDecls(`--${oldToken.cssName}`, (decl: any) => { existing = decl; });
-      if (existing) existing.value = cssValue;
+      if (existing && declaration?.expressionKind === "light-dark") {
+        const parsed = parseLightDark(existing.value);
+        if (!parsed || !declaration.branch) throw new Error(`The light-dark() source for --${oldToken.cssName} changed. Reload variables.`);
+        const span = parsed[declaration.branch];
+        existing.value = `${existing.value.slice(0, span.start)}${cssValue}${existing.value.slice(span.end)}`;
+      }
+      else if (existing) existing.value = cssValue;
       else container.append({ prop: `--${oldToken.cssName}`, value: cssValue });
     }
   }

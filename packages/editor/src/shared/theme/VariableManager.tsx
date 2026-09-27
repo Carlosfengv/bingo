@@ -2,6 +2,7 @@ import * as React from "react";
 import { useTranslation } from "@bingo/i18n";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@bingo/ui";
 import { Plus, Undo2, Redo2, Copy, ArrowLeft, ArrowRight, Star, Trash2 } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useVariables, useVariableEditor } from "./VariableContext";
 import { variableButtonClass as button, variableInputClass as input } from "./VariableControls";
 
@@ -20,13 +21,23 @@ function EditableText({ value, onCommit, label, className = "", disabled = false
   }} onBlur={() => { if (draft !== String(value ?? "")) onCommit(draft); }} />;
 }
 
+function SearchInput({ value, onChange, label }) {
+  const [draft, setDraft] = React.useState(value);
+  React.useEffect(() => setDraft(value), [value]);
+  return <input aria-label={label} placeholder={label} value={draft} onChange={event => {
+    const next = event.target.value;
+    setDraft(next);
+    React.startTransition(() => onChange(next));
+  }} className={`${input} min-w-28 flex-1`} />;
+}
+
 function VariableValueCell({ token, mode, disabled, onCommit, tokens }) {
   const { t } = useTranslation("editor");
   const value = token.valuesByMode[mode.id];
   const [aliasOpen, setAliasOpen] = React.useState(value?.kind === "alias");
   const [error, setError] = React.useState("");
   React.useEffect(() => setAliasOpen(value?.kind === "alias"), [value?.kind]);
-  const aliases = tokens.filter(candidate => candidate.type === token.type && candidate.id !== token.id);
+  const aliases = aliasOpen ? tokens.filter(candidate => candidate.type === token.type && candidate.id !== token.id) : [];
   const label = `${token.name || token.id} · ${mode.name || mode.label || mode.id}`;
   const saveValue = text => {
     const next = token.type === "number" && !token.sourceNumber ? Number(text) : token.type === "boolean" ? text === "true" : text.trim();
@@ -74,9 +85,27 @@ function VariableManagerContent({ variables, collectionId, setCollectionId, quer
   const library = variables.library;
   const collection = library.collections.find(item => item.id === collectionId) || library.collections[0];
   const sourceCollection = collection?.sourceRef?.kind === "css";
-  const tokens = library.tokens.filter(token => token.collectionId === collection?.id);
-  const groups = [...new Set(tokens.map(token => (token.name || "").includes("/") ? token.name.split("/")[0] : "").filter(Boolean))] as string[];
-  const visible = tokens.filter(token => (!type || token.type === type) && (!group || token.name?.startsWith(`${group}/`)) && `${token.name || token.id} ${JSON.stringify(token.valuesByMode)}`.toLowerCase().includes(query.toLowerCase()));
+  const tokens = React.useMemo(() => library.tokens.filter(token => token.collectionId === collection?.id), [library.tokens, collection?.id]);
+  const groups = React.useMemo(() => [...new Set(tokens.map(token => (token.name || "").includes("/") ? token.name.split("/")[0] : "").filter(Boolean))] as string[], [tokens]);
+  const searchIndex = React.useMemo(() => tokens.map(token => ({ token, text: `${token.name || token.id} ${JSON.stringify(token.valuesByMode)}`.toLowerCase() })), [tokens]);
+  const visible = React.useMemo(() => {
+    const needle = query.toLowerCase();
+    return searchIndex.filter(({ token, text }) => (!type || token.type === type) && (!group || token.name?.startsWith(`${group}/`)) && text.includes(needle)).map(({ token }) => token);
+  }, [searchIndex, type, group, query]);
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const virtualized = visible.length > 120;
+  const virtualizer = useVirtualizer({
+    enabled: virtualized,
+    count: virtualized ? visible.length : 0,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 56,
+    overscan: 8,
+  });
+  React.useEffect(() => { scrollRef.current?.scrollTo({ top: 0 }); }, [query, type, group, collection?.id]);
+  const virtualRows = virtualized ? virtualizer.getVirtualItems() : [];
+  const displayed = virtualized ? virtualRows.map(row => visible[row.index]) : visible;
+  const topSpace = virtualized && virtualRows.length ? virtualRows[0].start : 0;
+  const bottomSpace = virtualized && virtualRows.length ? Math.max(0, virtualizer.getTotalSize() - virtualRows.at(-1)!.end) : 0;
   const detail = library.tokens.find(token => token.id === detailId);
   const disabled = editor?.readOnly || variables.status === "loading" || variables.status === "saving" || !variables.source;
   const edit = transform => { if (!disabled) void variables.edit(transform); };
@@ -124,6 +153,7 @@ function VariableManagerContent({ variables, collectionId, setCollectionId, quer
       {variables.error && <div role="alert" className="flex shrink-0 items-center justify-between gap-3 border-b border-ed-border px-5 py-2 text-xs text-red-500"><span>{variables.error}</span><button type="button" className={button} onClick={variables.reload}>{t("variables.reload")}</button></div>}
       {variables.cssSource && <p className="border-b border-ed-border px-5 py-2 text-xs text-ed-muted-foreground">{t("variables.cssSourceDetected", { count: variables.library.tokens.filter(token => token.sourceRef?.kind === "css").length })}</p>}
       {!!variables.sourceWarnings?.length && <p className="border-b border-ed-border px-5 py-2 text-xs text-amber-500">{t("variables.sourceWarnings", { count: variables.sourceWarnings.length })}</p>}
+      {!!variables.sourceConflicts?.length && <p className="border-b border-ed-border px-5 py-2 text-xs text-amber-500">{t("variables.sourceConflicts", { count: variables.sourceConflicts.length })}</p>}
       <div className="flex min-h-0 flex-1">
         <aside className="flex w-48 shrink-0 flex-col gap-1 overflow-y-auto border-r border-ed-border p-3">
           <span className="px-2 py-2 text-[11px] font-medium text-ed-muted-foreground">{t("variables.collection")}</span>
@@ -135,11 +165,11 @@ function VariableManagerContent({ variables, collectionId, setCollectionId, quer
           {!collection ? <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center"><p className="max-w-sm text-sm leading-6 text-ed-muted-foreground">{t("variables.empty")}</p><button type="button" className={`${button} border border-ed-border`} disabled={disabled} onClick={addCollection}><Plus className="size-3.5" />{t("variables.newCollection")}</button></div> : <>
             <div className="flex flex-wrap items-center gap-2 border-b border-ed-border p-3">
               <EditableText label={t("variables.collection")} className="w-36 border-transparent font-medium" value={collection.name || collection.id} disabled={disabled || sourceCollection} onCommit={name => { if (name.trim()) edit(next => { next.collections.find(item => item.id === collection.id).name = name.trim(); return next; }); }} />
-              <input aria-label={t("variables.search")} placeholder={t("variables.search")} value={query} onChange={event => setQuery(event.target.value)} className={`${input} min-w-28 flex-1`} />
+              <SearchInput label={t("variables.search")} value={query} onChange={setQuery} />
               <select aria-label={t("variables.scope")} className={input} value={type} onChange={event => setType(event.target.value)}><option value="">{t("variables.all")}</option><option value="color">{t("variables.color")}</option><option value="number">{t("variables.number")}</option></select>
               <button type="button" className={button} disabled={disabled || sourceCollection} onClick={() => addMode(collection.defaultModeId)}><Plus className="size-3.5" />{t("variables.newMode")}</button>
             </div>
-            <div className="min-h-0 flex-1 overflow-auto">
+            <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
               <table className="w-full border-collapse text-xs"><thead className="sticky top-0 z-10 bg-ed-background"><tr>
                 <th className="min-w-48 border-b border-r border-ed-border px-4 py-3 text-left font-medium">{t("variables.name")}</th>
                 {collection.modes.map((mode, index) => <th key={mode.id} className="min-w-48 border-b border-r border-ed-border p-2 text-left font-medium">
@@ -153,10 +183,12 @@ function VariableManagerContent({ variables, collectionId, setCollectionId, quer
                   ].map(([Icon, key, action, unavailable]: any) => <button type="button" key={key} className={`${button} !h-6 !px-1.5`} aria-label={`${t(`variables.${key}`)} · ${mode.name || mode.id}`} title={t(`variables.${key}`)} disabled={disabled || sourceCollection || unavailable} onClick={action}><Icon className="size-3" /></button>)}</div>
                 </th>)}
               </tr></thead><tbody>
-                {visible.map(token => <tr key={token.id} className="group hover:bg-ed-muted/30">
+                {topSpace > 0 && <tr aria-hidden="true"><td colSpan={collection.modes.length + 1} style={{ height: topSpace, padding: 0, border: 0 }} /></tr>}
+                {displayed.map((token, index) => <tr key={token.id} data-index={virtualized ? virtualRows[index].index : undefined} ref={virtualized ? virtualizer.measureElement : undefined} className="group hover:bg-ed-muted/30">
                   <td className="border-b border-r border-ed-border/60 px-3 py-2"><div className="flex items-center gap-1"><EditableText label={`${t("variables.name")} · ${token.name || token.id}`} value={token.name || token.id} className="w-full border-transparent bg-transparent" disabled={disabled || token.sourceRef?.kind === "css"} onCommit={name => { if (name.trim()) updateToken(token.id, { name: name.trim() }); }} /><button type="button" className={`${button} !px-1`} aria-label={`${t("variables.edit")} · ${token.name || token.id}`} onClick={() => setDetailId(detailId === token.id ? null : token.id)}>···</button></div></td>
-                  {collection.modes.map(mode => <td key={mode.id} className="border-b border-r border-ed-border/60 px-3 py-2"><VariableValueCell token={token} mode={mode} disabled={disabled || token.sourceRef?.writable === false} tokens={library.tokens} onCommit={value => edit(next => { next.tokens.find(item => item.id === token.id).valuesByMode[mode.id] = value; return next; })} /></td>)}
+                  {collection.modes.map(mode => <td key={mode.id} className="border-b border-r border-ed-border/60 px-3 py-2" title={token.sourceRef?.writable === false ? t("variables.sourceConflicts", { count: 1 }) : token.sourceRef?.modes?.[mode.id]?.writable === false ? t("variables.sourceReadOnly") : undefined}><VariableValueCell token={token} mode={mode} disabled={disabled || token.sourceRef?.writable === false || token.sourceRef?.modes?.[mode.id]?.writable === false} tokens={library.tokens} onCommit={value => edit(next => { next.tokens.find(item => item.id === token.id).valuesByMode[mode.id] = value; return next; })} /></td>)}
                 </tr>)}
+                {bottomSpace > 0 && <tr aria-hidden="true"><td colSpan={collection.modes.length + 1} style={{ height: bottomSpace, padding: 0, border: 0 }} /></tr>}
               </tbody></table>
               {!visible.length && <p className="p-6 text-xs text-ed-muted-foreground">{t("variables.noMatches")}</p>}
             </div>

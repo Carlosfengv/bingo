@@ -121,3 +121,47 @@ test("keeps managed variables while adding non-conflicting source variables", ()
     assert.equal(merged.library.tokens.some(token => token.cssName === "accent" && token.sourceRef?.kind === "css"), true);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test("light-dark source colors expose both modes and edit one expression without losing the other branch", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "bingo-light-dark-"));
+  try {
+    const cssFile = path.join(root, "tokens.css");
+    fs.writeFileSync(cssFile, `:root, .light, .dark {
+      --surface-base: light-dark(#F6F8FB, #1B1B1B);
+      --fg-default: light-dark(color-mix(in srgb, #000 90%, white), rgb(249, 249, 249));
+      --static-color: #112233;
+    }
+    @theme inline { --color-surface-base: var(--surface-base); }
+    .light { color-scheme: light; }
+    .dark { color-scheme: dark; }
+    `);
+    const before = readProjectVariables(root);
+    const collection = before.library.collections.find(item => item.id === "project-styles");
+    assert.deepEqual(collection.modes.map(mode => mode.id), ["light", "default", "dark"]);
+    assert.equal(collection.defaultModeId, "light");
+    const surface = before.library.tokens.find(token => token.cssName === "surface-base");
+    const alias = before.library.tokens.find(token => token.cssName === "color-surface-base");
+    assert.equal(surface.valuesByMode.light.value, "#F6F8FB");
+    assert.equal(surface.valuesByMode.dark.value, "#1B1B1B");
+    assert.equal(surface.valuesByMode.default.value, "light-dark(#F6F8FB, #1B1B1B)");
+    assert.equal(surface.sourceRef.modes.default.writable, false);
+    assert.equal(before.library.tokens.find(token => token.cssName === "static-color").sourceRef.modes.light.writable, false);
+    assert.equal(before.library.tokens.find(token => token.cssName === "static-color").sourceRef.modes.dark.writable, false);
+    assert.equal(alias.valuesByMode.light.tokenId, surface.id);
+    assert.equal(before.library.tokens.find(token => token.cssName === "fg-default").valuesByMode.light.value,
+      "color-mix(in srgb, #000 90%, white)");
+    const next = structuredClone(before.library);
+    const edited = next.tokens.find(token => token.id === surface.id);
+    edited.valuesByMode.light = { kind: "literal", value: "#EEEEEE" };
+    edited.valuesByMode.dark = { kind: "literal", value: "#222222" };
+    const after = writeProjectVariables(root, { library: next, expectedRevision: before.revision, source: before.source });
+    const css = fs.readFileSync(cssFile, "utf8");
+    assert.match(css, /--surface-base:\s*light-dark\(#EEEEEE, #222222\)/);
+    assert.match(css, /--fg-default:\s*light-dark\(color-mix\(in srgb, #000 90%, white\), rgb\(249, 249, 249\)\)/);
+    assert.equal(after.library.tokens.find(token => token.cssName === "surface-base").id, surface.id);
+    assert.equal(after.library.tokens.find(token => token.cssName === "surface-base").valuesByMode.dark.value, "#222222");
+    const invalid = structuredClone(after.library);
+    invalid.tokens.find(token => token.id === surface.id).valuesByMode.default = { kind: "literal", value: "#123456" };
+    assert.throws(() => writeProjectVariables(root, { library: invalid, expectedRevision: after.revision, source: after.source }), /cannot be edited directly/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

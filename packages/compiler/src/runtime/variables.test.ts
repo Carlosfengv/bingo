@@ -5,7 +5,7 @@ import { toWire } from "../store/wire";
 import { applyOps } from "../store/apply";
 import { generateJSX } from "../codegen/generateJSX";
 import { parseJSX } from "../codegen/parseJSX";
-import { bindElementVariable, detachElementVariable, findElementVariableBinding, isPaintOnlyVariableModeChange, prepareVariableStore, resolveCollectionModes, resolveVariableValues, setElementVariableMode, sameCollectionModes, validateVariableLibrary, variableExpression } from "./variables";
+import { bindElementVariable, detachElementVariable, findElementVariableBinding, isPaintOnlyVariableModeChange, prepareVariableStore, resolveCollectionModes, resolveVariableValues, setElementVariableMode, sameCollectionModes, validateVariableLibrary, variableExpression, variableStyleProjection } from "./variables";
 import { applyOperationsToStore, createSetStylesOperation, invertOperations } from "../../../editor/src/shared/utils/operations";
 
 export const variableFixture = {
@@ -155,6 +155,20 @@ test("components retain declarations as a portal compatibility bridge", () => {
   const prepared = prepareVariableStore(store, variableFixture, { colors: "dark", density: "compact" });
   assert.equal(prepared.byId.get("dialog").styles["--surface-page"], "#111827");
   assert.equal(prepared.byId.get("dialog").styles["--space-gap"], "8");
+});
+test("project CSS color schemes follow page and local modes without changing saved elements", () => {
+  const library = { version: 1, collections: [{ id: "project-styles", defaultModeId: "light", modes: [{ id: "light" }, { id: "dark" }], sourceRef: { kind: "css" } }],
+    tokens: [{ id: "surface", type: "color", collectionId: "project-styles", cssName: "surface-base", valuesByMode: { light: { kind: "literal", value: "#fff" }, dark: { kind: "literal", value: "#111" } } }] };
+  const store = fixture();
+  store.byId.set("card", setElementVariableMode(store.byId.get("card"), library, "project-styles", "light"));
+  const prepared = prepareVariableStore(store, library, { "project-styles": "dark" });
+  assert.equal(prepared.byId.get("root").styles.colorScheme, "dark");
+  assert.equal(prepared.byId.get("card").styles.colorScheme, "light");
+  assert.equal(prepared.byId.get("text"), store.byId.get("text"));
+  assert.equal(variableStyleProjection(prepared.byId.get("card"))?.colorScheme, "light");
+  assert.equal(store.byId.get("root").styles?.colorScheme, undefined);
+  assert.equal(store.byId.get("card").styles?.colorScheme, undefined);
+  assert.equal(isPaintOnlyVariableModeChange(store, { ...store, variableModes: { "project-styles": "dark" } }, library), false);
 });
 test("geometry can be retained only for proven managed color mode changes", () => {
   const colors = structuredClone(variableFixture);

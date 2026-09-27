@@ -35,9 +35,8 @@ import {
   writeProjectConfiguration,
 } from "./projectConfiguration";
 import { readPrototypeThemePreference, writePrototypeThemePreference } from "./prototypeThemePreferences";
-import { writeProjectVariables } from "./projectVariables";
 import { ProjectVariableCache, variableFileChangeMatters } from "./projectVariableCache";
-import { readProjectVariablesAsync, disposeProjectVariableReader } from "./projectVariableReader";
+import { readProjectVariablesAsync, writeProjectVariablesAsync, hasPendingProjectVariableWrites, waitForProjectVariableWrites, disposeProjectVariableReader } from "./projectVariableReader";
 import {
   deletePortablePage,
   hasPortableDesign,
@@ -1101,12 +1100,12 @@ const OPS = {
     if (!("unchanged" in result)) variableSources.set(root, new Set((result.watchedFiles || [result.source]).map(file => file.replace(/\\/g, "/").replace(/^\.\//, ""))));
     return result;
   },
-  "write-variable-library": (root, args, a) => {
+  "write-variable-library": async (root, args, a) => {
     root = assertRegisteredProjectRoot(root);
     assertProjectWriteAllowed(root);
     variableCache.invalidate(root);
     try {
-      const result = writeProjectVariables(root, a, readEffectiveConfiguration(root, app.getPath("userData")).settings.prototypeTheme);
+      const result = await writeProjectVariablesAsync(root, a, readEffectiveConfiguration(root, app.getPath("userData")).settings.prototypeTheme);
       broadcastToEditors("file_changed", { projectId: root, filePath: result.source });
       return result;
     } finally { invalidateVariables(root); }
@@ -1522,7 +1521,19 @@ function registerHandlers({ prepareProjectRemoval = async () => true } = {}) {
     return { success: true };
   });
 
-  app.once("before-quit", () => {
+  let waitingForVariableWrites = false;
+  let variablesDisposed = false;
+  app.on("before-quit", event => {
+    if (hasPendingProjectVariableWrites()) {
+      event.preventDefault();
+      if (!waitingForVariableWrites) {
+        waitingForVariableWrites = true;
+        void waitForProjectVariableWrites().finally(() => { waitingForVariableWrites = false; app.quit(); });
+      }
+      return;
+    }
+    if (variablesDisposed) return;
+    variablesDisposed = true;
     for (const state of configurationWatchers.values()) {
       state.rootWatcher?.close();
       state.configWatcher?.close();

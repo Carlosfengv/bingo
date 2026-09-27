@@ -280,6 +280,7 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
   const isTopLevelSvg = isSVGElement && !isSVGContext;
   const commonProps = {
     "data-element-id": element.id,
+    ...(variableProjection?.colorScheme ? { "data-bingo-color-mode": variableProjection.colorScheme } : {}),
     onClick: options.onSelectElement ? e => {
       const liveStore = options.liveStoreRef?.current ?? store;
       const path = elementIdsOnPath(e.target);
@@ -565,7 +566,8 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
       if (!element.id.startsWith("el-draw-")) element._componentMissing = true;else if (element._componentMissing) delete element._componentMissing;
       content = (0, import_react.createElement)("div", {
         style: {
-          ...element.styles
+          ...element.styles,
+          ...(variableProjection?.colorScheme ? { colorScheme: variableProjection.colorScheme } : {})
         },
         ...commonProps
       }, fallbackChildren);
@@ -593,6 +595,7 @@ function renderElementOrThrow(idOrElement, store, options = {}) {
       // The existing editor host supplies inherited variables without changing
       // the component's style argument or adding a new layout container.
       const wrapperStyle = { ...variableProjection?.declarations,
+        ...(variableProjection?.colorScheme ? { colorScheme: variableProjection.colorScheme } : {}),
         ...(componentPositioned ? componentFrameRoot ? {
           ...normalizeFrameRootStyles(box),
           ...(options.responsivePreview ? { width: "100%", minWidth: 0, maxWidth: "none", height: "auto", minHeight: "100vh", maxHeight: "none" } : {}),

@@ -14,8 +14,8 @@ var ISOLATION_STYLE_ID = "bingo-project-css-isolation";
 var LEGACY_COMPILED_LINK_ID = "bingo-compiled-css";
 /** projectId → cache key of the stylesheet currently applied */
 var loadedKeyByProject = new Map();
-/** `${projectId}:${cacheKey}` → in-flight load */
-var inFlightByKey = new Map();
+/** Only the newest request may publish a stylesheet or a cache entry. */
+var loadGeneration = 0;
 /** Content-addressed dist URLs are `…/path@hash`; extract hash for dedup. */
 function cssUrlCacheKey(cssUrl) {
   try {
@@ -90,13 +90,14 @@ async function loadStylesheetLink(link, cssUrl) {
 * Skips network fetch when css:ready repeats the same build output.
 */
 async function loadProjectStylesheet(projectId, cssUrl, options = {}) {
+  const generation = ++loadGeneration;
   if (!cssUrl) {
     loadedKeyByProject.delete(projectId);
     document.getElementById(COMPILED_LINK_ID)?.remove();
     document.getElementById(LEGACY_COMPILED_LINK_ID)?.remove();
     ensureIsolationTail();
     await refreshProjectStyleBaseline();
-    notifyCssUpdated([], options.onCompiledClasses);
+    if (generation === loadGeneration) notifyCssUpdated([], options.onCompiledClasses);
     return;
   }
   const {
@@ -106,49 +107,64 @@ async function loadProjectStylesheet(projectId, cssUrl, options = {}) {
   } = options;
   const cacheKey = cssUrlCacheKey(cssUrl);
   if (fontUrls?.length) injectFontLinks(fontUrls);
-  const loadKey = `${projectId}:${cacheKey}`;
   if (loadedKeyByProject.get(projectId) === cacheKey) {
     const existing = document.getElementById(COMPILED_LINK_ID);
-    if (existing && isStylesheetApplied(existing)) {
+    if (existing?.href === cssUrl && isStylesheetApplied(existing)) {
       ensureIsolationTail();
       await refreshProjectStyleBaseline();
-      notifyCssUpdated(compiledClasses, onCompiledClasses);
+      if (generation === loadGeneration) notifyCssUpdated(compiledClasses, onCompiledClasses);
       return;
     }
   }
-  const inFlight = inFlightByKey.get(loadKey);
-  if (inFlight) {
-    await inFlight;
-    notifyCssUpdated(compiledClasses, onCompiledClasses);
-    return;
-  }
-  const loadPromise = (async () => {
-    document.getElementById(LEGACY_COMPILED_LINK_ID)?.remove();
-    let link = document.getElementById(COMPILED_LINK_ID);
-    if (!link) {
-      link = document.createElement("link");
-      link.id = COMPILED_LINK_ID;
-      link.rel = "stylesheet";
-      document.head.appendChild(link);
-    }
-    await loadStylesheetLink(link, cssUrl);
-    ensureIsolationTail();
-    await refreshProjectStyleBaseline();
-    loadedKeyByProject.set(projectId, cacheKey);
-  })();
-  inFlightByKey.set(loadKey, loadPromise);
+  // Load away from the active stylesheet. A failed or superseded build must
+  // never replace the colors currently painted on the canvas.
+  const next = document.createElement("link");
+  next.rel = "stylesheet";
+  next.media = "not all";
+  document.head.appendChild(next);
   try {
-    await loadPromise;
+    await loadStylesheetLink(next, cssUrl);
+    if (generation !== loadGeneration) return;
+    const previous = document.getElementById(COMPILED_LINK_ID);
+    const legacy = document.getElementById(LEGACY_COMPILED_LINK_ID);
+    if (previous) { previous.id = `${COMPILED_LINK_ID}-previous`; previous.disabled = true; }
+    if (legacy) legacy.disabled = true;
+    next.id = COMPILED_LINK_ID;
+    next.media = "all";
+    ensureIsolationTail();
+    try {
+      await refreshProjectStyleBaseline();
+    } catch (error) {
+      if (generation !== loadGeneration) {
+        previous?.remove();
+        legacy?.remove();
+        return;
+      }
+      next.remove();
+      if (previous) { previous.id = COMPILED_LINK_ID; previous.disabled = false; }
+      if (legacy) legacy.disabled = false;
+      await refreshProjectStyleBaseline().catch(() => {});
+      throw error;
+    }
+    if (generation !== loadGeneration) {
+      previous?.remove();
+      legacy?.remove();
+      return;
+    }
+    previous?.remove();
+    legacy?.remove();
+    loadedKeyByProject.set(projectId, cacheKey);
     notifyCssUpdated(compiledClasses, onCompiledClasses);
   } finally {
-    if (inFlightByKey.get(loadKey) === loadPromise) inFlightByKey.delete(loadKey);
+    if (next.id !== COMPILED_LINK_ID) next.remove();
   }
 }
 function cleanupProjectStylesheet(projectId) {
+  loadGeneration++;
   cleanupProjectStyleBaseline();
   loadedKeyByProject.delete(projectId);
-  for (const key of inFlightByKey.keys()) if (key.startsWith(`${projectId}:`)) inFlightByKey.delete(key);
   document.getElementById(COMPILED_LINK_ID)?.remove();
+  document.getElementById(`${COMPILED_LINK_ID}-previous`)?.remove();
   document.getElementById(ISOLATION_STYLE_ID)?.remove();
   document.getElementById(LEGACY_COMPILED_LINK_ID)?.remove();
   document.querySelectorAll("[id^=\"bingo-font-import-\"]").forEach(el => el.remove());

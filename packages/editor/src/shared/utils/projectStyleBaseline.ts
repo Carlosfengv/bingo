@@ -53,7 +53,12 @@ function createBaseline(doc: Document) {
     for (const name of Array.from(inheritedStyle)) {
       const value = inheritedStyle.getPropertyValue(name);
       if (name.startsWith("--") || value !== initialStyle.getPropertyValue(name)) {
-        declarations.setProperty(name, value);
+        // The computed default text fill/stroke color is a snapshot of the
+        // Light baseline. Keep it tied to `color` so a Dark child can resolve
+        // its own foreground instead of painting Light text over Dark UI.
+        const followsTextColor = (name === "-webkit-text-fill-color" || name === "-webkit-text-stroke-color")
+          && value === inheritedStyle.color;
+        declarations.setProperty(name, followsTextColor ? "currentColor" : value);
       }
     }
     // Computed style resolves a unitless line-height to px. Preserve its ratio

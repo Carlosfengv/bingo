@@ -2,7 +2,7 @@ import { validateThemeLibrary } from "./theme";
 import { cssVariablesAffectOnlyPaint, type VariableStyleUsage } from "./variableGeometry";
 
 export type VariableMode = { id: string; name?: string; label?: string };
-export type VariableCollection = { id: string; name?: string; defaultModeId: string; modes: VariableMode[] };
+export type VariableCollection = { id: string; name?: string; defaultModeId: string; modes: VariableMode[]; sourceRef?: any };
 export type VariableToken = { id: string; name?: string; description?: string; collectionId: string; type: string; cssName?: string; scopes?: string[]; bindingTemplate?: string; sourceNumber?: boolean; sourceRef?: any; valuesByMode: Record<string, { kind: string; value?: any; tokenId?: string; inheritedFromModeId?: string }> };
 export type VariableLibrary = { version: number; collections: VariableCollection[]; tokens: VariableToken[]; requiredTokenIds?: string[]; assets?: any[] };
 export type CollectionModes = Record<string, string>;
@@ -174,6 +174,12 @@ export function resolveCollectionModes(store: any, elementId: string | null, lib
   return { modes, sources };
 }
 
+function projectColorScheme(library: VariableLibrary, modes: CollectionModes): "light" | "dark" | undefined {
+  const collection = library.collections.find(item => item.id === "project-styles" && item.sourceRef?.kind === "css");
+  const mode = collection && (modes[collection.id] || collection.defaultModeId);
+  return mode === "light" || mode === "dark" ? mode : undefined;
+}
+
 function resolveVariableValuesUncached(library: VariableLibrary, modes: CollectionModes) {
   const index = libraryIndex(library);
   const values: Record<string, any> = {};
@@ -286,6 +292,10 @@ export function isPaintOnlyVariableModeChange(before: any, after: any, library: 
     ]);
   }
   if (!modePairs.length) return false;
+  // Source CSS may use light-dark() or system colors without a scanned token
+  // reference. A color-scheme change can therefore affect layout and paint
+  // even when the token values happen to be identical.
+  if (modePairs.some(([beforeModes, afterModes]) => projectColorScheme(library, beforeModes) !== projectColorScheme(library, afterModes))) return false;
   // Nested overrides can combine collections differently from their root,
   // including cross-collection aliases. Prove safety in every such scope.
   for (const [id, element] of after.byId) if (Object.keys(element.theme?.localCollectionModes || {}).length) {
@@ -374,7 +384,7 @@ export function detachElementVariable(element: any, library: VariableLibrary, pr
 const noDeclarations = {};
 // Keep the authored argument separate from runtime declarations. A component
 // with no style argument must still execute its own parameter default.
-const variableStyleProjections = new WeakMap<object, { styles: any; declarations: Record<string, string> }>();
+const variableStyleProjections = new WeakMap<object, { styles: any; declarations: Record<string, string>; colorScheme?: "light" | "dark" }>();
 export function variableStyleProjection(element: object) {
   return variableStyleProjections.get(element);
 }
@@ -389,9 +399,11 @@ export function prepareVariableStore(store: any, library: VariableLibrary, pageM
     const hasOwnLibraryDeclaration = Object.keys(element.styles || {}).some(property => property.startsWith("--") && index.cssNames.has(property.slice(2)));
     const isScopeBoundary = isRoot || additionalScopeRoots?.has(id) || !!localModes && Object.keys(localModes).length > 0 || isComponentBridge || hasOwnLibraryDeclaration;
     let declarations = noDeclarations;
+    let colorScheme: "light" | "dark" | undefined;
     if (isScopeBoundary) {
       const { modes } = resolveCollectionModes(store, id, library, pageModes);
       declarations = variableDeclarationsForModes(library, modes, usedCssNames);
+      colorScheme = projectColorScheme(library, modes);
     }
     let variants = index.preparedElements.get(element);
     const cached = variants?.get(declarations);
@@ -405,9 +417,9 @@ export function prepareVariableStore(store: any, library: VariableLibrary, pageM
       if (authoredStyles === element.styles) authoredStyles = { ...authoredStyles };
       authoredStyles[binding.property] = expression;
     }
-    const styles = isScopeBoundary ? { ...authoredStyles, ...declarations } : authoredStyles;
+    const styles = isScopeBoundary ? { ...authoredStyles, ...declarations, ...(colorScheme ? { colorScheme } : {}) } : authoredStyles;
     const prepared = styles !== element.styles ? { ...element, styles } : element;
-    if (prepared !== element) variableStyleProjections.set(prepared, { styles: authoredStyles, declarations });
+    if (prepared !== element) variableStyleProjections.set(prepared, { styles: authoredStyles, declarations, colorScheme });
     if (!variants) index.preparedElements.set(element, variants = new WeakMap());
     variants.set(declarations, prepared);
     if (prepared !== element) byId.set(id, prepared);

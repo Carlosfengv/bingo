@@ -14,7 +14,7 @@ const server = http.createServer((request, response) => {
   response.setHeader('Content-Type', 'text/css');
   if (request.url === '/fail') { response.writeHead(404); response.end(); return; }
   const css = request.url === '/old' ? 'body {color:rgb(200,0,0)}'
-    : request.url === '/semantic' ? ':root{color-scheme:light dark;--project-foreground:light-dark(#00030a,#f9f9f9);--project-surface:light-dark(#f6f8fb,#1b1b1b)}body{color:var(--project-foreground)}'
+    : request.url === '/semantic' ? ':root{color-scheme:light dark;--project-foreground:light-dark(#00030a,#f9f9f9);--project-surface:light-dark(#f6f8fb,#1b1b1b)}body,.semantic-text{color:var(--project-foreground)}'
     : 'body {color:rgb(0,90,40);font-size:21px;line-height:1.3}';
   if (request.url === '/old' || request.url === '/pending') setTimeout(() => response.end(css), 500);
   else response.end(css);
@@ -53,6 +53,8 @@ app.whenReady().then(async () => {
     check('A corrected stylesheet clears the failure and restores readiness', await run(`document.querySelector('#bingo-project-inherited-style').dataset.ready==='true'&&!document.querySelector('#bingo-project-inherited-style').dataset.error`));
     await run(`document.documentElement.style.colorScheme='dark';document.querySelector('[data-canvas-content]').style.colorScheme='light';projectLink.href=${JSON.stringify(base + '/semantic')};baselineApi.refreshProjectStyleBaseline()`);
     check('A light canvas inherits light semantic text even when the editor and OS use dark colors', await run(`(()=>{const e=document.querySelector('#probe'),s=getComputedStyle(e);return s.color==='rgb(0, 3, 10)'&&s.colorScheme==='light'})()`));
+    await run(`(()=>{const e=document.createElement('span');e.id='dark-probe';e.className='semantic-text';e.style.colorScheme='dark';document.querySelector('[data-canvas-content]').append(e)})()`);
+    check('A Dark child paints its semantic text with the Dark foreground inside a Light canvas', await run(`(()=>{const s=getComputedStyle(document.querySelector('#dark-probe'));return s.color==='rgb(249, 249, 249)'&&s.webkitTextFillColor==='rgb(249, 249, 249)'})()`));
     await run(`document.querySelector('[data-canvas-content]').style.colorScheme='dark';baselineApi.refreshProjectStyleBaseline()`);
     check('Changing the canvas color scheme refreshes inherited semantic text', await run(`getComputedStyle(document.querySelector('#probe')).color==='rgb(249, 249, 249)'`));
     await run(`projectLink.href=${JSON.stringify(base + '/pending')};window.pendingRefresh=baselineApi.refreshProjectStyleBaseline();baselineApi.cleanupProjectStyleBaseline();pendingRefresh`);
